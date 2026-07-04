@@ -1,0 +1,20 @@
+# VS缓存目录（你要屏蔽的.vs文件夹）
+.vs/
+
+# 编译产物
+bin/
+obj/
+x64/
+x86/
+Debug/
+Release/
+
+# VS本地配置文件
+*.user
+*.suo
+*.pdb
+*.ilk
+
+GC封装文件/
+GameClciker3.0/
+ImGui-old/
