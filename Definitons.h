@@ -388,7 +388,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -554,7 +554,7 @@ HANDLE ClickSoundThread;
 
 bool Starting             = false;              //是否正在启动
 bool StopClicker          = false;              //是否停止连点
-atomic<bool>GCExit(false);                      //连点器退出
+atomic<bool>GCExit        = false;              //连点器退出
 bool IsDownloadRes        = false;              //是否正在下载资源
 bool ShowGui              = true;               //是否显示GUI
 bool IsFirstRun           = false;              //第一次运行（是否显示向导）

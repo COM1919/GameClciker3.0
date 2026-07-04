@@ -23,8 +23,11 @@ typedef struct LuaState
     LuaState() : lua(nullptr), IsLoaded(false) {}
     void release()
     {
-        if (lua != nullptr)
+        if (lua)
+        {
+            luaL_dostring(lua, "if jit then jit.off() jit.flush() end collectgarbage('collect') collectgarbage('collect')");
             lua_close(lua);
+        }
         lua = nullptr;
     }
     ~LuaState() { release(); }
@@ -477,7 +480,7 @@ namespace ScriptAPI
             lua_pushinteger(L, -1);
             return 1;
         }
-        unsigned int id = PipeList.size() + 1;
+        unsigned int id = rand() + 1;
         PipeList[id] = hPipe;
         lua_pushinteger(L, id);
         return 1;

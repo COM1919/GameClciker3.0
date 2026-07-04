@@ -477,8 +477,8 @@ HANDLE StartScript(const string& file)
         while (!GCExit)
         {
             {
-                // ¶ÁÈ¡Ëø
-                shared_lock<shared_mutex> lock(ScriptStatesMtx);
+                // Ð´ÈëËø
+                lock_guard<shared_mutex> lock(ScriptStatesMtx);
                 auto& it = ScriptStates[file];
                 if (it.IsExit)
                 {

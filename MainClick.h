@@ -717,20 +717,23 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 
 LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0 && GetForegroundWindow() != GCHWND)
+	if (nCode >= 0)
 	{
 		switch (wParam)
 		{
 			case WM_MOUSEWHEEL:
 			{
-				MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-				int wheelDelta = GET_WHEEL_DELTA_WPARAM(pMouseStruct->mouseData) / WHEEL_DELTA;
-				ItemBarPos -= wheelDelta; // 这里不需要%，因为下面会处理
-				if (ItemBarPos < 0)
-					ItemBarPos += 9;
-				else
-					ItemBarPos %= 9;
-				break;
+				if (!IsOpenGui && GetForegroundWindow() != GCHWND) // 一定要加上判断IsOpenGui，这是误差产生的原因！
+				{
+					MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
+					int wheelDelta = GET_WHEEL_DELTA_WPARAM(pMouseStruct->mouseData) / WHEEL_DELTA;
+					ItemBarPos -= wheelDelta; // 这里不需要%，因为下面会处理
+					if (ItemBarPos < 0)
+						ItemBarPos += 9;
+					else
+						ItemBarPos %= 9;
+					break;
+				}
 			}
 		}
 	}
