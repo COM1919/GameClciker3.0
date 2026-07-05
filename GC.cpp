@@ -246,9 +246,8 @@ int GCMainLoop()
     while (!GCExit)
     {
         LastTime = clock();
-        //===============================处理暂停渲染逻辑===============================.
-        LONG_PTR exStyle = GetWindowLongPtr(GCHWND, GWL_EXSTYLE);
-        bool IsWindowTopmost = (exStyle & WS_EX_TOPMOST) != 0;
+        //===============================处理暂停渲染逻辑===============================
+        bool IsWindowTopmost = (GetWindowLongPtr(GCHWND, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
         // 当程序最小化时，不渲染UI
         static bool RenderStoped = false;
         const bool IsMinWindows = (MainGuiData.pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) && MainGuiData.SwapChainOccluded;
@@ -283,43 +282,8 @@ int GCMainLoop()
             MainGuiData.ResizeWidth = MainGuiData.ResizeHeight = 0;
             CreateRenderTarget();
         }
-        //===============================处理窗口拖拽===============================
-        static bool IsInit = false;
-        static bool IsMove = false;
-        static bool IsActived = false;
+        
 
-        if (IsKeyPressed(ImGuiKey_MouseLeft))
-            IsActived = true;
-        else if (IsKeyReleased(ImGuiKey_MouseLeft))
-            IsActived = false;
-
-        if (IsActived)
-        {
-            POINT client_pt;
-            POINT screen_pt;
-            GetCursorPos(&screen_pt);
-            client_pt = screen_pt;
-            ScreenToClient(GCHWND, &client_pt);
-
-            static POINT deviation{};
-            if (!IsInit)
-            {
-                deviation = client_pt;
-                IsInit = true;
-            }
-
-            if (client_pt.x >= 0 && client_pt.x <= WindowWidth && client_pt.y >= 0 && client_pt.y <= 32 || IsMove)
-            {
-                IsMove = true;
-                POINT pos = { screen_pt.x - deviation.x, screen_pt.y - deviation.y };
-                SetWindowPos(GCHWND, NULL, pos.x, pos.y, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
-            }
-        }
-        else
-        {
-            IsInit = false;
-            IsMove = false;
-        }
         //===============================处理渲染===============================
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -327,7 +291,7 @@ int GCMainLoop()
 
         if (IsFirstRun)
         {
-            int state = RenderGuide(io);
+            const int state = RenderGuide(io);
             if (state == 1)
             {
                 IsFirstRun = false;

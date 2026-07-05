@@ -1908,5 +1908,44 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     }
     }
 
+    //===============================处理窗口拖拽===============================
+    static POINT DragDeviation = { -1, -1 };
+    static bool IsActiveDrag = false;
+    switch (msg)
+    {
+    case WM_LBUTTONDOWN:
+    {
+        POINT pt;
+        GetCursorPos(&pt);
+        POINT client = pt;
+        ScreenToClient(GCHWND, &client);
+        if (client.x >= 0 && client.x <= WindowWidth && client.y >= 0 && client.y <= 32)
+        {
+            IsActiveDrag = true;
+            DragDeviation = client;
+        }
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+    {
+        if (IsActiveDrag)
+        {
+            POINT pt;
+            GetCursorPos(&pt);
+            SetWindowPos(GCHWND, NULL,
+                pt.x - DragDeviation.x, pt.y - DragDeviation.y,
+                0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+        }
+        return 0;
+    }
+    case WM_CAPTURECHANGED: // 防止捕获被外部窗口夺走时，还在跟随拖拽
+    case WM_LBUTTONUP:
+    {
+        IsActiveDrag = false;
+        DragDeviation = { -1, -1 };
+        return 0;
+    }
+    }
+    
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }

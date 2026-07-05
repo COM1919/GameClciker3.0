@@ -757,6 +757,12 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
+			// 优先级处理
+			if (config.ClickerPriorityMode == CP_LC && IsClickering.left)
+			{
+				Sleep(config.MainClickSleep);
+				continue;
+			}
 			//=========================================默认模式=========================================
 			if (config.RClickerMode & C_BUTTONMODE && !(config.RClickerMode & C_SWITCHMODE))
 			{
@@ -962,6 +968,12 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
+			// 优先级处理
+			if (config.ClickerPriorityMode == CP_RC && IsClickering.right)
+			{
+				Sleep(config.MainClickSleep);
+				continue;
+			}
 			//=========================================默认模式=========================================
 			if (config.LClickerMode & C_BUTTONMODE && !(config.LClickerMode & C_SWITCHMODE))
 			{

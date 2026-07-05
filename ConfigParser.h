@@ -127,6 +127,7 @@ void SaveIni(const string& file)
 	WritePrivateProfileString("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "ohpTimerTimeLossSpeed", to_string(config.OHPTimerTimeLossSpeed).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "simulateClickMode", to_string(config.SimulateClickMode).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "clickerPriorityMode", to_string(config.ClickerPriorityMode).c_str(), CIniPos);
 
 	// MouseSoundSettings section
 	WritePrivateProfileString("MouseSoundSettings", "mouseSoundVolume", to_string(config.MouseSoundVolume).c_str(), CIniPos);
@@ -381,8 +382,10 @@ void GetIni(const string& file)
 		config.OHPTimerTimeLossSpeed = stof(buffer);
 
 		config.SimulateClickMode = GetPrivateProfileInt("BasicSettings", "simulateClickMode", config.SimulateClickMode, CIniPos);
+		config.HideClickerKey = GetPrivateProfileInt("BasicSettings", "hideClickerKey", config.HideClickerKey, CIniPos);
+		config.ClickerPriorityMode = GetPrivateProfileInt("BasicSettings", "clickerPriorityMode", config.ClickerPriorityMode, CIniPos);
 
-		// MouseSoundSettings section
+		//==================================================MouseSoundSettings section==================================================
 		config.MouseSoundVolume = GetPrivateProfileInt("MouseSoundSettings", "mouseSoundVolume", config.MouseSoundVolume, CIniPos);
 		config.KeybdSoundVolume = GetPrivateProfileInt("MouseSoundSettings", "keybdSoundVolume", config.KeybdSoundVolume, CIniPos);
 		config.NoiseVolume = GetPrivateProfileInt("MouseSoundSettings", "noiseVolume", config.NoiseVolume, CIniPos);
@@ -393,7 +396,7 @@ void GetIni(const string& file)
 
 		config.MouseSoundSleep = GetPrivateProfileInt("MouseSoundSettings", "mouseSoundSleep", config.MouseSoundSleep, CIniPos);
 
-		// FeatureSwitches section - bool values (保持原样，使用 GetPrivateProfileString)
+		//==================================================FeatureSwitches section==================================================
 		GetPrivateProfileString("FeatureSwitches", "useRightEmptyRate", config.UseREmptyRate ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseREmptyRate = st.find("TRUE") != string::npos;
@@ -560,7 +563,7 @@ void GetIni(const string& file)
 		st = buffer;
 		config.UseItembarSwitch = st.find("TRUE") != string::npos;
 
-        // QuickSwitchSettings section - arrays
+        //==================================================QuickSwitchSettings==================================================
         GetPrivateProfileString("QuickSwitchSettings", "rightQuickSwitch", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
@@ -597,7 +600,7 @@ void GetIni(const string& file)
             }
         }
 
-        // ItemBarSettings section - arrays and LRPair arrays
+        //==================================================ItemBarSettings section==================================================
         GetPrivateProfileString("ItemBarSettings", "itemEnableClickerKey", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
@@ -610,7 +613,7 @@ void GetIni(const string& file)
             }
         }
 
-        // LRPair arrays
+        //==================================================LRPair arrays==================================================
         GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
@@ -683,7 +686,7 @@ void GetIni(const string& file)
             }
         }
 
-        // RandomSettings section
+        //==================================================RandomSettings section==================================================
         GetPrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
         config.MouseShake_RandomDist = stoi(buffer);
         GetPrivateProfileString("RandomSettings", "mouseShakeRandomGen", to_string(config.MouseShake_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
@@ -697,11 +700,11 @@ void GetIni(const string& file)
         GetPrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
         config.Fluctuation_RandomGen = stoi(buffer);
 
-        // AdvancedSettings section
+        //==================================================AdvancedSettings section==================================================
         GetPrivateProfileString("AdvancedSettings", "memSearchSleep", to_string(config.MemSearchSleep).c_str(), buffer, MAX_BUF, CIniPos);
         config.MemSearchSleep = stoi(buffer);
 
-        // Vector读取
+        //==================================================Vector读取==================================================
         GetPrivateProfileString("AdvancedSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
@@ -709,9 +712,7 @@ void GetIni(const string& file)
             stringstream ss(buffer);
             string token;
             while (getline(ss, token, ','))
-            {
                 config.RCPSChangeTrendList.push_back(stoi(token));
-            }
         }
 
         GetPrivateProfileString("AdvancedSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
@@ -721,12 +722,10 @@ void GetIni(const string& file)
             stringstream ss(buffer);
             string token;
             while (getline(ss, token, ','))
-            {
                 config.LCPSChangeTrendList.push_back(stoi(token));
-            }
         }
 	}
-	//-----------------------统计信息-----------------------
+	//==================================================统计信息==================================================
 	HKEY hKey;
 	if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL) != ERROR_SUCCESS)
 		PrintLog("[Config] 无法创建注册表项", PL_ERROR);

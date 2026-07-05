@@ -73,6 +73,10 @@
 #define FRM_SLS       5       //小到大，大到小
 #define FRM_LSL       6       //大到小，小到大
 
+#define CP_NONE       0       //无优先级
+#define CP_RC         1       //右键连点优先
+#define CP_LC         2       //左键连点优先
+
 typedef ID3D11ShaderResourceView* Texture2D;
 
 typedef struct IntRange
@@ -201,6 +205,7 @@ public:
     float OHPTimerTimeLossSpeed = 0.1f;     //过热时长减少速度
     int SimulateClickMode = SC_POST_MESSAGE;//模拟点击模式
     int ReadKeyStateMode = GK_BOTH;         //获取按键状态模式
+    int ClickerPriorityMode = CP_NONE;      //左右键连点的优先级模式
    
     //--------------------鼠标声音设置------------------------------
 
