@@ -46,6 +46,7 @@
 #define URL_GITEE_POPUP    "https://gitee.com/com1919/gameclicker-information/raw/master/popup.txt"
 #define URL_GITEE_SCRIPTS  "https://gitee.com/com1919/gameclicker-information/raw/master/scriptlist.txt"
 #define URL_GITEE_SC_ROOT  "https://gitee.com/com1919/gameclicker-information/raw/master/script/"
+#define URL_GITEE_SOUNDS   "https://gitee.com/com1919/gameclicker-information/releases/download/KeySound/keys.zip"
 
 #define MAIN_R_KEY    5       //默认鼠标侧键，连点右键的快捷键
 #define MAIN_L_KEY    6       //默认鼠标侧键，连点左键的快捷键
@@ -376,8 +377,8 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.37";          //版本号
-string title = "GAMECLICKER 3.37";      //标题名字
+const string version = "3.38";          //版本号
+string title = "GAMECLICKER 3.38";      //标题名字
 const int ConfigVersion = 3;            //配置文件版本号
 
 const int RenderFps = 60;               //渲染帧率
@@ -393,7 +394,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -429,13 +430,14 @@ const string StatsRegPath =       "Software\\GameClicker\\Stats";
 const string SoundPath =         "sound";
 const string Sound_Noise =       "sound\\noise.wav";
 const string Sound_MousePath =   "sound\\mouse";
-const string Sound_KeybdPath =   "sound\\keys";
+const string Sound_KeybdPath =    HasD_Drive ? "D:\\GameClicker\\sound\\keys"            : "C:\\GameClicker\\sound\\keys";
 const string Sound_Enable =      "sound\\func\\enable.wav";
 const string Sound_Disable =     "sound\\func\\disable.wav";
 
-const string BmpTmp_TempPath =    HasD_Drive ? "D:\\GameClicker\\Temp"                   : "C:\\GameClicker\\Temp";
-const string BmpTmp_Ad =          HasD_Drive ? "D:\\GameClicker\\Temp\\AdImage.dat"      : "C:\\GameClicker\\Temp\\AdImage.dat";
-const string BmpTmp_MCServer =    HasD_Drive ? "D:\\GameClicker\\Temp\\mcserver%d.json"  : "C:\\GameClicker\\Temp\\mcserver%d.json";
+const string Tmp_TempPath =       HasD_Drive ? "D:\\GameClicker\\Temp"                   : "C:\\GameClicker\\Temp";
+const string Tmp_Ad =             HasD_Drive ? "D:\\GameClicker\\Temp\\AdImage.dat"      : "C:\\GameClicker\\Temp\\AdImage.dat";
+const string Tmp_MCServer =       HasD_Drive ? "D:\\GameClicker\\Temp\\mcserver%d.json"  : "C:\\GameClicker\\Temp\\mcserver%d.json";
+const string Tmp_KeySounds =      HasD_Drive ? "D:\\GameClicker\\Temp\\KeySounds.zip"    : "C:\\GameClicker\\Temp\\KeySounds.zip";
 
 const string BmpPath =            "Bmp";
 const string Bmp_Itembar =        "Bmp\\item.bmp";
@@ -635,8 +637,8 @@ struct ProgressBarMsg
 {
     string  title;
     int     ret_code = 0;
-    double  maxkb = 0.0;
-    double  kb = 0.0;
+    double  maxmb = 0.0;
+    double  mb = 0.0;
     bool    open = false;
     bool    unzip = false;
 }pb_message;

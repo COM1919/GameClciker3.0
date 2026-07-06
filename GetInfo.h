@@ -188,7 +188,6 @@ DWORD WINAPI Updata(LPVOID lpParam)
 {
     while (UseServerOfType == -1)
         Sleep(200);
-
     if (_access(CommandFile.c_str(), 0) == 0)
     {
         PrintLog("[Updata] 发现旧版本GC连点器，准备删除。", PL_INFO);
@@ -208,7 +207,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
 
     PrintLog("[Updata] 检查版本", PL_INFO);
     string content;
-    if (ReadURLDatas((UseServerOfType == 2) ? URL_LZY_VER : URL_GITEE_UPDATA, content))
+    if (!ReadURLDatas((UseServerOfType == 2) ? URL_LZY_VER : URL_GITEE_UPDATA, content))
     {
         PrintLog("[Updata] 检查版本失败", PL_ERROR);
         return 2;

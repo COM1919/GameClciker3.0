@@ -18,6 +18,7 @@ extern "C"
 typedef struct LuaState
 {
     lua_State* lua;
+    mutex Mtx;
     bool IsLoaded;
 
     LuaState() : lua(nullptr), IsLoaded(false) {}
@@ -32,7 +33,8 @@ typedef struct LuaState
     }
     ~LuaState() { release(); }
 };
-map<string, LuaState> Lua_States;
+map<string, LuaState> LuaStates;
+shared_mutex LuaStatesMtx;
 
 //=========================================前置函数=========================================
 // 检查节是否存在
@@ -656,7 +658,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyDown的参数太多");
         
-        for (const auto& it : Lua_States)
+        for (const auto& it : LuaStates)
         {
             if (it.second.lua == L)
             {
@@ -675,7 +677,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyUp的参数太多");
 
-        for (const auto& it : Lua_States)
+        for (const auto& it : LuaStates)
         {
             if (it.second.lua == L)
             {
@@ -696,7 +698,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyClick的参数太多");
 
-        for (const auto& it : Lua_States)
+        for (const auto& it : LuaStates)
         {
             if (it.second.lua == L)
             {
@@ -736,7 +738,7 @@ namespace ScriptAPI
         if (ParamNumber == 1)
             delay = luaL_checkinteger(L, 1);
         
-        for (const auto& it : Lua_States)
+        for (const auto& it : LuaStates)
         {
             if (it.second.lua == L)
             {

@@ -384,7 +384,7 @@ struct InputKey_element
 bool InputKey(const char* label, int* key, const char* press_tip)
 {
     ImGuiContext& g = *GImGui;
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    ImGuiWindow* window = GetCurrentWindow();
     if (window->SkipItems)
         return false;
 
@@ -397,8 +397,8 @@ bool InputKey(const char* label, int* key, const char* press_tip)
     const float width = g.NextItemData.Width;
     const ImVec2 size((width <= 0) ? 48 : width, 24);
     const ImRect rect(AnimPos, ImVec2(AnimPos.x + size.x, AnimPos.y + size.y));
-    ImGui::ItemSize(rect, style.FramePadding.y);
-    if (!ImGui::ItemAdd(rect, id))
+    ItemSize(rect, style.FramePadding.y);
+    if (!ItemAdd(rect, id))
         return false;
 
     bool value_changed = false;
@@ -415,11 +415,11 @@ bool InputKey(const char* label, int* key, const char* press_tip)
         {
         case 5: active_key = u8"鼠标前侧键"; break;
         case 6: active_key = u8"鼠标后侧键"; break;
-        case 1: active_key = u8"鼠标左键"; break;
-        case 2: active_key = u8"鼠标右键"; break;
-        case 3: active_key = u8"鼠标中键"; break;
-        case 4: active_key = u8"滚轮键"; break;
-        case 0: active_key = u8"无"; break;
+        case 1: active_key = u8"鼠标左键";   break;
+        case 2: active_key = u8"鼠标右键";   break;
+        case 3: active_key = u8"鼠标中键";   break;
+        case 4: active_key = u8"滚轮键";     break;
+        case 0: active_key = u8"无";         break;
         default:
         defa:
             string vkey_name = GetVkeyName(*key);
@@ -656,27 +656,29 @@ void RenderControl()
         static double last_byte = 0;
         static double speed = 0;
 
-        TabsText(config.UseChinese ? u8"下载任务" : "Download Task");
+        SetWindowFontScale(1.5f);
+        Text(config.UseChinese ? u8"下载任务" : "Download Task");
+        SetWindowFontScale(1.0f);
 
         Text(pb_message.title.c_str());
         SetNextItemWidth(420);
 
-        const double RemainingTime = (speed == 0.0) ? 0.0 : (pb_message.maxkb - pb_message.kb) / max(speed, 1.0);
+        const double RemainingTime = (speed == 0.0) ? 0.0 : (pb_message.maxmb - pb_message.mb) / max(speed, 1.0);
 
-        ProgressBar(float(pb_message.kb / max(pb_message.maxkb, 1.0)), ImVec2(430, 20));
-        Text(config.UseChinese ? u8"已下载:%d KB / %d KB  下载速度:%d KB/s  剩余时间:%s 秒" : "Downloaded:%d KB / %d KB  Speed:%d KB/s  Remaining Time:%s seconds",
-            (int)pb_message.kb, (int)pb_message.maxkb, (int)speed, (speed <= 0.0) ? u8"无" : to_string((int)RemainingTime).c_str());
+        ProgressBar(float(pb_message.mb / max(pb_message.maxmb, 1.0)), ImVec2(430, 20));
+        Text(config.UseChinese ? u8"已下载:%.2f MB / %.2f MB - %.2f MB/s  剩余时间:%s 秒" : "Downloaded:%.2f MB / %.2f MB - %.2f MB/s  Time:%s seconds",
+            pb_message.mb, pb_message.maxmb, speed, (speed <= 0.0) ? u8"无" : to_string((int)RemainingTime).c_str());
 
         static ULONGLONG last_time = GetTickCount64() + 1000;
 
         if (last_time < GetTickCount64())
         {
-            speed = (last_byte == 0.0) ? 0.0 : max(pb_message.kb - last_byte, 0.0);
-            last_byte = pb_message.kb;
+            speed = (last_byte == 0.0) ? 0.0 : max(pb_message.mb - last_byte, 0.0);
+            last_byte = pb_message.mb;
             last_time = GetTickCount64() + 1000;
         }
 
-        SetCursorPos(ImVec2(size.x - 102, size.y - 32));
+        SetCursorPos(ImVec2(size.x - 12, size.y - 12));
         if (Button(config.UseChinese ? u8"取消" : "Cancel", ImVec2(80, 30)))
         {
             pb_message.ret_code = 1;

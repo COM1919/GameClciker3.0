@@ -357,26 +357,29 @@ inline bool InitLuaState(const string& file, LuaState& LuaInfo)
 {
     bool IsError = false;
     string errmsg;
-    try
     {
-        if (LuaInfo.lua == NULL)
-            LuaInfo.lua = LuaInit();
-        if (!LuaInfo.IsLoaded)
+        lock_guard<mutex> lock(LuaInfo.Mtx);
+        try
         {
-            int ret = LoadScript(LuaInfo.lua, file);
-            if (ret != 0) return false;
-            LuaInfo.IsLoaded = true;
+            if (LuaInfo.lua == NULL)
+                LuaInfo.lua = LuaInit();
+            if (!LuaInfo.IsLoaded)
+            {
+                int ret = LoadScript(LuaInfo.lua, file);
+                if (ret != 0) return false;
+                LuaInfo.IsLoaded = true;
+            }
         }
-    }
-    catch (const exception& e)
-    {
-        IsError = true;
-        errmsg = e.what();
-    }
-    catch (...)
-    {
-        IsError = true;
-        errmsg = "Unknown error";
+        catch (const exception& e)
+        {
+            IsError = true;
+            errmsg = e.what();
+        }
+        catch (...)
+        {
+            IsError = true;
+            errmsg = "Unknown error";
+        }
     }
 
     if (IsError)
@@ -450,11 +453,20 @@ HANDLE StartScript(const string& file)
     {
         bool IsError = false;
         string errmsg;
-        auto& lua = Lua_States[file];
-        if (!InitLuaState(file, lua))
+        lua_State* lua = nullptr;
         {
-            *hThread = 0;
-            return;
+            lock_guard<shared_mutex> lock(LuaStatesMtx);
+            lua = LuaStates[file].lua;
+        }
+        if (!lua)
+        {
+            lock_guard<shared_mutex> lock(LuaStatesMtx);
+            if (!InitLuaState(file, LuaStates[file]))
+            {
+                *hThread = 0;
+                return;
+            }
+            lua = LuaStates[file].lua;   // 重新获取
         }
         else
         {
@@ -470,7 +482,7 @@ HANDLE StartScript(const string& file)
             *hThread = hRealHandle;
         }
         // 初始化脚本
-        CalledScriptFunction(lua.lua, "initScript");
+        CalledScriptFunction(lua, "initScript");
         // 启动脚本！！！开始脚本循环
         bool IsSuspend = false;
         int LoopDelay = 0;
@@ -495,7 +507,7 @@ HANDLE StartScript(const string& file)
                 continue;
             }
             // 调用脚本的main函数
-            if (CalledScriptFunction(lua.lua, "main") != 0)
+            if (CalledScriptFunction(lua, "main") != 0)
                 break;
             Sleep(LoopDelay);
         }
@@ -517,15 +529,19 @@ HANDLE StartScript(const string& file)
 
 bool RenderScriptGui(const string& file)
 {
-    auto& lua = Lua_States[file];
-    if (!InitLuaState(file, lua))
+    LuaState* lua = nullptr;
+    {
+        lock_guard<shared_mutex> lock(LuaStatesMtx);
+        lua = &LuaStates[file];
+    }
+    if (!InitLuaState(file, *lua))
         return 0;
-    return CalledScriptFunction(lua.lua, "render") == 0;
+    return CalledScriptFunction(lua->lua, "render") == 0;
 }
 
 int SaveScriptConfig(const string& file)
 {
-    auto& lua = Lua_States[file];
+    auto& lua = LuaStates[file];
     if (!InitLuaState(file, lua))
         return 0;
     return CalledScriptFunction(lua.lua, "saveConfig") == 0;
@@ -535,17 +551,20 @@ void CloseScriptThread(ScriptState& state, ScriptInfo& info)
 {
     state.IsExit = true;
 
-    ULONGLONG OutTime = GetTickCount64() + 1200;
-    while (state.IsExit && GetTickCount64() < OutTime)
-        Sleep(3);
-    if (state.IsExit)
+    DWORD ret = WaitForSingleObject(info.hThread, 1200);
+    if (state.IsExit && ret == WAIT_TIMEOUT)
     {
-        PrintLog("脚本线程超时退出，将强制结束：" + info.file, PL_INFO);
+        PrintLog("脚本线程超时退出，将强制结束：" + info.file, PL_WARNING);
         if (state.IsExit != NULL)
             TerminateThread(info.hThread, -1);
     }
-    //if (state.IsExit != NULL)
-        //CloseHandle(info.hThread);
+    else
+        PrintLog("脚本线程退出：" + info.file, PL_INFO);
+    if (state.IsExit != NULL)
+    {
+        CloseHandle(info.hThread);
+        info.hThread = NULL;
+    }
 }
 
 void ClearScriptCache()
@@ -563,12 +582,15 @@ void ClearScriptCache()
             InstalledScripts.clear();
             ScriptStates.clear();
         }
-        for (auto& lua : Lua_States)
         {
-            lua.second.IsLoaded = false;
-            lua.second.release();
+            lock_guard<shared_mutex> lock(LuaStatesMtx);
+            for (auto& lua : LuaStates)
+            {
+                lua.second.IsLoaded = false;
+                lua.second.release();
+            }
         }
-        Lua_States.clear();
+        LuaStates.clear();
         {
             // 写入锁
             lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
@@ -603,18 +625,21 @@ void ClearScriptCache()
 void CloseAllLua()
 {
     {
+        // 写入锁
         lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
         for (ScriptInfo script : InstalledScripts)
-        {
-            if (script.hThread != NULL)
-                TerminateThread(script.hThread, 0);
-        }
+            CloseScriptThread(ScriptStates[script.name], script);
         InstalledScripts.clear();
+        ScriptStates.clear();
     }
-    for (auto& lua : Lua_States)
     {
-        lua.second.IsLoaded = false;
-        lua.second.release();
+        // 写入锁
+        lock_guard<shared_mutex> lock(LuaStatesMtx);
+        for (auto& lua : LuaStates)
+        {
+            lua.second.IsLoaded = false;
+            lua.second.release();
+        }
     }
-    Lua_States.clear();
+    LuaStates.clear();
 }

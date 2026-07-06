@@ -45,6 +45,7 @@ array<SoundRange, 256> VkToSoundRange;
 unordered_map<string, array<ALuint, 256>> KeybdSoundSourceList;
 vector<ALuint*> KeybdSoundBufferList;
 array<ALuint, 256> CurrentKeybdSource;
+ALCcontext* g_pALContext = nullptr;   // 保存全局 context
 
 unordered_map<string, unordered_map<string, ALuint>> MouseSoundSourceList;
 unordered_map<string, ALuint> CurrentMouseSource;
@@ -54,6 +55,8 @@ vector<ALuint*> MouseSoundBufferList;
 LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam);
 DWORD WINAPI ClickSound(LPVOID lpParam);
 bool InitOpenAL();
+void LoadSounds();
+void DownloadKeybdSounds();
 bool ParseMouseSoundConfig(string& name, unordered_map<string, string>& defines, const string& file);
 bool ParseKeybdSoundConfig(string& name, unordered_map<string, SoundRange>& defines, const string& file);
 void ShutdownOpenAL();
@@ -61,6 +64,161 @@ bool LoadWaveData(const string& fileName, ALuint* buffer);
 void BindSouce(ALuint* source, ALuint* buffer, bool loop);
 void CreateSouce(ALuint* source, bool loop);
 DWORD WINAPI MouseSoundThread(LPVOID lpParam);
+
+void LoadSounds()
+{
+	PrintLog("[Sound] 开始加载音频", PL_INFO);
+
+	vector<string> dirs;
+	FindDirectorys(Sound_MousePath, dirs);
+	for (const string& dir : dirs)
+	{
+		const string file = Sound_MousePath + "\\" + dir + "\\config.json";
+		string name;
+		unordered_map<string, string> defines;
+		if (!ParseMouseSoundConfig(name, defines, file))
+			continue;
+		for (auto& pair : defines)
+		{
+			ALuint buffer = 0;
+			const string SoundFile = Sound_MousePath + "\\" + dir + "\\" + pair.second;
+
+			if (!LoadWaveData(SoundFile, &buffer))
+			{
+				static bool IsShow = false;
+				if (!IsShow)
+				{
+					//RenderMessageBox(config.UseChinese ? u8"无法加载一些鼠标声音的文件" : "Cannot load some mouse sound files", config.UseChinese ? u8"错误" : "Error", MB_OK, false);
+					IsShow = true;
+				}
+				PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
+				continue;
+			}
+
+			ALuint source;
+			CreateSouce(&source, false);
+			BindSouce(&source, &buffer, false);
+			MouseSoundSourceList[name][pair.first] = source;
+			MouseSoundBufferList.push_back(&buffer);
+			PrintLog("[Sound] 已加载wav文件:" + SoundFile, PL_INFO);
+		}
+		MouseSoundList.push_back(name);
+	}
+
+	FindDirectorys(Sound_KeybdPath, dirs); // 里面包含dirs.clear()
+	for (const string& dir : dirs)
+	{
+		const string file = Sound_KeybdPath + "\\" + dir + "\\config.json";
+		string name;
+		unordered_map<string, SoundRange> defines;
+		if (!ParseKeybdSoundConfig(name, defines, file))
+			continue;
+		const string SoundFile = Sound_KeybdPath + "\\" + dir + "\\sound.wav";
+
+		WaveInfo info; // 里面包含了buffer的数据
+		if (!ALFWGetWaveInfo(SoundFile.c_str(), info))
+		{
+			static bool IsShow = false;
+			if (!IsShow)
+			{
+				//RenderMessageBox(config.UseChinese ? (u8"无法加载键盘声音文件: " + dir) : ("Cannot load keyboard sound file: " + dir), config.UseChinese ? u8"错误" : "Error", MB_OK, false);
+				IsShow = true;
+			}
+			PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
+			continue;
+		}
+
+		for (auto& pair : defines)
+		{
+			int vk;
+			try
+			{
+				vk = KeyScanToVk[stoi(pair.first)];
+			}
+			catch (...)
+			{
+				PrintLog("[Sound] 加载声音配置文件失败: 无效的defines", PL_ERROR);
+				continue;
+			}
+			ALuint buffer;
+			alGenBuffers(1, &buffer);
+
+			// 配置文件里的 begin/offeset 单位是毫秒，需要转成 sample
+			int startSample = pair.second.begin * info.freq / 1000;
+			int numSamples = pair.second.offeset * info.freq / 1000;
+			if (numSamples <= 0)
+				numSamples = 1; // 至少 1 个 sample
+
+			if (!ALFWSplitBuffer(buffer, info, startSample, numSamples)) // 分割
+			{
+				PrintLog("[Sound] 分割声音文件失败: " + SoundFile, PL_ERROR);
+				alDeleteBuffers(1, &buffer);
+				continue;
+			}
+
+			ALuint source;
+			CreateSouce(&source, false);
+			BindSouce(&source, &buffer, false);
+			KeybdSoundSourceList[name][vk] = source;
+			KeybdSoundBufferList.push_back(&buffer);
+		}
+		KeybdSoundList.push_back(name);
+	}
+
+	// 设置默认值
+	if (!MouseSoundList.empty())
+		config.MouseSoundType = MouseSoundList.at(0);
+	else
+		config.MouseSoundType = "None";
+	if (!KeybdSoundList.empty())
+		config.KeybdSoundType = KeybdSoundList.at(0);
+	else
+		config.KeybdSoundType = "None";
+	// 设置当前的声源值
+	CurrentMouseSource = MouseSoundSourceList[config.MouseSoundType];
+	CurrentKeybdSource = KeybdSoundSourceList[config.KeybdSoundType];
+}
+
+void DownloadKeybdSounds()
+{
+	if (_access(Tmp_TempPath.c_str(), 0) != 0)
+		CreateDirectory(Tmp_TempPath.c_str(), NULL);
+	if (_access(Sound_KeybdPath.c_str(), 0) != 0)
+		CreateDirectory(Sound_KeybdPath.c_str(), NULL);
+
+	bool ok = DownloadURLFilesWithProgress(
+		URL_GITEE_SOUNDS, Tmp_KeySounds,
+		config.UseChinese ? u8"正在下载声音包..." : "Downloading sound pack..."
+	);
+
+	if (!ok)
+	{
+		PrintLog("键盘声音下载失败或已取消", PL_INFO);
+		RenderTip(config.UseChinese ? u8"下载失败或已取消" : "Download failed or cancelled", 3.0f, PT_ERROR);
+		return;
+	}
+
+	// 解压
+	pb_message.open = true;
+	pb_message.title = config.UseChinese ? u8"正在解压声音包..." : "Extracting sound pack...";
+	pb_message.maxmb = 1.0;
+	pb_message.mb = 0.0;
+	pb_message.unzip = true;
+
+	int ret = UnZipFile(Tmp_KeySounds.c_str(), Sound_KeybdPath.c_str());
+	pb_message.open = false;
+	pb_message.unzip = false;
+
+	if (ret != 0)
+	{
+		PrintLog("解压失败，错误代码：" + to_string(ret), PL_ERROR);
+		RenderTip((config.UseChinese ? u8"解压失败，错误代码："s : "Extract failed: "s) + to_string(ret), 3.0f, PT_ERROR);
+		return;
+	}
+
+	PrintLog("下载键盘声音资源成功", PL_INFO);
+	RenderTip(config.UseChinese ? u8"键盘声音包下载完成" : "Keybd sound pack installed", 4.0f, PT_INFO);
+}
 
 bool ParseMouseSoundConfig(string& name, unordered_map<string, string>& defines, const string& file)
 {
@@ -253,6 +411,7 @@ bool InitOpenAL()
 	}
 	// 设置当前上下文
 	alcMakeContextCurrent(pContext);
+	g_pALContext = pContext;   // 保存全局 context
 	return true;
 }
 
@@ -267,6 +426,8 @@ void ShutdownOpenAL()
 	alcMakeContextCurrent(NULL);
 	alcDestroyContext(pContext);
 	alcCloseDevice(pDevice);
+
+	g_pALContext = nullptr; 
 }
 
 bool LoadWaveData(const string& fileName, ALuint* buffer)
@@ -328,109 +489,8 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	CreateSouce(&NoisSource, true);
 	BindSouce(&NoisSource, &NoisBuffer, true);
 	
-	PrintLog("[Sound]开始加载音频", PL_INFO);
-
-	vector<string> dirs;
-	FindDirectorys(Sound_MousePath, dirs);
-	for (const string& dir : dirs)
-	{
-		const string file = Sound_MousePath + "\\" + dir + "\\config.json";
-		string name;
-		unordered_map<string, string> defines;
-		if (!ParseMouseSoundConfig(name, defines, file))
-			continue;
-		for (auto& pair : defines)
-		{
-			ALuint buffer = 0;
-			const string SoundFile = Sound_MousePath + "\\" + dir + "\\" + pair.second;
-
-			if (!LoadWaveData(SoundFile, &buffer))
-			{
-				static bool IsShow = false;
-				if (!IsShow)
-				{
-					//RenderMessageBox(config.UseChinese ? u8"无法加载一些鼠标声音的文件" : "Cannot load some mouse sound files", config.UseChinese ? u8"错误" : "Error", MB_OK, false);
-					IsShow = true;
-				}
-				PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
-				continue;
-			}
-
-			ALuint source;
-			CreateSouce(&source, false);
-			BindSouce(&source, &buffer, false);
-			MouseSoundSourceList[name][pair.first] = source;
-			MouseSoundBufferList.push_back(&buffer);
-			PrintLog("[Sound] 已加载wav文件:" + SoundFile, PL_INFO);
-		}
-		MouseSoundList.push_back(name);
-	}
-
-	FindDirectorys(Sound_KeybdPath, dirs); // 里面包含dirs.clear()
-	for (const string& dir : dirs)
-	{
-		const string file = Sound_KeybdPath + "\\" + dir + "\\config.json";
-		string name;
-		unordered_map<string, SoundRange> defines;
-		if (!ParseKeybdSoundConfig(name, defines, file))
-			continue;
-		const string SoundFile = Sound_KeybdPath + "\\" + dir + "\\sound.wav";
-
-		WaveInfo info; // 里面包含了buffer的数据
-		if (!ALFWGetWaveInfo(SoundFile.c_str(), info))
-		{
-			static bool IsShow = false;
-			if (!IsShow)
-			{
-				//RenderMessageBox(config.UseChinese ? (u8"无法加载键盘声音文件: " + dir) : ("Cannot load keyboard sound file: " + dir), config.UseChinese ? u8"错误" : "Error", MB_OK, false);
-				IsShow = true;
-			}
-			PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
-			continue;
-		}
-		
-		for (auto& pair : defines)
-		{
-			int vk;
-			try
-			{
-				vk = KeyScanToVk[stoi(pair.first)];
-			}
-			catch (...)
-			{
-				PrintLog("[Sound] 加载声音配置文件失败: 无效的defines", PL_ERROR);
-				continue;
-			}
-			ALuint buffer;
-			alGenBuffers(1, &buffer);
-			if (!ALFWSplitBuffer(buffer, info, pair.second.begin, pair.second.offeset)) // 分割
-			{
-				PrintLog("[Sound] 分割声音文件失败: " + SoundFile, PL_ERROR);
-				alDeleteBuffers(1, &buffer);
-				continue;
-			}
-
-			ALuint source;
-			CreateSouce(&source, false);
-			BindSouce(&source, &buffer, false);
-			KeybdSoundSourceList[name][vk] = source;
-			KeybdSoundBufferList.push_back(&buffer);
-		}
-		KeybdSoundList.push_back(name);
-	}
-
-	// 设置默认值
-	if (!MouseSoundList.empty())
-		config.MouseSoundType = MouseSoundList.at(0);
-	else
-		config.MouseSoundType = "None";
-	if (!KeybdSoundList.empty())
-		config.KeybdSoundType = KeybdSoundList.at(0);
-	else
-		config.KeybdSoundType = "None";
-	// 设置当前的声源值
-	CurrentMouseSource = MouseSoundSourceList[config.MouseSoundType];
-	CurrentKeybdSource = KeybdSoundSourceList[config.KeybdSoundType];
+	// 加载声音
+	LoadSounds();
 
 	if(config.UseMouseSound)
 		alSourcePlay(NoisSource);
@@ -458,7 +518,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 		if (VarHasChanged(config.MouseSoundVolume, "MouseSoundVolume", true))
 		{
-			float volume = config.MouseSoundVolume / (100.0f / 2.0f); // 轻微放大声音，因为声音文件的音量小
+			float volume = config.MouseSoundVolume / 100.0f;
 			for (auto& sources : MouseSoundSourceList)
 			{
 				for (auto& source : sources.second)
@@ -476,7 +536,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 		if (VarHasChanged(config.KeybdSoundVolume, "KeybdSoundVolume", true))
 		{
-			float volume = config.KeybdSoundVolume / (100.0f / 2.0f); // 轻微放大声音，因为声音文件的音量小
+			float volume = (config.KeybdSoundVolume / 100.0f) * 1.2f;
 			for (auto& sources : KeybdSoundSourceList)
 			{
 				for (auto& source : sources.second)
@@ -564,7 +624,7 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 
 LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0 && config.UseMouseSound && SoundIsOpen)
+	if (nCode >= 0 && (config.UseKeybdSound || config.UseMouseSound) && SoundIsOpen)
 	{
 		switch (wParam)
 		{
@@ -591,12 +651,28 @@ LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam)
 				break;
 			}
 		}
-		KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-		int vk = pKeyBoard->vkCode;
-		if (vk > 0 && vk < 256)
+		if (config.UseKeybdSound)
 		{
-			if (CurrentKeybdSource[vk] > 0)
-				alSourcePlay(CurrentKeybdSource[vk]);
+			// 钩子线程没有 OpenAL context，需要手动设置；已设置则跳过
+			if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+				alcMakeContextCurrent(g_pALContext);
+
+			KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
+
+			// 只处理按下，不处理松开
+			if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
+				return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+			// flags bit30 == 1 表示这是长按/重复触发的 WM_KEYDOWN，跳过
+			if (pKeyBoard->flags & (1 << 30))
+				return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+			int vk = pKeyBoard->vkCode;
+			if (vk > 0 && vk < 256)
+			{
+				if (CurrentKeybdSource[vk] > 0)
+					alSourcePlay(CurrentKeybdSource[vk]);
+			}
 		}
 	}
 	return CallNextHookEx(NULL, nCode, wParam, lParam);

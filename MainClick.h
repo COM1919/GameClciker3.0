@@ -336,20 +336,30 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		}
 
 		// CPS波动
-		if (config.UseRFluctuation)
+		static ULONGLONG LastRightTime = 0;
+		if (GetTickCount64() - LastRightTime <= 900)
 		{
-			const int cps = Random(config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
-			ClickerDynamicDelay.right = round(1000.0f / max(cps, 0));
+			if (config.UseRFluctuation)
+			{
+				const int cps = Random(config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
+				ClickerDynamicDelay.right = round(1000.0f / max(cps, 0));
+				LastRightTime = GetTickCount64();
+			}
+			else
+				ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
 		}
-		else
-			ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
-		if (config.UseLFluctuation)
+		static ULONGLONG LastLeftTime = 0;
+		if (GetTickCount64() - LastLeftTime <= 900)
 		{
-			const int cps = Random(config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
-			ClickerDynamicDelay.left = round(1000.0f / max(cps, 0));
+			if (config.UseLFluctuation)
+			{
+				const int cps = Random(config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
+				ClickerDynamicDelay.left = round(1000.0f / max(cps, 0));
+				LastLeftTime = GetTickCount64();
+			}
+			else
+				ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
 		}
-		else
-			ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
 
 		// 过热保护
 		if (config.UseOverheatProtec)

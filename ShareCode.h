@@ -29,6 +29,7 @@ bool IsContainsString(const string& str, const vector<string>& vec);
 string GetOpenFileName();
 string StringToUTF8(const string& str);
 string UTF8ToString(const string& str);
+bool CreateDirRecursive(const string& path);
 bool CheckScriptPermission(const string& filename, vector<string>& BeUsedFuncs);
 int GetMemUsageRate(int sleep);
 int GetGpuUsageRate(int sleep);
@@ -37,6 +38,7 @@ void FindDirectorys(const string& root, vector<string>& dirs);
 double GetThreadCpuUsage(HANDLE hThread, DWORD sleep = 1000);
 DWORD GetSystemLanguage();
 bool DownloadURLFiles(const string& url, const string& filename);
+bool DownloadURLFilesWithProgress(const string& url, const string& filename, const string& title);
 bool ReadURLDatas(const string& url, vector<char>& datas);
 bool ReadURLDatas(const string& url, string& datas);
 void GetStringFileName(string& str, bool KeepSuffix = false);
@@ -215,6 +217,53 @@ public:
 		if (hInternet) InternetCloseHandle(hInternet);
 	}
 };
+
+bool DownloadURLFilesWithProgress(const string& url, const string& filename, const string& title)
+{
+	InternetOpenManager internet;
+	if (!internet.Init())
+		return false;
+	if (!internet.OpenURL(url))
+		return false;
+
+	// 获取文件总大小
+	DWORD contentLength = 0;
+	DWORD lengthSize = sizeof(contentLength);
+	HttpQueryInfo(internet.hConnect, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
+
+	// 打开进度条
+	pb_message.open = true;
+	pb_message.ret_code = 0;
+	pb_message.title = title;
+	pb_message.maxmb = contentLength / 1024.0 / 1024.0; // MB
+	pb_message.mb = 0.0;
+
+	FILE* file;
+	fopen_s(&file, filename.c_str(), "wb");
+	if (!file)
+	{
+		pb_message.open = false;
+		return false;
+	}
+
+	const int bufferSize = 4096;
+	char buffer[bufferSize]{};
+	DWORD bytesRead;
+	while (internet.InternetReadFile(buffer, bufferSize, &bytesRead) && bytesRead > 0)
+	{
+		fwrite(buffer, 1, bytesRead, file);
+		pb_message.mb += bytesRead / 1024.0 / 1024.0; // MB
+
+		if (pb_message.ret_code == 1)  // 用户点了取消
+			break;
+	}
+	fclose(file);
+
+	bool success = (pb_message.ret_code != 1) && (pb_message.mb > 0);
+	pb_message.open = false;
+
+	return success;
+}
 
 bool DownloadURLFiles(const string& url, const string& filename)
 {
@@ -874,12 +923,25 @@ void PackageLogFile()
 		PrintLog("日志文件打包失败", PL_ERROR);
 }
 
+bool CreateDirRecursive(const string& path)
+{
+	if (_access(path.c_str(), 0) == 0)
+		return true;
+	size_t pos = path.find_last_of("/\\");
+	if (pos != string::npos && pos > 2)
+	{
+		if (!CreateDirRecursive(path.substr(0, pos)))
+			return false;
+	}
+	return CreateDirectoryA(path.c_str(), NULL) != 0 || GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
 int UnZipFile(const char* zipFilePath, const char* destDir)
 {
 	unzFile zipfile = unzOpen(zipFilePath);
 	if (zipfile == NULL)
 	{
-		PrintLog("[Zip]Failed to open Zip file", PL_ERROR);
+		PrintLog("[Zip] Failed to open Zip file", PL_ERROR);
 		return -1;
 	}
 
@@ -887,7 +949,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 	unz_global_info global_info;
 	if (unzGetGlobalInfo(zipfile, &global_info) != UNZ_OK)
 	{
-		PrintLog("[Zip]Failed to get global info", PL_ERROR);
+		PrintLog("[Zip] Failed to get global info", PL_ERROR);
 		unzClose(zipfile);
 		return -1;
 	}
@@ -900,7 +962,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 		char filename[256];
 		if (unzGetCurrentFileInfo(zipfile, &file_info, filename, sizeof(filename), NULL, 0, NULL, 0) != UNZ_OK)
 		{
-			PrintLog("[Zip]Failed to get file info", PL_ERROR);
+			PrintLog("[Zip] Failed to get file info", PL_ERROR);
 			unzClose(zipfile);
 			return -1;
 		}
@@ -908,13 +970,13 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 		// 检查是否为目录
 		if (file_info.external_fa & 0x10)
 		{
-			// 创建目录
+			// 创建目录 - 递归创建父目录
 			string dir_path = destDir;
-			dir_path += "/";
+			dir_path += "\\";
 			dir_path += filename;
-			if (!CreateDirectory(dir_path.c_str(), NULL) && _access(dir_path.c_str(), 0) != 0)
+			if (!CreateDirRecursive(dir_path))
 			{
-				PrintLog("[Zip]Failed to create directory", PL_ERROR);
+				PrintLog("[Zip] Failed to create directory", PL_ERROR);
 				unzClose(zipfile);
 				return -1;
 			}
@@ -923,7 +985,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 		{
 			if (unzOpenCurrentFile(zipfile) != UNZ_OK)
 			{
-				PrintLog("[Zip]Failed to open current file", PL_ERROR);
+				PrintLog("[Zip] Failed to open current file", PL_ERROR);
 				continue; // 跳过当前文件，继续下一个
 			}
 
@@ -942,7 +1004,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 					string dir_path = full_path.substr(0, pos);
 					if (_access(dir_path.c_str(), 0) != 0 && !CreateDirectory(dir_path.c_str(), NULL))
 					{
-						PrintLog("[Zip]Failed to create directory", PL_ERROR);
+						PrintLog("[Zip] Failed to create directory", PL_ERROR);
 						unzCloseCurrentFile(zipfile);
 						// 不要在这里关闭 zipfile，因为循环还没有完成
 						continue; // 跳过当前文件，继续下一个
@@ -954,7 +1016,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 			fopen_s(&out, full_path.c_str(), "wb");
 			if (out == NULL)
 			{
-				PrintLog("[Zip]Failed to open destination file", PL_ERROR);
+				PrintLog("[Zip] Failed to open destination file", PL_ERROR);
 				unzCloseCurrentFile(zipfile);
 				continue; // 跳过当前文件，继续下一个
 			}
@@ -966,7 +1028,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 				error = unzReadCurrentFile(zipfile, buffer.data(), buffer.size());
 				if (error < 0)
 				{
-					PrintLog("[Zip]Failed to read file", PL_ERROR);
+					PrintLog("[Zip] Failed to read file", PL_ERROR);
 					break;
 				}
 				if (error > 0)
@@ -982,7 +1044,7 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 		{
 			if (unzGoToNextFile(zipfile) != UNZ_OK)
 			{
-				PrintLog("[Zip]Failed to go to next file", PL_ERROR);
+				PrintLog("[Zip] Failed to go to next file", PL_ERROR);
 				unzClose(zipfile);
 				return -1;
 			}

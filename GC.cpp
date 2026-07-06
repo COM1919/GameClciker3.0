@@ -194,10 +194,12 @@ int GCMainLoop()
         CreateFile(ScriptTemp);
     if (_access(ScriptShopTemp.c_str(), 0) != 0)
         CreateDirectory(ScriptShopTemp.c_str(), NULL);
+    if (_access(Sound_KeybdPath.c_str(), 0) != 0)
+        CreateDirectory(Sound_KeybdPath.c_str(), NULL);
     if (_access("D:\\GameClicker\\sound", 0) != 0)
         DeleteDirectory("D:\\GameClicker\\sound");
-    if (_access(BmpTmp_TempPath.c_str(), 0) != 0)
-        CreateDirectory(BmpTmp_TempPath.c_str(), NULL);
+    if (_access(Tmp_TempPath.c_str(), 0) != 0)
+        CreateDirectory(Tmp_TempPath.c_str(), NULL);
 
 #ifdef GC_DEBUG_GUIDE_UI
     IsFirstRun = true;
@@ -283,7 +285,6 @@ int GCMainLoop()
             CreateRenderTarget();
         }
         
-
         //===============================处理渲染===============================
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -390,7 +391,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         CreateDirectory(ScriptPath.c_str(), NULL);
 
         InstalledScripts.clear();
-        Lua_States.clear();
+        LuaStates.clear();
 
         PrintLog("[File] Script目录不存在，已创建", PL_WARNING);
     }
@@ -519,11 +520,11 @@ void RenderGui(ImGuiIO& io)
     if (IsKeyPressed(ImGuiKey_F3))
         DebugInfo = !DebugInfo;
 
-    if (pb_message.open)
-    {
-        RenderControl();
-        return;
-    }
+    //if (pb_message.open)
+    //{
+    //    RenderControl();
+    //    return;
+    //}
 
     if (IsKeyPressed(ImGuiKey_LeftCtrl) && IsKeyPressed(ImGuiKey_S))
     {
@@ -1197,11 +1198,11 @@ void RenderGui(ImGuiIO& io)
                 RenderTip(config.UseChinese ? u8"已保存设置" : "Saved Settings", 1.5f, PT_INFO);
             }
             SameLine();
-            if (Button(config.UseChinese ? u8"重置连点设置" : "Reset Settings", ImVec2(80, 40)))
+            if (Button(config.UseChinese ? u8"重置配置" : "Reset Settings", ImVec2(80, 40)))
             {
                 thread FunThread([]()
                     {
-                        if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to reset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
+                        if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to\nreset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
                         {
                             config = Config();
                             ReloadClicker = true; // 这个相当于保存了配置
@@ -1456,8 +1457,11 @@ void RenderGui(ImGuiIO& io)
                 
                 BeginCard("##CPSSettings-1", ImVec2(180, 190), ImGuiChildFlags_Borders);
                 {
+                    //-------------------------暴力模式--------------------------
                     Checkbox(config.UseChinese ? u8"暴力模式" : "Brutal Mode", &config.UseBrutalMode);
                     AttachTooltip(config.UseChinese ? u8"让你的CPS轻松破百\n但可能会导致大量占用电脑CPU性能！\n并且可能会导致CPS记录器数据不准确！" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!");
+                    
+                    //-------------------------启用连点--------------------------
                     Checkbox(config.UseChinese ? u8"启用右键连点" : "Enable RClicker", &config.EnableRightClicker);
                     Checkbox(config.UseChinese ? u8"启用左键连点" : "Enable LClicker", &config.EnableLeftClicker);
                     if (Checkbox(config.UseChinese ? u8"开机自动启动" : "Start With System", &config.UseStartWithWindows))
@@ -1503,6 +1507,7 @@ void RenderGui(ImGuiIO& io)
                         FunThread.detach();
                     }
 
+                    //-------------------------适配新版基岩版--------------------------
                     static int backup_mode = config.SimulateClickMode;
                     if (Checkbox(config.UseChinese ? u8"适配&c新版&f基岩版" : "Adapt BE", &config.UseBEAdaptation))
                     {
@@ -1515,6 +1520,13 @@ void RenderGui(ImGuiIO& io)
                         else
                             config.SimulateClickMode = backup_mode;
                     }
+
+                    //-------------------------主播模式--------------------------
+                    if (Checkbox(config.UseChinese ? u8"主播模式" : "Broadcaster Mode", &config.UseBroadcasterMode))
+                    {
+                        thread FunThread(SetWindowDisplayAffinity, GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+                        FunThread.detach();
+                    }
                 }
                 EndCard();
 
@@ -1522,26 +1534,40 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard("##CPSSettings-2", ImVec2(250, 190), ImGuiChildFlags_Borders);
                 {
-                    if (Checkbox(config.UseChinese ? u8"主播模式" : "Broadcaster Mode", &config.UseBroadcasterMode))
+                    //-------------------------左右优先级--------------------------
+                    static const array<const char*, 3> ClickerPriorityListText = {
+                        (config.UseChinese ? u8"无" : "None"),
+                        (config.UseChinese ? u8"左键连点优先" : "RC Highter Priority"),
+                        (config.UseChinese ? u8"右键连点优先" : "LC Highter Priority")
+                    };
+                    Text(config.UseChinese ? u8"左右优先级" : "AC Priority");
+                    SetNextItemWidth(146);
+                    SameLine();
+                    if (BeginCombo("##ClickerPriorityMode", ClickerPriorityListText[config.ClickerPriorityMode]))
                     {
-                        thread FunThread(SetWindowDisplayAffinity, GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
-                        FunThread.detach();
+                        for (int n = 0; n < 3; n++)
+                        {
+                            PushID(n);
+                            const bool is_selected = (config.ClickerPriorityMode == n);
+                            if (Selectable(ClickerPriorityListText[n], is_selected))
+                                config.ClickerPriorityMode = n;
+                            if (is_selected)
+                                SetItemDefaultFocus();
+                            PopID();
+                        }
+                        EndCombo();
                     }
-                    Checkbox(config.UseChinese ? u8"允许控制右键连点开关" : "Allow Ctrl RC Enables", &config.AllowSetRClicker);
-                    AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制右键的开关状态。" : "The default is to turn on, and if you turn off, the clicker will not be able to control the right-click switch status. ");
-                    Checkbox(config.UseChinese ? u8"允许控制左键连点开关" : "Allow Ctrl LC Enables", &config.AllowSetLClicker);
-                    AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制左键的开关状态。" : "The default is to turn on, and if you turn off, the clicker will not be able to control the left-click switch status. ");
 
                     //-------------------------强制开关左右键连点--------------------------
                     SetNextItemWidth(80);
                     InputKey("##EnableRightAssisKey", &config.EnableRightClickerKey, config.UseChinese ? u8"请按下按键" : "Press a key");
-                    AttachTooltip(config.UseChinese ? u8"这个不是控制连点开关的，是防止突发情况准备的强制性开关。" : "This is not a switch for the clicker, it is a forced switch to prevent an emergency situation.");
+                    AttachTooltip(config.UseChinese ? u8"这个不是控制连点开关的，是防止突发情况准备的强制性开关。" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
                     SameLine();
                     Text(config.UseChinese ? u8"强制开关右键连点" : "Force Key RClicker");
 
                     SetNextItemWidth(80);
                     InputKey("##EnableLeftAssisKey", &config.EnableLeftClickerKey, config.UseChinese ? u8"请按下按键" : "Press a key");
-                    AttachTooltip(config.UseChinese ? u8"这个不是控制连点开关的，是防止突发情况准备的强制性开关。" : "This is not a switch for the clicker, it is a forced switch to prevent an emergency situation.");
+                    AttachTooltip(config.UseChinese ? u8"这个不是控制连点开关的，是防止突发情况准备的强制性开关。" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
                     SameLine();
                     Text(config.UseChinese ? u8"强制开关左键连点" : "Force Key LClicker");
 
@@ -1551,6 +1577,12 @@ void RenderGui(ImGuiIO& io)
                     AttachTooltip(config.UseChinese ? u8"该功能在GC窗口中将不起作用，\n请在其他地方按下按键方可生效。" : "This function will not work in the GC window, \nplease press the key in another place to take effect.");
                     SameLine();
                     Text(config.UseChinese ? u8"自毁快捷键" : "Self-Destruct Key");
+
+                    //-------------------------允许控制连点开关--------------------------
+                    Checkbox(config.UseChinese ? u8"允许控制右键连点开关" : "Allow Ctrl RC Enables", & config.AllowSetRClicker);
+                    AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制右键的开关状态。" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the right-click switch status. ");
+                    Checkbox(config.UseChinese ? u8"允许控制左键连点开关" : "Allow Ctrl LC Enables", & config.AllowSetLClicker);
+                    AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制左键的开关状态。" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the left-click switch status. ");
                 }
                 EndCard();
 
@@ -2602,18 +2634,14 @@ void RenderGui(ImGuiIO& io)
                 BeginCard(config.UseChinese ? u8"键盘声音" : "Keybd Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     static int KeybdType = []()->int {
+                        if (KeybdSoundList.empty())
+                            return -1;
                         auto it = find(KeybdSoundList.begin(), KeybdSoundList.end(), config.KeybdSoundType);
-                        if (it->empty())
-                            return KeybdSoundList.empty() ? -1 : 0;
-                        int count = 0;
-                        for (const string& str : KeybdSoundList)
-                        {
-                            if (str == *it)
-                                return count;
-                            count++;
-                        }
+                        if (it == KeybdSoundList.end())
+                            return 0;
+                        return static_cast<int>(distance(KeybdSoundList.begin(), it));
                         }();
-                    Checkbox(config.UseChinese ? u8"启用键盘声音" : "Enable Keybd Sound", & config.UseKeybdSound);
+                    Checkbox(config.UseChinese ? u8"启用键盘声音" : "Enable Keybd Sound", &config.UseKeybdSound);
                     BeginDisabled(!config.UseKeybdSound);
                     {
                         Text(config.UseChinese ? u8"键盘声音类型" : "Keybd Sound Type");
@@ -2636,6 +2664,46 @@ void RenderGui(ImGuiIO& io)
                             EndCombo();
                         }
 
+                        static bool AlreadDownload = _access(Tmp_KeySounds.c_str(), 0) == 0;
+
+                        // 下载按钮冷却
+                        static ULONGLONG LastDownloadClick = 0;
+                        BeginDisabled(GetTickCount64() - LastDownloadClick <= 3000);
+                        {
+                            if (Button(config.UseChinese ?
+                                (AlreadDownload ? u8"重新下载资源(30MB)" : u8"下载官方资源(30MB)") :
+                                (AlreadDownload ? "Redownload Sounds (30MB)" : "Download Sounds (30MB)"))
+                                )
+                            {
+                                LastDownloadClick = GetTickCount64();
+                                auto dlth = []() {
+                                    DownloadKeybdSounds(); // 下载
+
+                                    RenderTip(config.UseChinese ? u8"正在重新加载声音..." : "Reloading sounds...", 4.0f, PT_INFO);
+                                    LoadSounds();
+                                    RenderTip(config.UseChinese ? u8"重新加载成功！" : "Reloading success!", 3.0f, PT_INFO);
+                                    };
+                                thread th(dlth);
+                                th.detach();
+                            }
+                        }
+                        EndDisabled();
+
+                        SameLine();
+
+                        // mechvibes 按钮冷却
+                        static ULONGLONG LastMechvibesClick = 0;
+                        BeginDisabled(GetTickCount64() - LastMechvibesClick <= 2000);
+                        {
+                            if (Button(config.UseChinese ? u8"前往mechvibes下载更多声音" : "Download more from mechvibes"))
+                            {
+                                LastMechvibesClick = GetTickCount64();
+                                ShellExecute(NULL, NULL, "https://mechvibes.com/sound-packs/", NULL, NULL, SW_SHOWNORMAL);
+                                RenderMessageBox(u8"在打开的网页列表中，找到想要的音色\n点击左边的“Learn More”，然后点击“Download”就可以下载了。\n&6如何导入？\n&f1.打开文件夹&5D:\\GameClicker\\sound\\keys&f\n2.新建一个文件夹（任意名字）\n3.打开新建的文件夹，将压缩包里面的文件\n解压到当前文件夹。\n4.重启GC连点器。", u8"教程", MB_OK, false);
+                            }
+                        }
+                        EndDisabled();
+
                         Text(config.UseChinese ? u8"键盘点击音量" : "Keybd Click Volume");
                         SameLine();
                         SetNextItemWidth(300);
@@ -2650,7 +2718,7 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard(config.UseChinese ? u8"杂项" : "Othre", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    BeginDisabled(!config.UseMouseSound);
+                    BeginDisabled(!(config.UseMouseSound || config.UseKeybdSound));
                     {
                         DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                         Text(config.UseChinese ? u8"循环检测延迟" : "Loop Detection Delay");
@@ -2664,6 +2732,24 @@ void RenderGui(ImGuiIO& io)
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
                         SliderInt(u8"##NoiseVolume", &config.NoiseVolume, 0, 100, "%d%", ImGuiSliderFlags_AlwaysClamp);
+                    }
+                    EndDisabled();
+
+                    // 重载声音文件 按钮冷却
+                    static ULONGLONG LastReloadClick = 0;
+                    BeginDisabled(GetTickCount64() - LastReloadClick <= 3000);
+                    {
+                        if (Button(config.UseChinese ? u8"重载声音文件" : "Reload Sound Files"))
+                        {
+                            LastReloadClick = GetTickCount64();
+                            auto dlth = []() {
+                                RenderTip(config.UseChinese ? u8"正在重新加载声音..." : "Reloading sounds...", 4.0f, PT_INFO);
+                                LoadSounds();
+                                RenderTip(config.UseChinese ? u8"重新加载成功！" : "Reloading success!", 3.0f, PT_INFO);
+                                };
+                            thread th(dlth);
+                            th.detach();
+                        }
                     }
                     EndDisabled();
                 }
@@ -3499,6 +3585,13 @@ void RenderGui(ImGuiIO& io)
                             SetNextWindowPos(AnimPos);
                             BeginChild("##InstalledScripts", ImVec2(680, 72), true, flags);
                             {
+                                // 边框颜色显示-是否启用
+                                //{
+                                    // 写入锁
+                                    //lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                    //const bool IsEnable = ScriptStates[script.file].e
+                                //}
+
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
                                 // 绘画脚本图片
@@ -3576,10 +3669,12 @@ void RenderGui(ImGuiIO& io)
                                                 }
                                             }
                                             const string file = ScriptPath + "\\" + script.file;
-                                            if (Lua_States.find(file) != Lua_States.end())
+                                            if (LuaStates.find(file) != LuaStates.end())
                                             {
-                                                Lua_States[file].release();
-                                                Lua_States.erase(file);
+                                                // 写入锁
+                                                lock_guard<shared_mutex> lock(LuaStatesMtx);
+                                                LuaStates[file].release();
+                                                LuaStates.erase(file);
                                             }
                                             {
                                                 // 写入锁
