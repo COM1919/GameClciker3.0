@@ -197,6 +197,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 {
 	HANDLE RClickerThread = CreateThreadSafe(RClickRun, NULL, 0, "RClickRun");
 	HANDLE LClickerThread = CreateThreadSafe(LClickRun, NULL, 0, "LClickRun");
+
 	while (!GCExit)
 	{
 		{
@@ -336,8 +337,9 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		}
 
 		// CPS波动
+		/*
 		static ULONGLONG LastRightTime = 0;
-		if (GetTickCount64() - LastRightTime <= 900)
+		if (GetTickCount64() - LastRightTime >= 900)
 		{
 			if (config.UseRFluctuation)
 			{
@@ -349,7 +351,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
 		}
 		static ULONGLONG LastLeftTime = 0;
-		if (GetTickCount64() - LastLeftTime <= 900)
+		if (GetTickCount64() - LastLeftTime >= 900)
 		{
 			if (config.UseLFluctuation)
 			{
@@ -359,8 +361,39 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 			else
 				ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
+		}*/
+		static LRPair<SmoothCPS> CPSSmooth;
+		if (IsCPSWaveSettingChanged || VarHasChanged(config.LCPS, "LCPS", true))
+		{
+			CPSSmooth.left.BaseCPS = config.LCPS;
+			CPSSmooth.left.MinCPS = config.LCPS - config.LFluctuationCPS;
+			CPSSmooth.left.MaxCPS = config.LCPS + config.LFluctuationCPS;
+			if (IsCPSWaveSettingChanged || CPSSmooth.left.GetWaveCount() <= 0)
+			{
+				CPSSmooth.left.SetWaveList(config.CPSWaves.left);
+				IsCPSWaveSettingChanged = false;
+			}
 		}
-
+		if (IsCPSWaveSettingChanged || VarHasChanged(config.RCPS, "RCPS", true))
+		{
+			CPSSmooth.right.BaseCPS = config.RCPS;
+			CPSSmooth.right.MinCPS = config.RCPS - config.RFluctuationCPS;
+			CPSSmooth.right.MaxCPS = config.RCPS + config.RFluctuationCPS;
+			if (IsCPSWaveSettingChanged || CPSSmooth.right.GetWaveCount() <= 0)
+			{
+				CPSSmooth.right.SetWaveList(config.CPSWaves.right);
+				IsCPSWaveSettingChanged = false;
+			}
+		}
+		if (config.UseRFluctuation)
+			ClickerDynamicDelay.right = CPSSmooth.left.GetDelayMs();
+		else
+			ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
+		if (config.UseLFluctuation)
+			ClickerDynamicDelay.left = CPSSmooth.right.GetDelayMs();
+		else
+			ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
+		
 		// 过热保护
 		if (config.UseOverheatProtec)
 		{

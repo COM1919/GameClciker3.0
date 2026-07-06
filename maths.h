@@ -22,6 +22,7 @@ ULONGLONG GetNowMs();
 void BeginSleep(const char* flag);
 POINT Bezier(vector<POINT>& points, float t);
 void EndSleep(const char* flag, int time);
+float EvaluateWave(const WaveParam& w, float t);
 template<typename T> inline T Lerp(T a, T b, float t);
 string RemoveBeforString(const string& str, const string& before);
 void SplitString(const string& str, const string& sep, vector<string>& res);
@@ -31,6 +32,72 @@ string RemoveSubString(const string& original, const string& toRemove);
 double SmoothValues(int maxNum, int tick, int maxTicks);
 double FileTimeToDouble(const FILETIME* ft);
 string ExtractString(const string& str, const string& start, const string& end);
+
+// 计算单个波形在时间 t 处的值（振幅影响）
+float EvaluateWave(const WaveParam& w, float t)
+{
+    return w.amplitude * sinf(2.0f * PI * w.frequency * t + w.phase);
+}
+
+// 计算叠加后的总 CPS（基频 + 所有启用波形的和）
+float EvaluateTotalCPS(float t, float baseCPS, vector<WaveParam> waves)
+{
+    float sum = baseCPS;
+    for (const auto& w : waves)
+        if (w.enabled) sum += EvaluateWave(w, t);
+    return sum;
+}
+
+class SmoothCPS
+{
+private:
+    ULONGLONG StartTime;     // 启动时的时间戳（毫秒）
+    vector<WaveParam> waves;
+
+public:
+    float BaseCPS = 0;      // 基准 CPS
+    float MinCPS = 0;       // 最低 CPS
+    float MaxCPS = 0;       // 最高 CPS
+
+    // 构造函数：基频、波动范围
+    SmoothCPS()
+    {
+        StartTime = GetTickCount64();  // 自动记录启动时刻
+    }
+    SmoothCPS(float base, float minVal, float maxVal) : BaseCPS(base), MinCPS(minVal), MaxCPS(maxVal)
+    {
+        StartTime = GetTickCount64();
+    }
+
+    void SetWaveList(vector<WaveParam> waves)
+    {
+        this->waves = waves;
+    }
+
+    void AddWave(float amplitude, float frequency, float phase = 0.0)
+    {
+        waves.push_back({ amplitude, frequency, phase });
+    }
+    int GetWaveCount() const { return waves.size(); }
+
+    // 核心函数：返回当前应使用的延迟（毫秒），自动实时计算
+    int GetDelayMs() const
+    {
+        // 计算已运行秒数
+        float elapsed = (GetTickCount64() - StartTime) / 1000.0;
+
+        // 叠加正弦波
+        float cps = BaseCPS;
+        for (const auto& w : waves)
+            cps += w.amplitude * sin(2.0 * PI * w.frequency * elapsed + w.phase);
+        // 钳制并确保大于 0
+        cps = clamp(cps, MinCPS, MaxCPS);
+        if (cps <= 0) cps = 1.0; // 安全兜底
+
+        // 返回延迟毫秒（四舍五入）
+        return static_cast<int>(round(1000.0 / cps));
+    }
+};
 
 string ReplaceSubString(string str, const string& from, const string& to)
 {

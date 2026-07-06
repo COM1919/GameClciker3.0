@@ -132,6 +132,15 @@ enum GenerateGen
     GenerateGen_subtract_with_carry_engine,      //减去余数算法
 };
 
+// CPS波动
+struct WaveParam
+{
+    float amplitude;   // 振幅（CPS波动幅度）
+    float frequency;   // 频率（Hz）
+    float phase;       // 相位（弧度）
+    bool enabled;      // 是否启用（可暂时关闭）
+};
+
 //--------------------基本设置------------------------------
 
 class Config
@@ -208,6 +217,8 @@ public:
     int ReadKeyStateMode = GK_BOTH;         //获取按键状态模式
     int ClickerPriorityMode = CP_NONE;      //左右键连点的优先级模式
    
+    LRPair<vector<WaveParam>> CPSWaves;
+
     //--------------------鼠标声音设置------------------------------
 
     bool UseMouseSound = true;              //开关鼠标点击声音
@@ -383,7 +394,7 @@ const int ConfigVersion = 3;            //配置文件版本号
 
 const int RenderFps = 60;               //渲染帧率
 
-//#define GC_NO_HOOK                    //是否禁用HOOK
+#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -394,7 +405,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -409,7 +420,7 @@ const int RenderFps = 60;               //渲染帧率
 
 const bool HasD_Drive = (_access("D:\\", 0) == 0);
 
-//  =============================待更改项==========================================================
+//=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
 const string FontFile =           "C:\\Windows\\Fonts\\msyhbd.ttc";
 const string IniPath =            HasD_Drive ? "D:\\GameClicker"                              : "C:\\GameClicker";
@@ -559,35 +570,36 @@ HANDLE AntiMultiOpenMutex;
 HANDLE ClickRunThread;
 HANDLE ClickSoundThread;
 
-bool Starting             = false;              //是否正在启动
-bool StopClicker          = false;              //是否停止连点
-atomic<bool>GCExit        = false;              //连点器退出
-bool IsDownloadRes        = false;              //是否正在下载资源
-bool ShowGui              = true;               //是否显示GUI
-bool IsFirstRun           = false;              //第一次运行（是否显示向导）
-bool SoundIsOpen          = false;              //音效是否正常加载
-LRPair<bool> IsClickering = {};                 //是否连点
-LRPair<bool> IsClickerDown = {};                //连点器的键按下
-bool IsMoving             = false;              //是否移动
-bool IsOpenGui            = false;              //在游戏中是否打开GUI
-bool IsGameGuiInit        = false;              //GameGui是否初始化
-bool GameGuiError         = false;              //GameGui是否出错
-bool IsDownloading        = false;              //是否正在下载
-bool ReloadClicker        = true;               //是否重启连点线程
-bool IsClickerSuccess     = false;              //连点线程是否准备成功
-bool AbnormalExit         = false;              //上一次程序是否非正常退出
-bool EnterSafeMode        = false;              //是否进入安全模式
-bool IsRestartAL          = false;              //是否重启OpenAL
-bool IsSearchReload       = false;              //内存搜索是否重新加载
-//bool IsMemSearch          = false;            //是否开始内存搜索
-//bool IsMemSearchInit      = false;            //内存搜索是否未初始化
-bool DebugInfo            = false;              //显示调试信息
-bool IsCreateWindowSussce = false;              //窗口是否创建成功
-bool IsServerClosed       = false;              //服务器是否关闭
-bool AllowUseGameGui      = false;              //是否允许使用视觉效果
-bool AllowConnectServer   = false;              //是否允许连接服务器
-bool IsDragingFile        = false;              //是否正在拖入文件
-bool IsEnableScript       = true;               //是否启用LUA脚本系统，这个针对LUA系统崩溃后的处理
+bool Starting                = false;           //是否正在启动
+bool StopClicker             = false;           //是否停止连点
+atomic<bool>GCExit           = false;           //连点器退出
+bool IsDownloadRes           = false;           //是否正在下载资源
+bool ShowGui                 = true;            //是否显示GUI
+bool IsFirstRun              = false;           //第一次运行（是否显示向导）
+bool SoundIsOpen             = false;           //音效是否正常加载
+LRPair<bool> IsClickering    = {};              //是否连点
+LRPair<bool> IsClickerDown   = {};              //连点器的键按下
+bool IsMoving                = false;           //是否移动
+bool IsOpenGui               = false;           //在游戏中是否打开GUI
+bool IsGameGuiInit           = false;           //GameGui是否初始化
+bool GameGuiError            = false;           //GameGui是否出错
+bool IsDownloading           = false;           //是否正在下载
+bool ReloadClicker           = true;            //是否重启连点线程
+bool IsClickerSuccess        = false;           //连点线程是否准备成功
+bool AbnormalExit            = false;           //上一次程序是否非正常退出
+bool EnterSafeMode           = false;           //是否进入安全模式
+bool IsRestartAL             = false;           //是否重启OpenAL
+bool IsSearchReload          = false;           //内存搜索是否重新加载
+//bool IsMemSearch           = false;           //是否开始内存搜索
+//bool IsMemSearchInit       = false;           //内存搜索是否未初始化
+bool DebugInfo               = false;           //显示调试信息
+bool IsCreateWindowSussce    = false;           //窗口是否创建成功
+bool IsServerClosed          = false;           //服务器是否关闭
+bool AllowUseGameGui         = false;           //是否允许使用视觉效果
+bool AllowConnectServer      = false;           //是否允许连接服务器
+bool IsDragingFile           = false;           //是否正在拖入文件
+bool IsEnableScript          = true;            //是否启用LUA脚本系统，这个针对LUA系统崩溃后的处理
+bool IsCPSWaveSettingChanged = false;           //是否更改了CPS波形设置
 
 float OverheatProtecTimer = 0;                  //过热保护计时器
 int UseServerOfType = -1;                       //使用的服务器的类型

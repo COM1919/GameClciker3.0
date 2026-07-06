@@ -217,6 +217,7 @@ bool GetKeyDown(int key, bool only_human, int mode)
 				return KeyStateMap[key].state;
 			break;
 	}
+	return false;
 }
 
 bool GetKeyUp(int key, bool only_human, int mode)

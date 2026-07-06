@@ -1365,87 +1365,244 @@ void RenderGui(ImGuiIO& io)
                             EndCombo();
                         }
 
+                        static LRPair<vector<WaveParam>> WaveList;
+                        static bool lastOpenState = false;
+                        // 打开弹窗时加载已保存的数据
+                        if (IsOpen && !lastOpenState)
+                        {
+                            if (!config.CPSWaves.left.empty())
+                                WaveList.left = config.CPSWaves.left;
+                            if (!config.CPSWaves.right.empty())
+                                WaveList.right = config.CPSWaves.right;
+                        }
+                        lastOpenState = IsOpen;
+
                         if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
                         {
-                            static int PointsSize = 200;
-                            static vector<int> ry;
-                            static vector<int> ly;
-                            static float GenDurationSum = 0;
-                            static bool IsInit = false;
-                            static bool IsGenerating = false;
-                            static float auv = 0;
-                            static float LCPSAuv = 0;
-                            static float RCPSAuv = 0;
+                            // 左右独立状态
+                            static int CurrentTab = 0;                     // 0=左键, 1=右键
+                            static int SelectedWaveIndexLeft = -1;
+                            static int SelectedWaveIndexRight = -1;
+                            static bool ShowWaveSettingsLeft = false;
+                            static bool ShowWaveSettingsRight = false;
+                            static bool ShowAppliedCPS = false;
 
-                            Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
+                            if (Button(config.UseChinese ? u8"左键" : "Left", ImVec2(80, 0)))
+                                CurrentTab = 0;
                             SameLine();
-                            SetNextItemWidth(300);
-                            SetCursorPosX(300);
-                            SliderInt(u8"##rgc_points", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
+                            if (Button(config.UseChinese ? u8"右键" : "Right", ImVec2(80, 0)))
+                                CurrentTab = 1;
 
-                            if (VarHasChanged(config.Fluctuation_RandomDist, "FluctuationDist") ||
-                                VarHasChanged(config.Fluctuation_RandomGen, "FluctuationGen") ||
-                                VarHasChanged(PointsSize, "FluctuationCPS_PointsSize") ||
-                                VarHasChanged(config.LFluctuationCPS, "LFluctuationCPS") ||
-                                VarHasChanged(config.RFluctuationCPS, "RFluctuationCPS"))
-                            {
-                                IsInit = false;
-                            }
+                            SameLine();
+                            if (CurrentTab == 0)
+                                Text(config.UseChinese ? u8"左键波形设置" : "LB Wave Settings");
+                            else
+                                Text(config.UseChinese ? u8"右键波形设置" : "RB Wave Settings");
 
-                            if ((Button(config.UseChinese ? u8"刷新" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
+                            Separator();
+
+                            // 根据当前标签获取对应数据引用
+                            vector<WaveParam>& waveList = (CurrentTab == 0) ? WaveList.left : WaveList.right;
+                            float BaseCPS = (CurrentTab == 0) ? config.LCPS : config.RCPS;
+                            float FluctRange = (CurrentTab == 0) ? config.LFluctuationCPS : config.RFluctuationCPS;
+                            int& SelectedIdx = (CurrentTab == 0) ? SelectedWaveIndexLeft : SelectedWaveIndexRight;
+                            bool& ShowSettings = (CurrentTab == 0) ? ShowWaveSettingsLeft : ShowWaveSettingsRight;
+
+                            BeginChild("TopArea", ImVec2(0, GetContentRegionAvail().y * 0.6f), true);
                             {
-                                IsGenerating = true;
-                                thread FunThread([]()
+                                // 左侧：预览图（占60%宽度）
+                                BeginChild("LeftPreview", ImVec2(GetContentRegionAvail().x * 0.6f, 0), true);
+                                {
+                                    if (SelectedIdx >= 0 && SelectedIdx < (int)waveList.size())
                                     {
-                                        ry.clear();
-                                        ly.clear();
-                                        GenDurationSum = 0;
-                                        int RCPSSum = 0;
-                                        int LCPSSum = 0;
-
-                                        for (int i = 0; i < PointsSize; i++)
+                                        if (ImPlot::BeginPlot("##WavePreview", ImVec2(-1, 0)))
                                         {
-                                            auto start = chrono::high_resolution_clock::now();
-
-                                            ry.push_back(Random(config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS, config.Fluctuation_RandomGen, config.Fluctuation_RandomDist));
-                                            ly.push_back(Random(config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS, config.Fluctuation_RandomGen, config.Fluctuation_RandomDist));
-
-                                            auto end = chrono::high_resolution_clock::now();
-                                            auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                                            GenDurationSum += duration.count() / 1000.0;
-                                            LCPSSum += ly.back();
-                                            RCPSSum += ry.back();
+                                            const float rangeMax = 200.0f;
+                                            float amp = waveList[SelectedIdx].amplitude;
+                                            if (amp <= 0.0f) amp = 1.0f; // 防止除零
+                                            ImPlot::SetupAxesLimits(0, rangeMax, -amp * 1.2f, amp * 1.2f);
+                                            ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_AutoFit);
+                                            
+                                            const int points = 200;
+                                            static vector<float> xs(points), ys(points);
+                                            for (int i = 0; i < points; ++i)
+                                            {
+                                                float t = (float)i / points * rangeMax;
+                                                xs[i] = t;
+                                                // 直接绘制实际振幅，不再归一化
+                                                ys[i] = EvaluateWave(waveList[SelectedIdx], t);
+                                            }
+                                            ImPlot::PlotLine(config.UseChinese ? u8"波形" : "Waves", xs.data(), ys.data(), points);
+                                            ImPlot::EndPlot();
                                         }
-                                        auv = GenDurationSum / PointsSize;
-                                        LCPSAuv = (double)LCPSSum / PointsSize;
-                                        RCPSAuv = (double)RCPSSum / PointsSize;
-                                        IsGenerating = false;
-                                    });
-                                FunThread.detach();
-                                IsInit = true;
-                            }
+                                    }
+                                    else
+                                        Text(config.UseChinese ? u8"未选中波形" : "No wave selected");
+                                }
+                                EndChild();
+                                SameLine();
 
-                            if (ImPlot::BeginPlot("##Random_curves1", ImVec2(0, 0), ImPlotFlags_CanvasOnly))
+                                // 右侧：列表 或 编辑面板
+                                BeginChild("RightPanel", ImVec2(0, 0), true);
+                                {
+                                    if (!ShowSettings)
+                                    {
+                                        if (Button(config.UseChinese ? u8"添加波形" : "Add Waves"))
+                                        {
+                                            if (waveList.size() < 10)
+                                            {
+                                                random_device rd;
+                                                mt19937 gen(rd());
+                                                uniform_real_distribution<> ampDist(0.5f, 3.0f);
+                                                uniform_real_distribution<> freqDist(0.05f, 2.0f);
+                                                uniform_real_distribution<> phaseDist(-3.14159f, 3.14159f);
+
+                                                WaveParam NewWave;
+                                                NewWave.amplitude = (float)ampDist(gen);
+                                                NewWave.frequency = (float)freqDist(gen);
+                                                NewWave.phase = (float)phaseDist(gen);
+                                                NewWave.enabled = true;
+                                                waveList.push_back(NewWave);
+                                                SelectedIdx = (int)waveList.size() - 1;
+                                            }
+                                        }
+                                        SameLine();
+                                        if (SmallButton(config.UseChinese ? u8"编辑" : "Edit"))
+                                            ShowSettings = true;
+                                        BeginChild("WaveListChild", ImVec2(0, 0), true);
+                                        for (int i = 0; i < (int)waveList.size(); ++i)
+                                        {
+                                            PushID(i);
+                                            bool isSelected = (i == SelectedIdx);
+                                            float avail = GetContentRegionAvail().x;
+
+                                            float DelBtnWidth = 16 + GetStyle().FramePadding.x * 2 + 6;
+                                            float TotalBtnWidth = DelBtnWidth + GetStyle().ItemSpacing.x * 2;
+
+                                            char label[128];
+                                            const WaveParam& w = waveList[i];
+                                            sprintf_s(label, "A=%.2f F=%.2f P=%.2f", w.amplitude, w.frequency, w.phase);
+
+                                            // 可选项（留出按钮空间）
+                                            if (Selectable(label, isSelected, 0, ImVec2(avail - TotalBtnWidth, 0)))
+                                                SelectedIdx = i;
+
+                                            if (isSelected)
+                                            {
+                                                ImVec2 min = GetItemRectMin();
+                                                ImVec2 max = GetItemRectMax();
+                                                GetWindowDrawList()->AddRect(min, max, IM_COL32(255, 215, 0, 255), 0.0f, 0, 2.0f);
+                                            }
+
+                                            SameLine();
+                                            static const Texture2D button_texture1 = LoadTextureFromFile(Bmp_Delete);
+                                            if (ImageButton("##delwave", button_texture1, ImVec2(16, 16)))
+                                            {
+                                                if (SelectedIdx == i)
+                                                    SelectedIdx = -1;
+                                                waveList.erase(waveList.begin() + i);
+                                                PopID();
+                                                break;
+                                            }
+                                            PopID();
+                                        }
+                                        EndChild();
+                                    }
+                                    else
+                                    {
+                                        if (Button(config.UseChinese ? u8"返回" : "Back"))
+                                            ShowSettings = false;
+
+                                        if (SelectedIdx >= 0 && SelectedIdx < (int)waveList.size())
+                                        {
+                                            WaveParam& w = waveList[SelectedIdx];
+                                            // 振幅（步长0.05）
+                                            SliderFloat(config.UseChinese ? u8"振幅&7(CPS)" : "Amplitude&7(CPS)", &w.amplitude, 0.0f, 10.0f);
+                                            Text(config.UseChinese ? u8"微调" : "Tweak");
+                                            SameLine();
+                                            if (Button("-##amp")) { w.amplitude = max(0.0f, w.amplitude - 0.05f); }
+                                            SameLine();
+                                            if (Button("+##amp")) { w.amplitude = min(10.0f, w.amplitude + 0.05f); }
+
+                                            // 频率（步长0.005）
+                                            SliderFloat(config.UseChinese ? u8"频率&7(Hz)" : "Freq&7(Hz)", &w.frequency, 0.01f, 2.0f);
+                                            Text(config.UseChinese ? u8"微调" : "Tweak");
+                                            SameLine();
+                                            if (Button("-##freq")) { w.frequency = max(0.01f, w.frequency - 0.005f); }
+                                            SameLine();
+                                            if (Button("+##freq")) { w.frequency = min(2.0f, w.frequency + 0.005f); }
+
+                                            // 相位（步长0.05）
+                                            SliderFloat(config.UseChinese ? u8"相位&7(弧度)" : "Phase&7(Rad)", &w.phase, -PI, PI);
+                                            Text(config.UseChinese ? u8"微调" : "Tweak");
+                                            SameLine();
+                                            if (Button("-##phase")) { w.phase = max(-PI, w.phase - 0.05f); }
+                                            SameLine();
+                                            if (Button("+##phase")) { w.phase = min(PI, w.phase + 0.05f); }
+
+                                            Checkbox("Enabled", &w.enabled);
+                                        }
+                                        else
+                                            Text(config.UseChinese ? u8"未选中波形" : "No wave selected");
+                                    }
+                                }
+                                EndChild();
+                            }
+                            EndChild();
+
+                            Separator();
+
+                            // ---------- 下半部分：总 CPS 叠加图 ----------
+                            BeginChild("BottomArea", ImVec2(0, 216), true);
                             {
-                                const int MaxCuruves = config.RCPS + config.RFluctuationCPS + 1;
-                                const int MinCuruves = config.RCPS - config.RFluctuationCPS - 1;
-                                ImPlot::SetupAxesLimits(0, PointsSize, MinCuruves, MaxCuruves, ImGuiCond_Always);
-                                ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(184, 30, 1, 255));
+                                Checkbox(config.UseChinese ? u8"显示应用CPS后的曲线" : "Show applied CPS curve", &ShowAppliedCPS);
 
-                                ImPlot::SetNextLineStyle((ImVec4)ImColor(30, 156, 214, 200), 2);
-                                ImPlot::PlotLine(config.UseChinese ? u8"右键CPS" : "Right button CPS", ry.data(), ry.size());
+                                if (ImPlot::BeginPlot("##OverallCPS", ImVec2(-1, 170)))
+                                {
+                                    const float rangeMax = 700.0f;
+                                    // 计算总振幅
+                                    float totalAmp = 0.0f;
+                                    for (const auto& w : waveList)
+                                        if (w.enabled)
+                                            totalAmp += w.amplitude;
+                                    float yMin = BaseCPS - totalAmp - 1;
+                                    float yMax = BaseCPS + totalAmp + 1;
+                                    if (yMin < 0) yMin = 0;
+                                    ImPlot::SetupAxesLimits(0, rangeMax, yMin, yMax);
 
-                                ImPlot::SetNextLineStyle((ImVec4)ImColor(223, 98, 98, 200), 2);
-                                ImPlot::PlotLine(config.UseChinese ? u8"左键CPS" : "Left button CPS", ly.data(), ly.size());
-                                ImPlot::EndPlot();
+                                    const int points = 300;
+                                    static vector<float> xs(points), ys_raw(points), ys_clamped(points);
+                                    for (int i = 0; i < points; ++i)
+                                    {
+                                        float t = (float)i / points * rangeMax;
+                                        xs[i] = t;
+                                        float raw = EvaluateTotalCPS(t, BaseCPS, waveList);
+                                        ys_raw[i] = raw;
+                                        float clamped = clamp(raw, BaseCPS - FluctRange, BaseCPS + FluctRange);
+                                        ys_clamped[i] = clamped;
+                                    }
+
+                                    ImPlot::PlotLine(config.UseChinese ? u8"原始总CPS" : "Raw total CPS", xs.data(), ys_raw.data(), points);
+                                    if (ShowAppliedCPS)
+                                    {
+                                        ImPlot::SetNextLineStyle(ImVec4(1, 0.5f, 0, 1), 2);
+                                        ImPlot::PlotLine(config.UseChinese ? u8"应用后CPS" : "Applied CPS", xs.data(), ys_clamped.data(), points);
+                                    }
+                                    ImPlot::EndPlot();
+                                }
                             }
-                            Text(config.UseChinese ? u8"本次生成的总时长：%.3f毫秒" : "The total duration of this gen: %.3f ms", GenDurationSum);
-                            SameLine();
-                            Text(config.UseChinese ? u8"共 %d 个数据点" : "A total of %d data points", PointsSize);
-                            SameLine();
-                            Text(config.UseChinese ? u8"平均用时：%.3f毫秒/数据点" : "Average time: %.3f ms/data point", auv);
-                            Text(config.UseChinese ? u8"实际CPS波动平均值：左键 %.2fCPS | 右键 %.2fCPS" : "Actual CPS fluct average: LB %.2fCPS | RB %.2fCPS", LCPSAuv, RCPSAuv);
+                            EndChild();
+
                             EndPopupWindow();
+                        }
+
+                        // 关闭弹窗时保存左右列表
+                        if (!IsOpen && lastOpenState)
+                        {
+                            config.CPSWaves.left = WaveList.left;
+                            config.CPSWaves.right = WaveList.right;
+                            IsCPSWaveSettingChanged = true;
+                            lastOpenState = false; // 防止重复保存
                         }
                     }
                     EndDisabled();
@@ -1453,6 +1610,7 @@ void RenderGui(ImGuiIO& io)
                     Text(config.UseChinese ? u8"&7如果要设置为鼠标左右键，请使用鼠标模式。" : "&7If you want to set it to the mouse buttons, please use the Mouse Mode.");
                 }
                 EndCard();
+                
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 
                 BeginCard("##CPSSettings-1", ImVec2(180, 190), ImGuiChildFlags_Borders);
