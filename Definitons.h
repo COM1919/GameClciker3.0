@@ -16,7 +16,7 @@
 
 //最大值和最小值
 #define MAX_VALUE        4096 //最高的数值
-#define MAX_BUF          4096 //最高的缓存大小
+#define MAX_BUF          2048 //最高的缓存大小
 #define MAX_QUICK_SWITCH 6    //快速切换CPS的CPS值
 #define MAX_RECORDS      1800 //最大记录数
 #define MAX_PERF_RECORDS 600  //最大性能记录数
@@ -389,12 +389,12 @@ shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
 const string version = "3.38";          //版本号
-string title = "GAMECLICKER 3.38";      //标题名字
+string title = "GAMECLICKER 3.39 内测版本 - 脚本功能稳定性内测";      //标题名字
 const int ConfigVersion = 3;            //配置文件版本号
 
 const int RenderFps = 60;               //渲染帧率
 
-#define GC_NO_HOOK                    //是否禁用HOOK
+//#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画

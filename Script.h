@@ -358,6 +358,7 @@ inline bool InitLuaState(const string& file, LuaState& LuaInfo)
     bool IsError = false;
     string errmsg;
     {
+        // 写入锁
         lock_guard<mutex> lock(LuaInfo.Mtx);
         try
         {
@@ -453,12 +454,12 @@ HANDLE StartScript(const string& file)
     {
         bool IsError = false;
         string errmsg;
-        lua_State* lua = nullptr;
+        LuaState* lua = nullptr;
         {
             lock_guard<shared_mutex> lock(LuaStatesMtx);
-            lua = LuaStates[file].lua;
+            lua = &LuaStates[file];
         }
-        if (!lua)
+        if (!lua->lua)
         {
             lock_guard<shared_mutex> lock(LuaStatesMtx);
             if (!InitLuaState(file, LuaStates[file]))
@@ -466,7 +467,7 @@ HANDLE StartScript(const string& file)
                 *hThread = 0;
                 return;
             }
-            lua = LuaStates[file].lua;   // 重新获取
+            lua = &LuaStates[file];   // 重新获取
         }
         else
         {
@@ -481,8 +482,11 @@ HANDLE StartScript(const string& file)
             }
             *hThread = hRealHandle;
         }
-        // 初始化脚本
-        CalledScriptFunction(lua, "initScript");
+
+        {
+            lock_guard<mutex> run_lock(lua->RunningMtx);
+            CalledScriptFunction(lua->lua, "initScript");
+        }
         // 启动脚本！！！开始脚本循环
         bool IsSuspend = false;
         int LoopDelay = 0;
@@ -503,11 +507,17 @@ HANDLE StartScript(const string& file)
 
             if (IsSuspend)
             {
+                // 此时未持有任何锁，安全睡眠
                 Sleep(10);
                 continue;
             }
-            // 调用脚本的main函数
-            if (CalledScriptFunction(lua, "main") != 0)
+
+            int ret = 0;
+            {
+                lock_guard<mutex> run_lock(lua->RunningMtx);
+                ret = CalledScriptFunction(lua->lua, "main");
+            }
+            if (ret != 0)
                 break;
             Sleep(LoopDelay);
         }
@@ -536,7 +546,9 @@ bool RenderScriptGui(const string& file)
     }
     if (!InitLuaState(file, *lua))
         return 0;
-    return CalledScriptFunction(lua->lua, "render") == 0;
+    lock_guard<mutex> lock(lua->RunningMtx);
+    const int ret = CalledScriptFunction(lua->lua, "render") == 0;
+    return ret;
 }
 
 int SaveScriptConfig(const string& file)
@@ -544,7 +556,9 @@ int SaveScriptConfig(const string& file)
     auto& lua = LuaStates[file];
     if (!InitLuaState(file, lua))
         return 0;
-    return CalledScriptFunction(lua.lua, "saveConfig") == 0;
+    lock_guard<mutex> lock(lua.RunningMtx);
+    const int ret = CalledScriptFunction(lua.lua, "saveConfig") == 0;
+    return ret;
 }
 
 void CloseScriptThread(ScriptState& state, ScriptInfo& info)

@@ -717,7 +717,7 @@ void RenderGui(ImGuiIO& io)
         DrawList->AddText(ImVec2(rect.Min.x + 5, rect.Min.y), ((i != 0) ? IsClickerDown.right : IsClickerDown.left) ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
         
         if ((IsClickering.left && i == 0) || (IsClickering.right && i == 1))
-            DrawList->AddRect(ImVec2(rect.Min.x - 1, rect.Min.y - 1), ImVec2(rect.Max.x + 1, rect.Max.y + 1), GetColorU32((ImVec4)ImColor(176, 51, 205, 255)), 5.5f, 3.0f);
+            DrawList->AddRect(ImVec2(rect.Min.x - 1, rect.Min.y - 1), ImVec2(rect.Max.x + 1, rect.Max.y + 1), GetColorU32((ImVec4)ImColor(176, 51, 205, 255)), 5.5f, 0, 3.0f);
 
         if ((!config.EnableLeftClicker && i == 0) || (!config.EnableRightClicker && i == 1))
             DrawList->AddRectFilled(rect.Min, rect.Max, GetColorU32((ImVec4)ImColor(56, 56, 56, 120)), 5.5f);
@@ -1392,7 +1392,6 @@ void RenderGui(ImGuiIO& io)
                             SameLine();
                             if (Button(config.UseChinese ? u8"右键" : "Right", ImVec2(80, 0)))
                                 CurrentTab = 1;
-
                             SameLine();
                             if (CurrentTab == 0)
                                 Text(config.UseChinese ? u8"左键波形设置" : "LB Wave Settings");
@@ -1449,13 +1448,13 @@ void RenderGui(ImGuiIO& io)
                                     {
                                         if (Button(config.UseChinese ? u8"添加波形" : "Add Waves"))
                                         {
-                                            if (waveList.size() < 10)
+                                            if (waveList.size() < 12)
                                             {
                                                 random_device rd;
                                                 mt19937 gen(rd());
                                                 uniform_real_distribution<> ampDist(0.5f, 3.0f);
                                                 uniform_real_distribution<> freqDist(0.05f, 2.0f);
-                                                uniform_real_distribution<> phaseDist(-3.14159f, 3.14159f);
+                                                uniform_real_distribution<> phaseDist(-3.1415926535f, 3.1415926535f);
 
                                                 WaveParam NewWave;
                                                 NewWave.amplitude = (float)ampDist(gen);
@@ -1481,7 +1480,7 @@ void RenderGui(ImGuiIO& io)
 
                                             char label[128];
                                             const WaveParam& w = waveList[i];
-                                            sprintf_s(label, "A=%.2f F=%.2f P=%.2f", w.amplitude, w.frequency, w.phase);
+                                            sprintf_s(label, "A:%.2f F:%.2f P:%.2f", w.amplitude, w.frequency, w.phase);
 
                                             // 可选项（留出按钮空间）
                                             if (Selectable(label, isSelected, 0, ImVec2(avail - TotalBtnWidth, 0)))
@@ -3693,7 +3692,9 @@ void RenderGui(ImGuiIO& io)
                                     static const Texture2D image_texture2 = LoadTextureFromFile(Bmp_Delete);
                                     if (ImageButton("script_delete", (ImTextureID)image_texture2, ImVec2(32, 32))) // 删除文件
                                     {
-                                        thread FunThread([&]() {
+                                        // 不要使用&，因为引用的count会因为for导致变化，count会++，所以count可能为末尾值
+                                        // 所以erase越界，修复办法：用=直接复制
+                                        thread FunThread([=]() {
                                             DeleteDirectoryRecursively(ScriptTemp + "\\" + script.name);
                                             DelFile(ScriptPath + "\\" + script.name + ".zip");
                                             AvaiableScripts.erase(AvaiableScripts.begin() + count);

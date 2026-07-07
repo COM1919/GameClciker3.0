@@ -129,6 +129,21 @@ void SaveIni(const string& file)
 	WritePrivateProfileString("BasicSettings", "simulateClickMode", to_string(config.SimulateClickMode).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "clickerPriorityMode", to_string(config.ClickerPriorityMode).c_str(), CIniPos);
 
+	// CPSWaves section
+	int count = 0;
+	for (int i = 0; i < 2; i++)
+	{
+		const char* name = (i == 0) ? "leftWave" : "rightWave";
+		const vector<WaveParam>& waves = (i == 0) ? config.CPSWaves.left : config.CPSWaves.right;
+		for (const WaveParam w : waves)
+		{
+			char data[256];
+			sprintf_s(data, "%s,%.5f,%.5f,%.5f", w.enabled ? "TRUE" : "FALSE", w.amplitude, w.frequency, w.phase);
+			WritePrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), data, CIniPos);
+			count++;
+		}
+	}
+
 	// MouseSoundSettings section
 	WritePrivateProfileString("MouseSoundSettings", "mouseSoundVolume", to_string(config.MouseSoundVolume).c_str(), CIniPos);
 	WritePrivateProfileString("MouseSoundSettings", "keybdSoundVolume", to_string(config.KeybdSoundVolume).c_str(), CIniPos);
@@ -384,6 +399,49 @@ void GetIni(const string& file)
 		config.SimulateClickMode = GetPrivateProfileInt("BasicSettings", "simulateClickMode", config.SimulateClickMode, CIniPos);
 		config.HideClickerKey = GetPrivateProfileInt("BasicSettings", "hideClickerKey", config.HideClickerKey, CIniPos);
 		config.ClickerPriorityMode = GetPrivateProfileInt("BasicSettings", "clickerPriorityMode", config.ClickerPriorityMode, CIniPos);
+
+		//==================================================CPSWaves section==================================================
+		for (int i = 0; i < 2; i++)
+		{
+			const char* name = (i == 0) ? "leftWave" : "rightWave";
+			vector<WaveParam>* waves = (i == 0) ? &config.CPSWaves.left : &config.CPSWaves.right;
+
+			int count = 0;
+			while (true)
+			{
+				GetPrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF, CIniPos);
+				vector<string> tokens;
+				SplitString(buffer, ",", tokens);
+				if (tokens.size() < 4)
+					break;
+				try
+				{
+					WaveParam w;
+					w.amplitude = stof(tokens[0]);
+					w.frequency = stof(tokens[1]);
+					w.phase = stof(tokens[2]);
+					w.enabled = (tokens[3] == "TRUE");
+					waves->push_back(w);
+				}
+				catch (...)
+				{
+					PrintLog("[Config] ≥¢ ‘∂¡»°CPS Waves ±stof ß∞‹£¨“—Ã¯π˝£¨–Ú∫≈£∫" + to_string(count), PL_ERROR);
+				}
+				count++;
+			}
+			if (count <= 0)
+			{
+				for (int i = 0; i < 8; i++)
+				{
+					WaveParam w;
+					w.amplitude = Random(5000, 30000) / 10000.0f; // 0.2 - 3.0
+					w.frequency = Random(100, 15000) / 10000.0f; // 0.01 - 1.5
+					w.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+					w.enabled = true;
+					waves->push_back(w);
+				}
+			}
+		}
 
 		//==================================================MouseSoundSettings section==================================================
 		config.MouseSoundVolume = GetPrivateProfileInt("MouseSoundSettings", "mouseSoundVolume", config.MouseSoundVolume, CIniPos);

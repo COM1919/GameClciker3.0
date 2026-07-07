@@ -19,6 +19,7 @@ typedef struct LuaState
 {
     lua_State* lua;
     mutex Mtx;
+    mutex RunningMtx;
     bool IsLoaded;
 
     LuaState() : lua(nullptr), IsLoaded(false) {}
@@ -219,7 +220,7 @@ namespace ScriptAPI
             luaL_error(L, "GetKeyDown的参数不足或太多");
         int key = luaL_checkinteger(L, 1);
         bool human = (count >= 2) ? lua_toboolean(L, 2) : false;
-        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : SC_SEND_INPUT;
+        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : GK_API;
         lua_pushboolean(L, ::GetKeyDown(key, human, mode));
         return 1;
     }
@@ -231,7 +232,7 @@ namespace ScriptAPI
             luaL_error(L, "GetKeyClick的参数不足或太多");
         int key = luaL_checkinteger(L, 1);
         bool human = (count >= 2) ? lua_toboolean(L, 2) : false;
-        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : SC_SEND_INPUT;
+        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : GK_API;
         lua_pushboolean(L, ::GetKeyClick(key, human, mode));
         return 1;
     }
@@ -243,7 +244,7 @@ namespace ScriptAPI
             luaL_error(L, "GetKeyUp的参数不足或太多");
         int key = luaL_checkinteger(L, 1);
         bool human = (count >= 2) ? lua_toboolean(L, 2) : false;
-        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : SC_SEND_INPUT;
+        int mode = (count >= 3) ? luaL_checkinteger(L, 3) : GK_API;
         lua_pushboolean(L, ::GetKeyUp(key, human, mode));
         return 1;
     }

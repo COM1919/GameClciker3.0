@@ -386,11 +386,11 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 		if (config.UseRFluctuation)
-			ClickerDynamicDelay.right = CPSSmooth.left.GetDelayMs();
+			ClickerDynamicDelay.right = CPSSmooth.right.GetDelayMs();
 		else
 			ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
 		if (config.UseLFluctuation)
-			ClickerDynamicDelay.left = CPSSmooth.right.GetDelayMs();
+			ClickerDynamicDelay.left = CPSSmooth.left.GetDelayMs();
 		else
 			ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
 		

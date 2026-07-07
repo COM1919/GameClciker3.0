@@ -589,6 +589,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 {
+	srand(time(NULL));
 	while (!GCExit)
 	{
 		if (!config.UseMouseSound || !SoundIsOpen)
@@ -596,6 +597,27 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 			Sleep(100);
 			continue;
 		}
+
+		auto PlayWithVariation = [&](ALuint source)
+		{
+			if (source == 0)
+				return;
+
+			// 基础音量来自 config，在此基础上随机 ±15%
+			float baseVol = config.MouseSoundVolume / 100.0f;
+			float volVariation = 0.15f; // ±15%
+			float randomVol = baseVol * (1.0f + volVariation * ((rand() % 1000) / 500.0f - 1.0f));
+			randomVol = max(0.0f, min(2.0f, randomVol)); // 限制在 0~2.0
+			alSourcef(source, AL_GAIN, randomVol);
+
+			// 音调随机 +-8%，1.0 为原始音调
+			float pitchVariation = 0.08f;
+			float randomPitch = 1.0f + pitchVariation * ((rand() % 1000) / 500.0f - 1.0f);
+			randomPitch = max(0.4f, min(1.6f, randomPitch)); // 限制在 0.4~1.6
+			alSourcef(source, AL_PITCH, randomPitch);
+
+			alSourcePlay(source);
+		};
 
 		LRPair<bool> HasChanged;
 		if (VarHasChanged(IsClickerDown.left, "MS_IsClickerDown_Left"))
@@ -605,17 +627,17 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 
 		const bool LeftClickerClick = HasChanged.left && IsClickerDown.left;
 		if (GetKeyClick(1, true, GK_HOOK) || LeftClickerClick)
-			alSourcePlay(CurrentMouseSource["1"]);
+			PlayWithVariation(CurrentMouseSource["1"]);
 		const bool RightClickerClick = HasChanged.right && IsClickerDown.right;
 		if (GetKeyClick(2, true, GK_HOOK) || RightClickerClick)
-			alSourcePlay(CurrentMouseSource["2"]);
+			PlayWithVariation(CurrentMouseSource["2"]);
 
 		const bool LeftClickerUp = HasChanged.left && !IsClickerDown.left;
 		if (GetKeyUp(1, true, GK_HOOK) || LeftClickerUp)
-			alSourcePlay(CurrentMouseSource["01"]);
+			PlayWithVariation(CurrentMouseSource["01"]);
 		const bool RightClickerUp = HasChanged.right && !IsClickerDown.left;
 		if (GetKeyUp(2, true, GK_HOOK) || RightClickerUp)
-			alSourcePlay(CurrentMouseSource["02"]);
+			PlayWithVariation(CurrentMouseSource["02"]);
 
 		Sleep(config.MouseSoundSleep);
 	}
