@@ -88,6 +88,8 @@ void SaveIni(const string& file)
 
     // Config Version
     WritePrivateProfileString("Config", "Version", to_string(ConfigVersion).c_str(), CIniPos);
+	if (IsNeedReshowAgreement == false) // 不同意就不写入
+		WritePrivateProfileString("Config", "AgreementVersion", to_string(AgreementVersion).c_str(), CIniPos);
 
 	// BasicSettings section
 	WritePrivateProfileString("BasicSettings", "leftKeyShortcut", to_string(config.LKEY).c_str(), CIniPos);
@@ -346,6 +348,11 @@ void GetIni(const string& file)
 	//配置文件版本号
 	GetPrivateProfileString("Config", "Version", "-1", buffer, MAX_BUF, CIniPos);
 	int ver = stoi(buffer);
+	GetPrivateProfileString("Config", "AgreementVersion", "-1", buffer, MAX_BUF, CIniPos);
+	ver = stoi(buffer);
+	if (ver != AgreementVersion)
+		IsNeedReshowAgreement = true;
+
 	if (ver != ConfigVersion)
 	{
 		DelFile(file);
@@ -404,16 +411,15 @@ void GetIni(const string& file)
 		for (int i = 0; i < 2; i++)
 		{
 			const char* name = (i == 0) ? "leftWave" : "rightWave";
-			vector<WaveParam>* waves = (i == 0) ? &config.CPSWaves.left : &config.CPSWaves.right;
 
 			int count = 0;
 			while (true)
 			{
 				GetPrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF, CIniPos);
+				if (strlen(buffer) <= 0)
+					break;
 				vector<string> tokens;
 				SplitString(buffer, ",", tokens);
-				if (tokens.size() < 4)
-					break;
 				try
 				{
 					WaveParam w;
@@ -421,13 +427,21 @@ void GetIni(const string& file)
 					w.frequency = stof(tokens[1]);
 					w.phase = stof(tokens[2]);
 					w.enabled = (tokens[3] == "TRUE");
-					waves->push_back(w);
+					if (i == 0)
+						config.CPSWaves.left.push_back(w);
+					else
+						config.CPSWaves.right.push_back(w);
 				}
 				catch (...)
 				{
 					PrintLog("[Config] 尝试读取CPS Waves时stof失败，已跳过，序号：" + to_string(count), PL_ERROR);
 				}
 				count++;
+				if (count >= 24)
+				{
+					PrintLog("[Config] 读取CPS Waves时数量超过24，已忽略后续读取。", PL_WARNING);
+					break;
+				}
 			}
 			if (count <= 0)
 			{
@@ -438,7 +452,10 @@ void GetIni(const string& file)
 					w.frequency = Random(100, 15000) / 10000.0f; // 0.01 - 1.5
 					w.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
 					w.enabled = true;
-					waves->push_back(w);
+					if (i == 0)
+						config.CPSWaves.left.push_back(w);
+					else
+						config.CPSWaves.right.push_back(w);
 				}
 			}
 		}

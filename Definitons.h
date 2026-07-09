@@ -388,13 +388,15 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.38";          //版本号
-string title = "GAMECLICKER 3.39 内测版本 - 脚本功能稳定性内测";      //标题名字
+const string version = "3.39";          //版本号
+string title = "GAMECLICKER 3.39";      //标题名字
 const int ConfigVersion = 3;            //配置文件版本号
+const int AgreementVersion = 1;         //协议文件版本号
+bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
 
-//#define GC_NO_HOOK                    //是否禁用HOOK
+#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -405,7 +407,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS

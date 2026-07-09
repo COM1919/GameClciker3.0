@@ -339,11 +339,15 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear) // 
 		if (BeginCount >= count || EndCount < count)
 			continue;
 		const string filename = ScriptShopDir + "\\" + script + ".gcdat";
-		const string url = URL_GITEE_SC_ROOT + script + ".zip";
-		if (!DownloadURLFiles(url, filename))
+		// 如果文件已存在，直接跳过下载
+		if (_access(filename.c_str(), 0) != 0)
 		{
-			PrintLog("[Script] Gitee: 下载脚本失败: " + url, PL_WARNING);
-			continue;
+			const string url = URL_GITEE_SC_ROOT + script + ".zip";
+			if (!DownloadURLFiles(url, filename))
+			{
+				PrintLog("[Script] Gitee: 下载脚本失败: " + url, PL_WARNING);
+				continue;
+			}
 		}
 		ScriptInfo info;
 		info.file = filename;
@@ -352,7 +356,7 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear) // 
 	GetScriptsInfo(scripts, ScriptShopTemp);
 	for (const ScriptInfo& info : scripts)
 		rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str()); // 防止文件名和脚本名字不同，所以强制文件名字为脚本名字
-	return (ScriptList.size() <= PaperSize) ? 1 : ScriptList.size() / PaperSize;
+	return (ScriptList.size() + PaperSize - 1) / PaperSize; // 这是向上取整的经典算法：(总数 + 每页大小 - 1) / 每页大小
 }
 
 // 定义一个结构体来打包所有需要传递给线程的信息

@@ -23,10 +23,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 设置崩溃处理器
     SetupCrashHandler();
 
-    if (!IsUserAnAdmin())
+    if (!IsProcessElevated())
     {
-        MessageBox(NULL, config.UseChinese ? "请以管理员身份运行GC\n右键GC的文件，然后选择“以管理员身份运行”" : "Please run GC as an administrator \ nRight click on the GC file and select 'Run as administrator'", config.UseChinese ? "GC连点器" : "GameClicker", MB_OK);
-        return -1919;
+        char szPath[MAX_PATH];
+        GetModuleFileName(NULL, szPath, MAX_PATH);
+
+        SHELLEXECUTEINFO sei = { sizeof(sei) };
+        sei.lpVerb = "runas";
+        sei.lpFile = szPath;
+        sei.nShow = SW_NORMAL;
+
+        if (!ShellExecuteEx(&sei))
+        {
+            // 提权失败或用户取消，显示提示
+            MessageBox(NULL, "该程序需要管理员权限才能运行。", "错误", MB_OK | MB_ICONERROR);
+        }
+        return -1; // 退出当前进程
     }
 
     if (GetSystemLanguage() == LANG_CHINESE)
@@ -145,6 +157,14 @@ int GCMainLoop()
     SetLogFile(LogFile);
 
     cout << "[彩蛋] 你是怎么看到我的呢，好难猜啊\n这么闲的吗？" << endl;
+
+    // 一定要在下面文件初始化前面
+#ifdef GC_DEBUG_GUIDE_UI
+    IsFirstRun = true;
+#else
+    IsFirstRun = (_access(IniPos.c_str(), 0) != 0);
+#endif // GC_DEBUG_GUIDE_UI
+
     if (_access(LogFile.c_str(), 0) != 0)
         CreateFile(LogFile);
     else
@@ -177,13 +197,6 @@ int GCMainLoop()
     // 一定要在GetIni之前，这样储存的才是默认配置
     SaveIni(IniPosBackup);
 
-    // 在RefushScriptList之前删除
-    if (DeleteDirectory(ScriptTemp))
-        PrintLog("[File] 删除脚本临时文件成功！", PL_INFO);
-    else
-        PrintLog("[File] 删除脚本临时文件失败！", PL_ERROR);
-
-    RefushScriptList();
     GetIni(IniPos);
 
     if (_access(LogPath.c_str(), 0) != 0)
@@ -201,11 +214,6 @@ int GCMainLoop()
     if (_access(Tmp_TempPath.c_str(), 0) != 0)
         CreateDirectory(Tmp_TempPath.c_str(), NULL);
 
-#ifdef GC_DEBUG_GUIDE_UI
-    IsFirstRun = true;
-#else
-    IsFirstRun = (_access(IniPos.c_str(), 0) != 0);
-#endif // GC_DEBUG_GUIDE_UI
     CreateThreadSafe(WindowProcessMessagesThread, NULL, 0, "WindowProcessMessagesThread");
 
     while (!IsCreateWindowSussce)
@@ -311,6 +319,8 @@ int GCMainLoop()
 
                 WindowOpenAnimate(GCHWND, { x, (ScreenHeigth - WindowHeight) / 2 }, 0.3f);
                 UpdateWindow(GCHWND);
+
+                IsNeedReshowAgreement = false; // 不再显示Agreement
             }
             else if (state == -1)
                 GCExit = true;
@@ -450,6 +460,17 @@ DWORD WINAPI InitGC(LPVOID lpParam)
 
     // 允许拖拽文件到窗口
     DragAcceptFiles(GCHWND, true);
+
+    if (DeleteDirectory(ScriptShopDir))
+        PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
+    else
+        PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
+    // 在RefushScriptList之前删除
+    if (DeleteDirectory(ScriptTemp))
+        PrintLog("[File] 删除脚本临时文件成功！", PL_INFO);
+    else
+        PrintLog("[File] 删除脚本临时文件失败！", PL_ERROR);
+    RefushScriptList();
 
     while (!IsCreateWindowSussce)
         Sleep(2);
@@ -3139,70 +3160,74 @@ void RenderGui(ImGuiIO& io)
             
             if (BeginTabItem(config.UseChinese ? u8"个性化" : "Custom"))
             {
-                Text(config.UseChinese ? u8"背景偏移" : "Background Offset");
+                BeginCard(config.UseChinese ? u8"背景图片" : "Background Image", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Text(config.UseChinese ? u8"X坐标" : "X Coordinate");
-                    SameLine();
-                    SetNextItemWidth(300);
-                    SetCursorPosX(300);
-                    SliderInt(u8"##BgOffsetX", &BgOffsetX, -100, 100, config.UseChinese ? u8"%d像素" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
-
-                    Text(config.UseChinese ? u8"Y坐标" : "Y Coordinate");
-                    SameLine();
-                    SetNextItemWidth(300);
-                    SetCursorPosX(300);
-                    SliderInt(u8"##BgOffsetY", &BgOffsetY, -100, 100, config.UseChinese ? u8"%d像素" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
-                }
-
-                Text(config.UseChinese ? u8"背景亮度" : "Y Coordinate");
-                SameLine();
-                SetNextItemWidth(300);
-                SetCursorPosX(300);
-                SliderInt(u8"##BgLightness", &BgLightness, 0, 100, u8"%d %", ImGuiSliderFlags_AlwaysClamp);
-
-                Text(config.UseChinese ? u8"背景缩放" : "Background Scale");
-                SameLine();
-                SetNextItemWidth(300);
-                SetCursorPosX(300);
-                SliderInt(u8"##BgScale", &BgScale, 0, 300, u8"%d %", ImGuiSliderFlags_AlwaysClamp);
-
-                static float bk_alph = GuiItemAlpha / 100.0f;
-                PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, bk_alph));
-                PushStyleColor(ImGuiCol_FrameBg, GetColorU32(ImGuiCol_FrameBg, bk_alph));
-                PushStyleColor(ImGuiCol_SliderGrab, GetColorU32(ImGuiCol_SliderGrab, bk_alph));
-                PushStyleColor(ImGuiCol_SliderGrabActive, GetColorU32(ImGuiCol_SliderGrabActive, bk_alph));
-                {
-                    Text(config.UseChinese ? u8"GUI透明度" : "GUI Transparency");
-                    SameLine();
-                    SetNextItemWidth(300);
-                    SetCursorPosX(300);
-                    SliderInt(u8"##GuiItemAlpha", &GuiItemAlpha, 16, 100, "%d%", ImGuiSliderFlags_AlwaysClamp);
-                    if (!IsItemHovered())
-                        bk_alph = GuiItemAlpha / 100.0f;
-                }
-                PopStyleColor(4);
-
-                Checkbox(config.UseChinese ? u8"自动调整图片大小" : "Auto Image Size", & BgAutoResize);
-
-                Text(config.UseChinese ? u8"背景图片：" : "Background Image: ");
-                SameLine();
-                if (Button(config.UseChinese ? u8"选择文件" : "Select File"))
-                {
-                    static bool IsOpen = false;
-                    if (!IsOpen)
+                    Text(config.UseChinese ? u8"背景偏移" : "Background Offset");
                     {
-                        thread th([]()
-                            {
-                                IsOpen = true;
-                                const string file = SelectFile("图片文件\0*.png;*.bmp;*.jpg\0\0");
-                                CopyFile(file.c_str(), Bmp_Background.c_str(), false);
-                                PrintLog("[File] 复制文件 " + file + " 到 " + Bmp_Background, PL_INFO);
-                                IsBgImageRefresh = true;
-                                IsOpen = false;
-                            });
-                        th.detach();
+                        Text(config.UseChinese ? u8"X坐标" : "X Coordinate");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##BgOffsetX", &BgOffsetX, -100, 100, config.UseChinese ? u8"%d像素" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
+
+                        Text(config.UseChinese ? u8"Y坐标" : "Y Coordinate");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##BgOffsetY", &BgOffsetY, -100, 100, config.UseChinese ? u8"%d像素" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
+                    }
+
+                    Text(config.UseChinese ? u8"背景亮度" : "Y Coordinate");
+                    SameLine();
+                    SetNextItemWidth(300);
+                    SetCursorPosX(300);
+                    SliderInt(u8"##BgLightness", &BgLightness, 0, 100, u8"%d %", ImGuiSliderFlags_AlwaysClamp);
+
+                    Text(config.UseChinese ? u8"背景缩放" : "Background Scale");
+                    SameLine();
+                    SetNextItemWidth(300);
+                    SetCursorPosX(300);
+                    SliderInt(u8"##BgScale", &BgScale, 0, 300, u8"%d %", ImGuiSliderFlags_AlwaysClamp);
+
+                    static float bk_alph = GuiItemAlpha / 100.0f;
+                    PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, bk_alph));
+                    PushStyleColor(ImGuiCol_FrameBg, GetColorU32(ImGuiCol_FrameBg, bk_alph));
+                    PushStyleColor(ImGuiCol_SliderGrab, GetColorU32(ImGuiCol_SliderGrab, bk_alph));
+                    PushStyleColor(ImGuiCol_SliderGrabActive, GetColorU32(ImGuiCol_SliderGrabActive, bk_alph));
+                    {
+                        Text(config.UseChinese ? u8"GUI透明度" : "GUI Transparency");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##GuiItemAlpha", &GuiItemAlpha, 16, 100, "%d%", ImGuiSliderFlags_AlwaysClamp);
+                        if (!IsItemHovered())
+                            bk_alph = GuiItemAlpha / 100.0f;
+                    }
+                    PopStyleColor(4);
+
+                    Checkbox(config.UseChinese ? u8"自动调整图片大小" : "Auto Image Size", &BgAutoResize);
+
+                    Text(config.UseChinese ? u8"背景图片：" : "Background Image: ");
+                    SameLine();
+                    if (Button(config.UseChinese ? u8"选择文件" : "Select File"))
+                    {
+                        static bool IsOpen = false;
+                        if (!IsOpen)
+                        {
+                            thread th([]()
+                                {
+                                    IsOpen = true;
+                                    const string file = SelectFile("图片文件\0*.png;*.bmp;*.jpg\0\0");
+                                    CopyFile(file.c_str(), Bmp_Background.c_str(), false);
+                                    PrintLog("[File] 复制文件 " + file + " 到 " + Bmp_Background, PL_INFO);
+                                    IsBgImageRefresh = true;
+                                    IsOpen = false;
+                                });
+                            th.detach();
+                        }
                     }
                 }
+                EndCard();
 
                 EndTabItem();
             }
@@ -3576,7 +3601,11 @@ void RenderGui(ImGuiIO& io)
                             BeginDisabled(CurrentPaper <= 1);
                             {
                                 if (Button(config.UseChinese ? u8"上一页" : "Back"))
+                                {
                                     CurrentPaper--;
+                                    IsRefushList = false;
+                                    IsRefushSuccess = false;
+                                }
                             }
                             EndDisabled();
 
@@ -3587,7 +3616,11 @@ void RenderGui(ImGuiIO& io)
                             BeginDisabled(CurrentPaper >= TotalPaper);
                             {
                                 if (Button(config.UseChinese ? u8"下一页" : "Next"))
+                                {
                                     CurrentPaper++;
+                                    IsRefushList = false;
+                                    IsRefushSuccess = false;
+                                }
                             }
                             EndDisabled();
 
@@ -4550,11 +4583,42 @@ void RenderGui(ImGuiIO& io)
         }
     }
 
+    //=======================用户协议重新显示===========================
+    bool ForceOpen = IsNeedReshowAgreement; // 保证BeginPopupWindow一直开着，只能同意才能关闭
+    if (BeginPopupWindow(config.UseChinese ? u8"用户协议更新" : "Agreement Update", &ForceOpen))
+    {
+        BeginChild(u8"##ua_child", ImVec2(711, 260), true, ImGuiWindowFlags_HorizontalScrollbar);
+        SetWindowFontScale(0.8f);
+        Text(UserAgreement.c_str());
+        SetWindowFontScale(1.0f);
+        EndChild();
+
+        Text(config.UseChinese ? u8"&c本软件完全免费！！！\n&c如果你是购买的本软件，可以举报。" : "This software is completely free! \nIf you have purchased this software, you can report it.");
+
+        static bool IsCheck = false;
+        Checkbox(config.UseChinese ? u8"我已阅读并同意用户协议" : "I have read and agree to the user agreement", & IsCheck);
+
+        if (Button(config.UseChinese ? u8"不同意" : "Decline", ImVec2(70, 40)))
+            GCExit = true;
+        SameLine();
+        BeginDisabled(!IsCheck);
+        {
+            if (Button(config.UseChinese ? u8"同意" : " Next", ImVec2(70, 40)) && IsCheck)
+            {
+                IsNeedReshowAgreement = false;
+                thread th(SaveIni, IniPos);
+                th.detach();
+            }
+        }
+        EndDisabled();
+        EndPopupWindow();
+    }
+
     //-----------------------绘制标题栏图标---------------------------
     static const Texture2D image_texture = LoadTextureFromFile(Bmp_GCIcon);
 
     GetForegroundDrawList()->
-        AddImage((ImTextureID)image_texture, ImVec2(0, 0), ImVec2(32, 32));
+        AddImage((ImTextureID)image_texture, ImVec2(6, 6), ImVec2(26, 26));
 
     End();
 

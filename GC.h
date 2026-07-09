@@ -493,9 +493,11 @@ struct PopupWindow_element
 };
 bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
 {
-    ImGuiContext* g = GetCurrentContext();
-    ImGuiID id = GetID(name);
-    ImGuiIO& io = GetIO();
+    ImGuiWindow* window = GetCurrentWindow();
+    ImGuiContext& g = *GImGui;
+    const ImGuiStyle& style = g.Style;
+    const ImGuiIO& io = GetIO();
+    const ImGuiID id = GetID(name);
 
     const bool IsClose = p_open && !*p_open;
     static map <ImGuiID, PopupWindow_element> anim;
@@ -505,7 +507,7 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     
     const ImVec2 WindowPos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
     const int TagerPos = IsClose ? (io.DisplaySize.y - (size.y * 0.2)) : WindowPos.y;
-    const int TagerAlpha = IsClose ? 0 : 1;
+    const int TagerAlpha = IsClose ? 0 : 255;
 
     auto it_anim = anim.find(id);
     if (it_anim == anim.end())
@@ -518,8 +520,30 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     it_anim->second.pos = ImLerp(it_anim->second.pos, (float)TagerPos, speed);
     it_anim->second.alpha = ImLerp(it_anim->second.alpha, (float)TagerAlpha, speed);
 
-    PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, it_anim->second.alpha));
-    PushStyleColor(ImGuiCol_Border, GetColorU32(ImGuiCol_Border, it_anim->second.alpha));
+    const ImVec2 RenderPos(WindowPos.x, it_anim->second.pos);
+
+    // 背景阴影渲染
+    {
+        ImDrawList* draw_list = GetForegroundDrawList();
+        const int alpha = (it_anim->second.alpha / 255.0f) * 100; // 将0-255映射到0-100范围
+        const ImRect WindowRect = ImRect(RenderPos, ImVec2(RenderPos.x + size.x, RenderPos.y + size.y));
+        const ImU32 BgColor = GetColorU32((ImVec4)ImColor(5, 5, 5, alpha));
+        // 弹窗上方
+        draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, WindowRect.Min.y), BgColor);
+        // 弹窗下方
+        draw_list->AddRectFilled(ImVec2(0, WindowRect.Max.y), io.DisplaySize, BgColor);
+        // 弹窗左边
+        draw_list->AddRectFilled(ImVec2(0, WindowRect.Min.y), ImVec2(WindowRect.Min.x, WindowRect.Max.y), BgColor);
+        // 弹窗右边
+        draw_list->AddRectFilled(ImVec2(WindowRect.Max.x, WindowRect.Min.y), ImVec2(io.DisplaySize.x, WindowRect.Max.y), BgColor);
+    }
+
+    ImVec4 WindowColor = style.Colors[ImGuiCol_WindowBg];
+    WindowColor.w = it_anim->second.alpha / 255.0f;
+    PushStyleColor(ImGuiCol_WindowBg, WindowColor);
+    ImVec4 BorderColor = style.Colors[ImGuiCol_Border];
+    BorderColor.w = it_anim->second.alpha / 255.0f;
+    PushStyleColor(ImGuiCol_Border, BorderColor);
     PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
 
     static const ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
@@ -530,7 +554,7 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     PopStyleColor(2);
     PopStyleVar();//ImGuiStyleVar_WindowRounding
 
-    SetWindowPos(ImVec2(WindowPos.x, it_anim->second.pos));
+    SetWindowPos(RenderPos);
     SetWindowSize(size);
 
     if (IsClose && abs(it_anim->second.pos - TagerPos) < 35.0f)
@@ -1034,44 +1058,61 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     const bool IsExit = RetValueList[id] != -1;
     it_anim->second.size = ImLerp(it_anim->second.size, IsExit ? ImVec2(WindowSize.x - 80.0f, WindowSize.y - 80.0f) : WindowSize, AnimSizeSpeed);
     it_anim->second.alpha = ImLerp(it_anim->second.alpha, IsExit ? 0 : 255, AnimAlphaSpeed);
-    
-    ImDrawList* draw_list = GetBackgroundDrawList();
-    float alpha = it_anim->second.alpha / 255.0f;
-    draw_list->AddRectFilled(ImVec2(0, 0), io.DisplaySize, GetColorU32((ImVec4)ImColor(5, 5, 5, 100)));
+   
+    // 使用动画后的WindowSize，而不是WindowSize变量
+    const ImVec2 RenderPos((io.DisplaySize.x - it_anim->second.size.x) / 2, (io.DisplaySize.y - it_anim->second.size.y) / 2);
+    const ImVec2 RenderSize = it_anim->second.size;
 
-    PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, alpha));
-    PushStyleColor(ImGuiCol_Border, GetColorU32(ImGuiCol_Border, alpha));
+    // 背景阴影渲染
+    {
+        ImDrawList* draw_list = GetForegroundDrawList();
+        const int alpha = (it_anim->second.alpha / 255.0f) * 100; // 将0-255映射到0-100范围
+        const ImRect WindowRect = ImRect(RenderPos, ImVec2(RenderPos.x + RenderSize.x, RenderPos.y + RenderSize.y));
+        const ImU32 BgColor = GetColorU32((ImVec4)ImColor(5, 5, 5, alpha));
+        // 弹窗上方
+        draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, WindowRect.Min.y), BgColor);
+        // 弹窗下方
+        draw_list->AddRectFilled(ImVec2(0, WindowRect.Max.y), io.DisplaySize, BgColor);
+        // 弹窗左边
+        draw_list->AddRectFilled(ImVec2(0, WindowRect.Min.y), ImVec2(WindowRect.Min.x, WindowRect.Max.y), BgColor);
+        // 弹窗右边
+        draw_list->AddRectFilled(ImVec2(WindowRect.Max.x, WindowRect.Min.y), ImVec2(io.DisplaySize.x, WindowRect.Max.y), BgColor);
+    }
+
+    const float alpha = it_anim->second.alpha / 255.0f;
+    PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, 0)); // 这里不需要，使用下面的弹窗的背景
+    PushStyleColor(ImGuiCol_Border, GetColorU32(ImGuiCol_Border, 0));
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
 
     SetNextWindowFocus();
     Begin("##messagebox", NULL,
-        ImGuiWindowFlags_NoResize          |
-        ImGuiWindowFlags_NoMove            |
-        ImGuiWindowFlags_NoScrollbar       |
-        ImGuiWindowFlags_NoScrollWithMouse |
-        ImGuiWindowFlags_NoCollapse        |
-        ImGuiWindowFlags_NoTitleBar        |
+        ImGuiWindowFlags_NoResize          | ImGuiWindowFlags_NoMove            |
+        ImGuiWindowFlags_NoScrollbar       | ImGuiWindowFlags_NoScrollWithMouse |
+        ImGuiWindowFlags_NoCollapse        | ImGuiWindowFlags_NoTitleBar        |
         ImGuiWindowFlags_NoSavedSettings);
     {
-        SetWindowPos(ImVec2((io.DisplaySize.x - it_anim->second.size.x) / 2, (io.DisplaySize.y - it_anim->second.size.y) / 2));
-        SetWindowSize(it_anim->second.size);
+        SetWindowPos(RenderPos);
+        SetWindowSize(RenderSize);
 
         PopStyleColor(2);
         PopStyleVar(2);
 
-        ImVec2 windowPos = GetCursorScreenPos();
-        draw_list->AddRectFilled(windowPos, ImVec2(windowPos.x + it_anim->second.size.x, windowPos.y + it_anim->second.size.y), GetColorU32((ImVec4)ImColor(20, 20, 20, it_anim->second.alpha)));
-        draw_list->AddRectFilled(windowPos, ImVec2(windowPos.x + it_anim->second.size.x, windowPos.y + it_anim->second.size.y - 70), GetColorU32((ImVec4)ImColor(28, 28, 28, it_anim->second.alpha)));
-        
+        // 弹窗的背景对比渲染，上下一个黑一个亮，弹窗的阴影
+        ImDrawList* draw_list = GetWindowDrawList();
+        ImVec2 ScreenPos = GetCursorScreenPos();
+        const float TempY = ScreenPos.y + it_anim->second.size.y - 70;
+        draw_list->AddRectFilled(ImVec2(ScreenPos.x, TempY), ImVec2(ScreenPos.x + it_anim->second.size.x, ScreenPos.y + it_anim->second.size.y), GetColorU32((ImVec4)ImColor(20, 20, 20, it_anim->second.alpha))); // 下面
+        draw_list->AddRectFilled(ScreenPos, ImVec2(ScreenPos.x + it_anim->second.size.x, TempY), GetColorU32((ImVec4)ImColor(28, 28, 28, it_anim->second.alpha)));// 上面
+
         const float TextAlpha = it_anim->second.alpha / 255.0f;
         
         SetWindowFontScale(1.5f);
-        SetCursorPos({ 26, 30 });
+        SetCursorPos(ImVec2(26, 30));
         Text(title, TextAlpha);
         SetWindowFontScale(1.0f);
 
-        SetCursorPos({ 26, 72 });
+        SetCursorPos(ImVec2(26, 72));
         Text(message, TextAlpha);
 
         if (RetValueList[id] == -1)

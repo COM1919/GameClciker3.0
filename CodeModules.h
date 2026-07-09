@@ -19,12 +19,30 @@ inline ULONGLONG GetNowMs();
 string GetMachineCode();
 string GetPhysicalMacAddress();
 string GetDiskSerial();
+bool IsProcessElevated();
 string BytesToHex(const unsigned char* data, size_t len);
 bool IsContainsString(const string& str, const vector<string>& vec);
 void ExceptionHandling(DWORD code, string what);
 LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo);
 inline void BeginSleep(const char* flag);
 inline void EndSleep(const char* flag, int time);
+
+bool IsProcessElevated()
+{
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+        return false;
+
+    TOKEN_ELEVATION elevation = { 0 };
+    DWORD dwSize = 0;
+    BOOL bResult = FALSE;
+
+    if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize))
+        bResult = elevation.TokenIsElevated;
+
+    CloseHandle(hToken);
+    return bResult != FALSE;
+}
 
 string BytesToHex(const unsigned char* data, size_t len)
 {
