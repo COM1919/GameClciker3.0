@@ -413,8 +413,8 @@ bool InputKey(const char* label, int* key, const char* press_tip)
         goto defa;
     switch (*key)
         {
-        case 5: active_key = u8"鼠标前侧键"; break;
-        case 6: active_key = u8"鼠标后侧键"; break;
+        case 5: active_key = u8"鼠标后侧键"; break;
+        case 6: active_key = u8"鼠标前侧键"; break;
         case 1: active_key = u8"鼠标左键";   break;
         case 2: active_key = u8"鼠标右键";   break;
         case 3: active_key = u8"鼠标中键";   break;

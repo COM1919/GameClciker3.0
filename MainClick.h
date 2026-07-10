@@ -1,4 +1,4 @@
-ï»¿#pragma once
+#pragma once
 #include "ShareCode.h"
 #include "KeyState.h"
 #include "random.h"
@@ -16,7 +16,7 @@
 
 LRPair<float> ClickerDynamicDelay;
 
-bool SwitchMode_LClick = false;
+bool SwitchMode_LClick = false;// ¿ª¸öÄ£Ê½µÄÁÙÊ±±äÁ¿£¬½ö½öÓÃÓÚ¿ª¹ØÄ£Ê½µÄÁ¬µã¿ØÖÆ
 bool SwitchMode_RClick = false;
 
 POINT GetGameWindowCenter(HWND hwnd);
@@ -46,12 +46,12 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 		IsSearchState = MS_SEARCHING;
 		backup_hwnd = GameHwnd;
 
-		RenderTip(u8"2ç§’åå¼€å§‹å†…å­˜æœç´¢", 1.5f, PT_INFO);
+		RenderTip(u8"2Ãëºó¿ªÊ¼ÄÚ´æËÑË÷", 1.5f, PT_INFO);
 
 		Sleep(2000);
 
-		PrintLog("[MemSearch]å¼€å§‹å¯»æ‰¾ç‰©å“æ çš„æ•°å€¼åœ°å€", PL_INFO);
-		RenderTip(u8"å¼€å§‹å†…å­˜æœç´¢", 2.0f, PT_WARNING);
+		PrintLog("[MemSearch]¿ªÊ¼Ñ°ÕÒÎïÆ·À¸µÄÊıÖµµØÖ·", PL_INFO);
+		RenderTip(u8"¿ªÊ¼ÄÚ´æËÑË÷", 2.0f, PT_WARNING);
 		MessageBeep(MB_ICONINFORMATION);
 		void* address = 0;
 
@@ -63,23 +63,23 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 			mem.LoadProcess();
 			if (!mem.IsSuccess())
 			{
-				PrintLog("[MemSearch]åŠ è½½æ¸¸æˆè¿›ç¨‹å¤±è´¥ï¼", PL_ERROR);
-				RenderTip(u8"æ— æ³•æ‰“å¼€è¿›ç¨‹: " + to_string(GamePid), 2.0f, PT_ERROR);
+				PrintLog("[MemSearch]¼ÓÔØÓÎÏ·½ø³ÌÊ§°Ü£¡", PL_ERROR);
+				RenderTip(u8"ÎŞ·¨´ò¿ª½ø³Ì: " + to_string(GamePid), 2.0f, PT_ERROR);
 				IsSearchState = MS_ERROR;
 				IsMemSearch = false;
 				Sleep(100);
 				continue;
 			}
 
-			// å¼€å§‹å¯»æ‰¾åœ°å€
+			// ¿ªÊ¼Ñ°ÕÒµØÖ·
 			int value = 8;
 			SetKeyClick(config.ItemEnableClickerKey[value], 80);
 			Sleep(100);
 			int err = mem.SearchMemory(&value, sizeof(int));
 			if (err <= 0)
 			{
-				PrintLog("[MemSearch]ç¬¬ä¸€æ¬¡å†…å­˜æœç´¢å‡ºç°é”™è¯¯ï¼é”™è¯¯ä»£ç :" + to_string(err), PL_ERROR);
-				RenderTip(u8"ç¬¬ä¸€æ¬¡å†…å­˜æœç´¢å‡ºç°é”™è¯¯ï¼", 2.0f, PT_ERROR);
+				PrintLog("[MemSearch]µÚÒ»´ÎÄÚ´æËÑË÷³öÏÖ´íÎó£¡´íÎó´úÂë:" + to_string(err), PL_ERROR);
+				RenderTip(u8"µÚÒ»´ÎÄÚ´æËÑË÷³öÏÖ´íÎó£¡", 2.0f, PT_ERROR);
 				MessageBeep(MB_ICONERROR);
 				IsSearchState = MS_ERROR;
 				IsMemSearch = false;
@@ -89,7 +89,7 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 			int CountAgain = 0;
 			size_t size = results.size();
 			size_t LastSize = 0;
-			PrintLog("[MemSearch]ç¬¬ä¸€æ¬¡æœç´¢ç»“æœæ•°é‡: " + to_string(size), PL_INFO);
+			PrintLog("[MemSearch]µÚÒ»´ÎËÑË÷½á¹ûÊıÁ¿: " + to_string(size), PL_INFO);
 
 			while (size > 2 && MemSearchCount < 3)
 			{
@@ -102,8 +102,8 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 
 				if (GetForegroundWindow() != GameHwnd)
 				{
-					PrintLog("[MemSearch]æ¸¸æˆå·²çª—å£åˆ‡æ¢ï¼Œåœæ­¢å¯»æ‰¾ç‰©å“æ çš„æ•°å€¼åœ°å€ã€‚", PL_INFO);
-					RenderTip(u8"ä½ åœ¨æœç´¢ä¸­é€”åˆ‡æ¢äº†æ¸¸æˆçª—å£ï¼Œæœç´¢å¤±è´¥ã€‚", 2.0f, PT_ERROR);
+					PrintLog("[MemSearch]ÓÎÏ·ÒÑ´°¿ÚÇĞ»»£¬Í£Ö¹Ñ°ÕÒÎïÆ·À¸µÄÊıÖµµØÖ·¡£", PL_INFO);
+					RenderTip(u8"ÄãÔÚËÑË÷ÖĞÍ¾ÇĞ»»ÁËÓÎÏ·´°¿Ú£¬ËÑË÷Ê§°Ü¡£", 2.0f, PT_ERROR);
 					MessageBeep(MB_ICONERROR);
 					IsSearchState = MS_ERROR;
 					break;
@@ -115,16 +115,16 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 				int err = mem.SearchMemoryAgain(&value, sizeof(int));
 				if (err < 0)
 				{
-					PrintLog("[MemSearch]å†…å­˜æœç´¢ä¸­é€”å‡ºç°é”™è¯¯ï¼é”™è¯¯ä»£ç :" + to_string(err), PL_WARNING);
-					RenderTip(u8"åœ¨ç¬¬ " + to_string(CountAgain) + u8" å†…å­˜æœç´¢ä¸­é€”å‡ºç°é”™è¯¯ï¼\nå°†å°è¯•ç»§ç»­æœç´¢ã€‚", 2.0f, PT_WARNING);
+					PrintLog("[MemSearch]ÄÚ´æËÑË÷ÖĞÍ¾³öÏÖ´íÎó£¡´íÎó´úÂë:" + to_string(err), PL_WARNING);
+					RenderTip(u8"ÔÚµÚ " + to_string(CountAgain) + u8" ÄÚ´æËÑË÷ÖĞÍ¾³öÏÖ´íÎó£¡\n½«³¢ÊÔ¼ÌĞøËÑË÷¡£", 2.0f, PT_WARNING);
 					MessageBeep(MB_ICONWARNING);
 				}
 				else
 				{
 					results = mem.GetSearchResults();
 					size = results.size();
-					PrintLog("[MemSearch]å·²å®Œæˆå†…å­˜æœç´¢çš„ç¬¬ " + to_string(CountAgain) + " æ¬¡ï¼Œæœç´¢ç»“æœæ•°é‡:" + to_string(size), PL_INFO);
-					RenderTip(u8"å·²å®Œæˆç¬¬ " + to_string(CountAgain) + u8" æ¬¡æœç´¢ã€‚", 1.5f, PT_INFO);
+					PrintLog("[MemSearch]ÒÑÍê³ÉÄÚ´æËÑË÷µÄµÚ " + to_string(CountAgain) + " ´Î£¬ËÑË÷½á¹ûÊıÁ¿:" + to_string(size), PL_INFO);
+					RenderTip(u8"ÒÑÍê³ÉµÚ " + to_string(CountAgain) + u8" ´ÎËÑË÷¡£", 1.5f, PT_INFO);
 					MessageBeep(MB_ICONINFORMATION);
 				}
 				LastSize = size;
@@ -135,21 +135,21 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 				address = results[0];
 				char szAddress[64] = { 0 };
 				wsprintf(szAddress, "0x%p", address);
-				PrintLog("[MemSearch]å·²ç»æ‰¾åˆ°ç‰©å“æ çš„æ•°å€¼åœ°å€" + string(szAddress), PL_INFO);
-				RenderTip(u8"æœç´¢æˆåŠŸï¼", 2.0f, PT_INFO);
+				PrintLog("[MemSearch]ÒÑ¾­ÕÒµ½ÎïÆ·À¸µÄÊıÖµµØÖ·" + string(szAddress), PL_INFO);
+				RenderTip(u8"ËÑË÷³É¹¦£¡", 2.0f, PT_INFO);
 				MessageBeep(MB_ICONINFORMATION);
 				IsSearchState = MS_SUCCESS;
 			}
 			else
 			{
-				PrintLog("[MemSearch]æœªæ‰¾åˆ°ç‰©å“æ çš„æ•°å€¼åœ°å€ã€‚", PL_ERROR);
-				RenderTip(u8"æœªæ‰¾åˆ°ç‰©å“æ çš„æ•°å€¼åœ°å€ï¼Œæœç´¢å¤±è´¥ï¼", 2.0f, PT_ERROR);
+				PrintLog("[MemSearch]Î´ÕÒµ½ÎïÆ·À¸µÄÊıÖµµØÖ·¡£", PL_ERROR);
+				RenderTip(u8"Î´ÕÒµ½ÎïÆ·À¸µÄÊıÖµµØÖ·£¬ËÑË÷Ê§°Ü£¡", 2.0f, PT_ERROR);
 				MessageBeep(MB_ICONERROR);
 				IsSearchState = MS_ERROR;
 			}
 		}
 
-		PrintLog("[MemSearch]å¼€å§‹ç›‘æ§ç‰©å“æ ä½ç½®å†…å­˜ã€‚", PL_INFO);
+		PrintLog("[MemSearch]¿ªÊ¼¼à¿ØÎïÆ·À¸Î»ÖÃÄÚ´æ¡£", PL_INFO);
 		MemSearchCount = 0;
 		IsMemSearch = false;
 		while (!GCExit && IsSearchState != MS_ERROR)
@@ -169,15 +169,15 @@ DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
 			if (backup_hwnd != GameHwnd)
 			{
 				backup_hwnd = GameHwnd;
-				PrintLog("[MemSearch]æ¸¸æˆå·²çª—å£åˆ‡æ¢ï¼Œç­‰å¾…ç¡®å®šé‡æ–°æœç´¢ã€‚", PL_INFO);
-				RenderTip(u8"ä½ é‡æ–°é€‰æ‹©äº†æ¸¸æˆçª—å£ï¼Œéœ€è¦é‡æ–°æœç´¢ï¼", 4.0f, PT_WARNING);
+				PrintLog("[MemSearch]ÓÎÏ·ÒÑ´°¿ÚÇĞ»»£¬µÈ´ıÈ·¶¨ÖØĞÂËÑË÷¡£", PL_INFO);
+				RenderTip(u8"ÄãÖØĞÂÑ¡ÔñÁËÓÎÏ·´°¿Ú£¬ĞèÒªÖØĞÂËÑË÷£¡", 4.0f, PT_WARNING);
 				IsMemSearch = false;
 				break;
 			}
 			Sleep(MemSearchSleep);
 		}
 	}
-	PrintLog("[MemSearch]æ¸¸æˆå†…å­˜è¯»å–çº¿ç¨‹é€€å‡º", PL_INFO);
+	PrintLog("[MemSearch]ÓÎÏ·ÄÚ´æ¶ÁÈ¡Ïß³ÌÍË³ö", PL_INFO);
 	return 0;
 }
 */
@@ -203,13 +203,13 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		{
 			static ULONGLONG LastTime = GetTickCount64() + 3000;
 
-			if (LastTime <= GetTickCount64()) // 3ç§’ä¸€æ¬¡
+			if (LastTime <= GetTickCount64()) // 3ÃëÒ»´Î
 			{
-				// è‡ªåŠ¨æ¸…ç†æœ¬è¿›ç¨‹å†…å­˜
+				// ×Ô¶¯ÇåÀí±¾½ø³ÌÄÚ´æ
 				size_t MemSize = 0;
 				PROCESS_MEMORY_COUNTERS pmc;
 				if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
-					MemSize = pmc.WorkingSetSize / (1024 * 1024); // å•ä½è½¬æ¢ä¸ºMB
+					MemSize = pmc.WorkingSetSize / (1024 * 1024); // µ¥Î»×ª»»ÎªMB
 				if (MemSize > 240)
 					ClearProcessMemory();
 				LastTime = GetTickCount64() + 3000;
@@ -221,7 +221,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			IsClickerSuccess = false;
 			ReloadClicker = false;
 			
-			// æ²¡ä»€ä¹ˆç”¨ï¼Œä¿ç•™å°±è¡Œ
+			// Ã»Ê²Ã´ÓÃ£¬±£Áô¾ÍĞĞ
 			srand(time(NULL));
 
 			SaveIni(IniPos.c_str());
@@ -229,48 +229,48 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
 			ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
 			IsClickerSuccess = true;
-			PrintLog("[Clicker] é‡æ–°åŠ è½½è¿ç‚¹æˆåŠŸ", PL_INFO);
+			PrintLog("[Clicker] ÖØĞÂ¼ÓÔØÁ¬µã³É¹¦", PL_INFO);
 		}
 
-		// ä¸€äº›å¿«æ·é”®å¤„ç†
+		// Ò»Ğ©¿ì½İ¼ü´¦Àí
 		if (GetKeyClick(config.SetGameWindowKey))
 		{
 			GameHwnd = GetForegroundWindow();
-			PrintLog("[Clicker] å·²è®¾ç½®æ¸¸æˆçª—å£", PL_INFO);
+			PrintLog("[Clicker] ÒÑÉèÖÃÓÎÏ·´°¿Ú", PL_INFO);
 		}
 		if (GetKeyClick(config.HideClickerKey))
 		{
-			PrintLog("[Clicker] å·²éšè—GCçª—å£", PL_INFO);
+			PrintLog("[Clicker] ÒÑÒş²ØGC´°¿Ú", PL_INFO);
 			ShowWindow(GCHWND, SW_HIDE);
 		}
 		if (GetForegroundWindow() != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
 		{
 			GCExit = true;
-			PrintLog("[Clicker] ç¨‹åºé€€å‡ºï¼Œç”¨æˆ·æŒ‰ä¸‹äº†è‡ªæ¯é”®", PL_INFO);
+			PrintLog("[Clicker] ³ÌĞòÍË³ö£¬ÓÃ»§°´ÏÂÁË×Ô»Ù¼ü", PL_INFO);
 			return 0;
 		}
 
-		// ç»Ÿä¸€å¤„ç†IsOpenGuiå’ŒIsMoving
+		// Í³Ò»´¦ÀíIsOpenGuiºÍIsMoving
 		const bool IsJumping = GetKeyDown(VK_SPACE);
 		IsMoving = GetKeyDown('W') || GetKeyDown('S') || GetKeyDown('D') || GetKeyDown('A') || IsJumping;
 		{
-			// ç”¨0æ¥åˆå§‹åŒ–ï¼Œå¯åŠ¨äº†GCå°±ä¼šåˆå§‹åŒ–IsOpenGuiå’ŒIsCursorHiddençš„å†…éƒ¨
+			// ÓÃ0À´³õÊ¼»¯£¬Æô¶¯ÁËGC¾Í»á³õÊ¼»¯IsOpenGuiºÍIsCursorHiddenµÄÄÚ²¿
 			static ULONGLONG LastTime = 0;
-			// æ¯40msæ£€æµ‹ä¸€æ¬¡
+			// Ã¿40ms¼ì²âÒ»´Î
 			if (LastTime < GetTickCount64())
 			{
-				IsOpenGui = !IsCursorHidden(); // ä¸è¦å¿˜è®°æ„Ÿå¹å·ï¼ˆnotï¼‰ï¼Œå·²ç»å‡ºç°è¿‡ä¸€æ¬¡è¿™ä¸ªBUGäº†
+				IsOpenGui = !IsCursorHidden(); // ²»ÒªÍü¼Ç¸ĞÌ¾ºÅ£¨not£©£¬ÒÑ¾­³öÏÖ¹ıÒ»´ÎÕâ¸öBUGÁË
 				LastTime = GetTickCount64() + 40;
 			}
 		}
 
-		// ä»…ç§»åŠ¨è¿ç‚¹ & ä»…è·³è·ƒè¿ç‚¹
+		// ½öÒÆ¶¯Á¬µã & ½öÌøÔ¾Á¬µã
 		if (config.UseROnlyMoveClicker && config.AllowSetRClicker)
 		{
 			const bool Temp = IsClickering.right || IsMoving;
 			if (config.UseDisableMoveOnStopMove)
 				config.EnableRightClicker = IsMoving;
-			else if (VarHasChanged(Temp, "ClickerControl_Temp1")) // ä½¿ç”¨VarHasChangedé˜²æ­¢æ— æ³•æ‰‹åŠ¨å…³é—­æˆ–è€…å…¶ä»–æ§åˆ¶ï¼ˆé˜²æ­¢ä¸€ç›´å†™å˜é‡ï¼‰
+			else if (VarHasChanged(Temp, "ClickerControl_Temp1")) // Ê¹ÓÃVarHasChanged·ÀÖ¹ÎŞ·¨ÊÖ¶¯¹Ø±Õ»òÕßÆäËû¿ØÖÆ£¨·ÀÖ¹Ò»Ö±Ğ´±äÁ¿£©
 				config.EnableRightClicker = Temp;
 		}
 		if (config.UseLOnlyMoveClicker && config.AllowSetLClicker)
@@ -282,7 +282,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				config.EnableLeftClicker = Temp;
 		}
 
-		// GUIæ£€æµ‹ - æ³¨æ„å’Œï¼ˆä»…ç§»åŠ¨è¿ç‚¹ & ä»…è·³è·ƒè¿ç‚¹ï¼‰çš„é¡ºåºï¼ŒGUIæ£€æµ‹æƒé‡è¦å¤§ï¼Œæ‰€ä»¥æ”¾è¿™ä¸ªåé¢
+		// GUI¼ì²â - ×¢ÒâºÍ£¨½öÒÆ¶¯Á¬µã & ½öÌøÔ¾Á¬µã£©µÄË³Ğò£¬GUI¼ì²âÈ¨ÖØÒª´ó£¬ËùÒÔ·ÅÕâ¸öºóÃæ
 		if (config.UseGUIDetection && VarHasChanged(IsOpenGui, "IsOpenGui"))
 		{
 			if (config.AllowSetLClicker)
@@ -291,14 +291,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				config.EnableRightClicker = !IsOpenGui;
 		}
 		
-		// ç‰©å“æ æ£€æµ‹
+		// ÎïÆ·À¸¼ì²â
 		for (int i = 0; i < 9; i++)
 		{
 			if (GetKeyClick(config.ItemEnableClickerKey[i]))
 				ItemBarPos = i;
 		}
 
-		// ç‰©å“æ å¼€å…³ & ç‰©å“æ é¢„è®¾CPSåˆ‡æ¢
+		// ÎïÆ·À¸¿ª¹Ø & ÎïÆ·À¸Ô¤ÉèCPSÇĞ»»
 		if (config.UseItembarSwitch && VarHasChanged(ItemBarPos, "ItemBarPos"))
 		{
 			Clamp(ItemBarPos, 0, 8);
@@ -316,14 +316,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 
-		// ä»…è·³è·ƒè§¦å‘è¿ç‚¹
+		// ½öÌøÔ¾´¥·¢Á¬µã
 		const bool IsJumpHasChanged = VarHasChanged(IsJumping, "IsJumping");
 		if (IsJumpHasChanged && config.UseROnlyJumpClicker && !config.UseROnlyMoveClicker && config.AllowSetRClicker)
 			config.EnableRightClicker = IsJumping;
 		if (IsJumpHasChanged && config.UseLOnlyJumpClicker && !config.UseLOnlyMoveClicker && config.AllowSetLClicker)
 			config.EnableLeftClicker = IsJumping;
 
-		// å¿«é€Ÿåˆ‡æ¢CPS
+		// ¿ìËÙÇĞ»»CPS
 		for (int i = 0; i < config.QuickSwitchTotal; i++)
 		{
 			if (GetKeyClick(config.QuickSwitchKey[i]))
@@ -336,7 +336,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 
-		// CPSæ³¢åŠ¨
+		// CPS²¨¶¯
 		/*
 		static ULONGLONG LastRightTime = 0;
 		if (GetTickCount64() - LastRightTime >= 900)
@@ -394,7 +394,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		else
 			ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
 		
-		// è¿‡çƒ­ä¿æŠ¤
+		// ¹ıÈÈ±£»¤
 		if (config.UseOverheatProtec)
 		{
 			static ULONGLONG OverTime = GetTickCount64() + 100;
@@ -474,24 +474,24 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 
 		{
 			static ULONGLONG LastTime = GetTickCount64();
-			// RecordTimeä¸º1å°æ—¶
+			// RecordTimeÎª1Ğ¡Ê±
 			static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
 			if (GetTickCount64() - LastTime >= RecordTime)
-				app_status.UseTime += 0.1; // 10ç§’
+				app_status.UseTime += 0.1; // 10Ãë
 		}
-		//å¤„ç†æº¢å‡º(æ²¡ç”¨ï¼Œ+0.1ï¼Œä¸€ç™¾å¹´éƒ½åˆ°ä¸äº†)
+		//´¦ÀíÒç³ö(Ã»ÓÃ£¬+0.1£¬Ò»°ÙÄê¶¼µ½²»ÁË)
 		//if (LMouseClickCount >= LDBL_MAX - 2) LMouseClickCount = 0;
 		/*
-		* å…³äºäººç±»åœ¨æ‰“æ¸¸æˆæ—¶ç‚¹å‡»é¼ æ ‡çš„æ¬¡æ•°ï¼Œæ ¹æ®ä¸åŒçš„æ•°æ®æºï¼Œç»“æœæœ‰æ‰€ä¸åŒã€‚ä»¥ä¸‹æ˜¯ä¸€äº›ç›¸å…³çš„ä¿¡æ¯ï¼š
-		* 1. æ™®é€šäººä½¿ç”¨é¼ æ ‡çš„æ—¥å¸¸ç‚¹å‡»æ¬¡æ•°å¤§çº¦æ˜¯1000æ¬¡å·¦å³ã€‚å¦‚æœæ˜¯ç”¨äºåŠå…¬æˆ–ç©æ¸¸æˆï¼Œè¿™ä¸ªæ•°å­—å¯èƒ½ä¼šå¢åŠ 1.5åˆ°2å€ï¼Œå¤§çº¦åœ¨1500æ¬¡å·¦å³ã€‚
-		* 2. åœ¨ç©æ¸¸æˆæ—¶ï¼Œæ­£å¸¸äººçš„æ‰‹é€Ÿå¤§çº¦æ˜¯æ¯ç§’5åˆ°8æ¬¡ï¼Œè¿™åŒ…æ‹¬é¼ æ ‡ç‚¹å‡»å’Œé”®ç›˜æ•²å‡»ã€‚ç‰¹åˆ«æ˜¯åœ¨ç©å³æ—¶æˆ˜ç•¥æ¸¸æˆå¦‚æ˜Ÿé™…äº‰éœ¸æˆ–é­”å…½äº‰éœ¸æ—¶ï¼Œæ¯åˆ†é’Ÿæ“ä½œæ•°ï¼ˆAPMï¼‰å¯ä»¥è¾¾åˆ°110å·¦å³ï¼Œè¿™åæ˜ äº†ç©å®¶çš„æ“ä½œé€Ÿåº¦ã€‚
-		* 3. å¯¹äºä¸“ä¸šç©å®¶æ¥è¯´ï¼ŒAPMï¼ˆæ¯åˆ†é’Ÿæ“ä½œæ•°ï¼‰é€šå¸¸åœ¨350åˆ°400æ¬¡å·¦å³ï¼Œè¿™æ„å‘³ç€å¹³å‡æ¯ç§’å¤§çº¦æœ‰6åˆ°7æ¬¡é¼ æ ‡ç‚¹å‡»å’Œé”®ç›˜æ•²å‡»ã€‚
-		* åŸºäºè¿™äº›æ•°æ®ï¼Œæˆ‘ä»¬å¯ä»¥ä¼°ç®—ï¼Œå¦‚æœä¸€ä¸ªç©å®¶æ¯å¤©ç©æ¸¸æˆ10å°æ—¶ï¼Œæ¯åˆ†é’Ÿç‚¹å‡»é¼ æ ‡350æ¬¡ï¼Œé‚£ä¹ˆä¸€å¤©å†…çš„ç‚¹å‡»æ¬¡æ•°å°†æ˜¯350æ¬¡/åˆ†é’Ÿ Ã— 60åˆ†é’Ÿ/å°æ—¶ Ã— 10å°æ—¶/å¤© = 210,000æ¬¡ã€‚è¿™æ ·çš„ç‚¹å‡»é¢‘ç‡ä¸‹ï¼Œ
-		* unsigned long long ç±»å‹ï¼ˆé€šå¸¸ä¸º64ä½ï¼Œæœ€å¤§å€¼çº¦ä¸º18,446,744,073,709,551,615ï¼‰ä¼šåœ¨å¤§çº¦ 86,542,663.67 å¤©åæº¢å‡ºã€‚
-		* è¿™è¿œè¿œè¶…è¿‡äº†å®é™…å¯èƒ½çš„æ¸¸æˆæ—¶é—´ï¼Œå› æ­¤åœ¨ä½¿ç”¨ unsigned long long ç±»å‹è®°å½•é¼ æ ‡ç‚¹å‡»æ¬¡æ•°æ—¶ï¼Œæº¢å‡ºçš„é£é™©éå¸¸ä½ã€‚
+		* ¹ØÓÚÈËÀàÔÚ´òÓÎÏ·Ê±µã»÷Êó±êµÄ´ÎÊı£¬¸ù¾İ²»Í¬µÄÊı¾İÔ´£¬½á¹ûÓĞËù²»Í¬¡£ÒÔÏÂÊÇÒ»Ğ©Ïà¹ØµÄĞÅÏ¢£º
+		* 1. ÆÕÍ¨ÈËÊ¹ÓÃÊó±êµÄÈÕ³£µã»÷´ÎÊı´óÔ¼ÊÇ1000´Î×óÓÒ¡£Èç¹ûÊÇÓÃÓÚ°ì¹«»òÍæÓÎÏ·£¬Õâ¸öÊı×Ö¿ÉÄÜ»áÔö¼Ó1.5µ½2±¶£¬´óÔ¼ÔÚ1500´Î×óÓÒ¡£
+		* 2. ÔÚÍæÓÎÏ·Ê±£¬Õı³£ÈËµÄÊÖËÙ´óÔ¼ÊÇÃ¿Ãë5µ½8´Î£¬Õâ°üÀ¨Êó±êµã»÷ºÍ¼üÅÌÇÃ»÷¡£ÌØ±ğÊÇÔÚÍæ¼´Ê±Õ½ÂÔÓÎÏ·ÈçĞÇ¼ÊÕù°Ô»òÄ§ÊŞÕù°ÔÊ±£¬Ã¿·ÖÖÓ²Ù×÷Êı£¨APM£©¿ÉÒÔ´ïµ½110×óÓÒ£¬Õâ·´Ó³ÁËÍæ¼ÒµÄ²Ù×÷ËÙ¶È¡£
+		* 3. ¶ÔÓÚ×¨ÒµÍæ¼ÒÀ´Ëµ£¬APM£¨Ã¿·ÖÖÓ²Ù×÷Êı£©Í¨³£ÔÚ350µ½400´Î×óÓÒ£¬ÕâÒâÎ¶×ÅÆ½¾ùÃ¿Ãë´óÔ¼ÓĞ6µ½7´ÎÊó±êµã»÷ºÍ¼üÅÌÇÃ»÷¡£
+		* »ùÓÚÕâĞ©Êı¾İ£¬ÎÒÃÇ¿ÉÒÔ¹ÀËã£¬Èç¹ûÒ»¸öÍæ¼ÒÃ¿ÌìÍæÓÎÏ·10Ğ¡Ê±£¬Ã¿·ÖÖÓµã»÷Êó±ê350´Î£¬ÄÇÃ´Ò»ÌìÄÚµÄµã»÷´ÎÊı½«ÊÇ350´Î/·ÖÖÓ ¡Á 60·ÖÖÓ/Ğ¡Ê± ¡Á 10Ğ¡Ê±/Ìì = 210,000´Î¡£ÕâÑùµÄµã»÷ÆµÂÊÏÂ£¬
+		* unsigned long long ÀàĞÍ£¨Í¨³£Îª64Î»£¬×î´óÖµÔ¼Îª18,446,744,073,709,551,615£©»áÔÚ´óÔ¼ 86,542,663.67 ÌìºóÒç³ö¡£
+		* ÕâÔ¶Ô¶³¬¹ıÁËÊµ¼Ê¿ÉÄÜµÄÓÎÏ·Ê±¼ä£¬Òò´ËÔÚÊ¹ÓÃ unsigned long long ÀàĞÍ¼ÇÂ¼Êó±êµã»÷´ÎÊıÊ±£¬Òç³öµÄ·çÏÕ·Ç³£µÍ¡£
 		*/
 
-		// ä»…é™æ¸¸æˆä¸­è¿ç‚¹
+		// ½öÏŞÓÎÏ·ÖĞÁ¬µã
 		if (config.UseInGameOnlyClicker)
 		{
 			HWND hwnd = GetForegroundWindow();
@@ -507,13 +507,13 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 
-		// å¼ºåˆ¶å¼€å…³è¿ç‚¹ - è¿™ä¸ªæƒé‡å¤§äºä¸€åˆ‡
+		// Ç¿ÖÆ¿ª¹ØÁ¬µã - Õâ¸öÈ¨ÖØ´óÓÚÒ»ÇĞ
 		if (GetKeyClick(config.EnableRightClickerKey))
 			config.EnableRightClicker = !config.EnableRightClicker;
 		if (GetKeyClick(config.EnableLeftClickerKey))
 			config.EnableLeftClicker = !config.EnableLeftClicker;
 
-		// æ’­æ”¾å¼€å¯æˆ–è€…å…³é—­çš„æç¤ºéŸ³
+		// ²¥·Å¿ªÆô»òÕß¹Ø±ÕµÄÌáÊ¾Òô
 		if (VarHasChanged(config.EnableRightClicker, "config.EnableRightClicker"))
 		{
 			if (config.EnableRightClicker) PlayEnableSound();
@@ -527,7 +527,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 
 		Sleep(10);
 	}
-	PrintLog("[Clicker]è¿ç‚¹æ§åˆ¶çº¿ç¨‹é€€å‡º", PL_INFO);
+	PrintLog("[Clicker]Á¬µã¿ØÖÆÏß³ÌÍË³ö", PL_INFO);
 	return 0;
 }
 
@@ -554,23 +554,23 @@ POINT UseMouseShakeAlgorithm(POINT& view, POINT center)
 		if (view.x > config.MouseShakeRect)  view.x = config.MouseShakeRect;
 		if (view.y > config.MouseShakeRect)  view.y = config.MouseShakeRect;
 
-		// è®¡ç®—éšæœºèŒƒå›´
+		// ¼ÆËãËæ»ú·¶Î§
 		POINT min = { -(view.x + config.MouseShakeRect), -(view.y + config.MouseShakeRect) };
 		POINT max = { config.MouseShakeRect - view.x, config.MouseShakeRect - view.y };
 
-		// è®¾ç½®éšæœºåçš„åæ ‡
+		// ÉèÖÃËæ»úºóµÄ×ø±ê
 		points = {
 			Random(min.x, max.x, config.MouseShake_RandomGen, config.MouseShake_RandomDist),
 			Random(min.y, max.y, config.MouseShake_RandomGen, config.MouseShake_RandomDist)
 		};
 		MousePos = { center.x + points.x, center.y + points.y };
-		// è®¾ç½®è§†è§’ï¼ŒåŠ ä¸Šåç§»
+		// ÉèÖÃÊÓ½Ç£¬¼ÓÉÏÆ«ÒÆ
 		view.x += points.x;
 		view.y += points.y;
 	}
 	else
 	{
-		// è®¾ç½®éšæœºåçš„åæ ‡
+		// ÉèÖÃËæ»úºóµÄ×ø±ê
 		MousePos = {
 			Random(ShakeRect.left, ShakeRect.right, config.MouseShake_RandomGen, config.MouseShake_RandomDist),
 			Random(ShakeRect.top, ShakeRect.bottom, config.MouseShake_RandomGen, config.MouseShake_RandomDist)
@@ -611,7 +611,7 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 			if (!moving)
 				AnimPos = pt;
 
-			// ä¸èƒ½ä½¿ç”¨ç›¸å¯¹åæ ‡(è®¾ç½®ä¸­å¿ƒä¸º0)æ¥ä¸€ç‚¹é¼ æ ‡ï¼Œå› ä¸ºanimeä¼šå¯¼è‡´ç§»åŠ¨å¤šæ¬¡ï¼Œå› ä¸ºSendInputç§»åŠ¨æ˜¯ç›¸å¯¹ä½ç½®
+			// ²»ÄÜÊ¹ÓÃÏà¶Ô×ø±ê(ÉèÖÃÖĞĞÄÎª0)À´Ò»µãÊó±ê£¬ÒòÎªanime»áµ¼ÖÂÒÆ¶¯¶à´Î£¬ÒòÎªSendInputÒÆ¶¯ÊÇÏà¶ÔÎ»ÖÃ
 			MousePos = UseMouseShakeAlgorithm(view, pt);
 			moving = true;
 		}
@@ -654,7 +654,7 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 		}
 		EndSleep("MousShake", 1000 / 60);
 	}
-	PrintLog("[Clicker] é¼ æ ‡æŠ–åŠ¨çº¿ç¨‹é€€å‡º", PL_INFO);
+	PrintLog("[Clicker] Êó±ê¶¶¶¯Ïß³ÌÍË³ö", PL_INFO);
 	return 0;
 }
 
@@ -668,20 +668,20 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 	LRPair<deque<ULONGLONG>> HumanTimeList;
 	while (!GCExit)
 	{
-		// ç»¼åˆç»Ÿè®¡CPSï¼ŒåŒ…æ‹¬è¿ç‚¹å™¨å’Œäººç±»ç‚¹å‡»
+		// ×ÛºÏÍ³¼ÆCPS£¬°üÀ¨Á¬µãÆ÷ºÍÈËÀàµã»÷
 		//if (IsHumanClick.left || IsClickerDown.left)
-		if (GetKeyClick(VK_LBUTTON))
+		if (GetKeyClick(VK_LBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.left))
 		{
 			CurrentCPS.left++;
 			AllTimeList.left.push_back(GetNowMs() + 1000);
 		}
 		//if (IsHumanClick.right || IsClickerDown.right)
-		if (GetKeyClick(VK_RBUTTON))
+		if (GetKeyClick(VK_RBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.right))
 		{
 			CurrentCPS.right++;
 			AllTimeList.right.push_back(GetNowMs() + 1000);
 		}
-		// ç»Ÿè®¡å®é™…äººç±»ç‚¹å‡»çš„CPSï¼Œå¿½ç•¥è¿ç‚¹å™¨
+		// Í³¼ÆÊµ¼ÊÈËÀàµã»÷µÄCPS£¬ºöÂÔÁ¬µãÆ÷
 		//if (IsHumanClick.left)
 		if (GetKeyClick(VK_LBUTTON, true))
 		{
@@ -699,7 +699,7 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 			HumanTimeList.right.push_back(GetNowMs() + 1000);
 		}
 
-		// è¿ç‚¹å™¨CPS è¡°å‡è®¡ç®—
+		// Á¬µãÆ÷CPS Ë¥¼õ¼ÆËã
 		if (AllTimeList.left.size() > 0)
 		{
 			if (GetNowMs() >= AllTimeList.left[0])
@@ -716,7 +716,7 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 				AllTimeList.right.erase(AllTimeList.right.begin());
 			}
 		}
-		// äººç±»CPS è¡°å‡è®¡ç®—
+		// ÈËÀàCPS Ë¥¼õ¼ÆËã
 		if (HumanTimeList.left.size() > 0)
 		{
 			if (GetNowMs() >= HumanTimeList.left[0])
@@ -766,11 +766,11 @@ LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam)
 		{
 			case WM_MOUSEWHEEL:
 			{
-				if (!IsOpenGui && GetForegroundWindow() != GCHWND) // ä¸€å®šè¦åŠ ä¸Šåˆ¤æ–­IsOpenGuiï¼Œè¿™æ˜¯è¯¯å·®äº§ç”Ÿçš„åŸå› ï¼
+				if (!IsOpenGui && GetForegroundWindow() != GCHWND) // Ò»¶¨Òª¼ÓÉÏÅĞ¶ÏIsOpenGui£¬ÕâÊÇÎó²î²úÉúµÄÔ­Òò£¡
 				{
 					MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
 					int wheelDelta = GET_WHEEL_DELTA_WPARAM(pMouseStruct->mouseData) / WHEEL_DELTA;
-					ItemBarPos -= wheelDelta; // è¿™é‡Œä¸éœ€è¦%ï¼Œå› ä¸ºä¸‹é¢ä¼šå¤„ç†
+					ItemBarPos -= wheelDelta; // ÕâÀï²»ĞèÒª%£¬ÒòÎªÏÂÃæ»á´¦Àí
 					if (ItemBarPos < 0)
 						ItemBarPos += 9;
 					else
@@ -800,18 +800,18 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
-			// ä¼˜å…ˆçº§å¤„ç†
+			// ÓÅÏÈ¼¶´¦Àí
 			if (config.ClickerPriorityMode == CP_LC && IsClickering.left)
 			{
 				Sleep(config.MainClickSleep);
 				continue;
 			}
-			//=========================================é»˜è®¤æ¨¡å¼=========================================
+			//=========================================Ä¬ÈÏÄ£Ê½=========================================
 			if (config.RClickerMode & C_BUTTONMODE && !(config.RClickerMode & C_SWITCHMODE))
 			{
 				const bool IsKeyPressed = GetKeyDown(config.RKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
-				// è¿ç‚¹é—´éš”ä¸“å±å˜é‡
+				// Á¬µã¼ä¸ô×¨Êô±äÁ¿
 				bool IsDelayEnd = false;
 				if (!IsKeyPressed && LastTime != 0)
 					LastTime = 0;
@@ -850,7 +850,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				else
 					IsClickering.right = false;
 			}
-			//=========================================é¼ æ ‡æ¨¡å¼=========================================
+			//=========================================Êó±êÄ£Ê½=========================================
 			if (config.RClickerMode & C_MOUSESMODE && !(config.RClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static bool IsDownMouse = false;
@@ -907,10 +907,10 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				}
 				else IsClickering.right = false;
 			}
-			//=========================================å¼€å…³æ¨¡å¼=========================================
+			//=========================================¿ª¹ØÄ£Ê½=========================================
 			if (config.RClickerMode & C_SWITCHMODE && !(config.RClickerMode & C_BUTTONMODE))
 			{
-				// è¿™ä¸ªæ¨¡å¼ç‰¹æ®Šä¸€ç‚¹
+				// Õâ¸öÄ£Ê½ÌØÊâÒ»µã
 				const bool IsTrigger = SwitchMode_RClick;
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsTrigger;
 				bool IsDelayEnd = false;
@@ -953,11 +953,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				else
 					IsClickering.right = false;
 			}
-			//=========================================è¾…åŠ©æ¨¡å¼=========================================
+			//=========================================¸¨ÖúÄ£Ê½=========================================
 			if (config.RClickerMode & C_ASSISTMODE && !(config.RClickerMode & C_MOUSESMODE))
 			{
-				// è¾…åŠ©æ¨¡å¼æ²¡æœ‰è¿ç‚¹é—´éš™ä¹Ÿæ²¡æœ‰å»¶è¿Ÿå¯åŠ¨
-				// ä¸ä½¿ç”¨HumanCPSæ˜¯å› ä¸ºé˜²æ­¢è¯¯å…³é—­ï¼Œé—¨é™CPSåªéœ€è¦åˆ¤æ–­å¼€å§‹çš„
+				// ¸¨ÖúÄ£Ê½Ã»ÓĞÁ¬µã¼äÏ¶Ò²Ã»ÓĞÑÓ³ÙÆô¶¯
+				// ²»Ê¹ÓÃHumanCPSÊÇÒòÎª·ÀÖ¹Îó¹Ø±Õ£¬ÃÅÏŞCPSÖ»ĞèÒªÅĞ¶Ï¿ªÊ¼µÄ
 				const bool IsClicker = CurrentCPS.right >= config.AssistModeCPSThreshold;
 				const int ClickDealy = (1000 / max(HumanCPS.right, 1)) / max(config.RMultipleClickValue, 1);
 				const bool IsClickKey = GetKeyClick(2, true, config.ReadKeyStateMode);
@@ -974,7 +974,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						IsClickering.right = true;
 						if (config.UseRPressInterval)
 						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
-					SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
 						EndSleep("RightClicker", ClickerDynamicDelay.right);
@@ -986,11 +986,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			}
 		label_rc_end:
 			BeginSleep("RightClicker");
-			if (!IsClickering.right || !config.EnableRightClicker || !SwitchMode_RClick)
+			if (!IsClickering.right || !config.EnableRightClicker || ((config.RClickerMode & C_SWITCHMODE) && !SwitchMode_RClick))
 				Sleep(config.MainClickSleep);
 		}
 	}
-	PrintLog("[Clicker]å³é”®è¿ç‚¹çº¿ç¨‹é€€å‡º", PL_INFO);
+	PrintLog("[Clicker]ÓÒ¼üÁ¬µãÏß³ÌÍË³ö", PL_INFO);
 	return 0;
 }
 
@@ -1011,13 +1011,13 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
-			// ä¼˜å…ˆçº§å¤„ç†
+			// ÓÅÏÈ¼¶´¦Àí
 			if (config.ClickerPriorityMode == CP_RC && IsClickering.right)
 			{
 				Sleep(config.MainClickSleep);
 				continue;
 			}
-			//=========================================é»˜è®¤æ¨¡å¼=========================================
+			//=========================================Ä¬ÈÏÄ£Ê½=========================================
 			if (config.LClickerMode & C_BUTTONMODE && !(config.LClickerMode & C_SWITCHMODE))
 			{
 				const bool IsKeyPressed = GetKeyDown(config.LKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
@@ -1060,7 +1060,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				}
 				else IsClickering.left = false;
 			}
-			//=========================================é¼ æ ‡æ¨¡å¼=========================================
+			//=========================================Êó±êÄ£Ê½=========================================
 			if (config.LClickerMode & C_MOUSESMODE && !(config.LClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static bool IsDownMouse = false;
@@ -1118,7 +1118,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				}
 				else IsClickering.left = false;
 			}
-			//=========================================å¼€å…³æ¨¡å¼=========================================
+			//=========================================¿ª¹ØÄ£Ê½=========================================
 			if (config.LClickerMode & C_SWITCHMODE && !(config.LClickerMode & C_BUTTONMODE))
 			{
 				const bool IsTrigger = SwitchMode_LClick;
@@ -1164,12 +1164,12 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				}
 				else IsClickering.left = false;
 			}
-			//=========================================è¾…åŠ©æ¨¡å¼=========================================
+			//=========================================¸¨ÖúÄ£Ê½=========================================
 			if (config.LClickerMode & C_ASSISTMODE && !(config.LClickerMode & C_MOUSESMODE))
 			{
-				// è¾…åŠ©æ¨¡å¼æ²¡æœ‰è¿ç‚¹é—´éš™ä¹Ÿæ²¡æœ‰å»¶è¿Ÿå¯åŠ¨
+				// ¸¨ÖúÄ£Ê½Ã»ÓĞÁ¬µã¼äÏ¶Ò²Ã»ÓĞÑÓ³ÙÆô¶¯
 				const bool IsClicker = CurrentCPS.left >= config.AssistModeCPSThreshold;
-				// ClickDealyçš„CPSä¿æŒåœ¨AssistModeMinCPSä»¥ä¸Šï¼Œé˜²æ­¢CurrentCPSå¤ªä½å¯¼è‡´è¿ç‚¹æ—¶é—´è¿‡é•¿
+				// ClickDealyµÄCPS±£³ÖÔÚAssistModeMinCPSÒÔÉÏ£¬·ÀÖ¹CurrentCPSÌ«µÍµ¼ÖÂÁ¬µãÊ±¼ä¹ı³¤
 				const int ClickDealy = (1000 / max(HumanCPS.left, 1)) / max(config.LMultipleClickValue, 1);
 				const bool IsClickKey = GetKeyClick(1, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
 				if (!IsClicker && LastTime != 0)
@@ -1197,10 +1197,10 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			}
 		label_lc_end:
 			BeginSleep("LeftClicker");
-			if (!config.EnableLeftClicker || !IsClickering.left || SwitchMode_LClick)
+			if (!IsClickering.left || !config.EnableLeftClicker || ((config.RClickerMode & C_SWITCHMODE) && !SwitchMode_LClick))
 				Sleep(config.MainClickSleep);
 		}
 	}
-	PrintLog("[Clicker]å·¦é”®è¿ç‚¹çº¿ç¨‹é€€å‡º", PL_INFO);
+	PrintLog("[Clicker]×ó¼üÁ¬µãÏß³ÌÍË³ö", PL_INFO);
 	return 0;
 }

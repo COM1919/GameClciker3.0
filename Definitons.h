@@ -213,7 +213,7 @@ public:
     vector<int> LCPSChangeTrendList;        //左键CPS变化趋势列表
     float OverheatTime = 5;                 //过热时长
     float OHPTimerTimeLossSpeed = 0.1f;     //过热时长减少速度
-    int SimulateClickMode = SC_POST_MESSAGE;//模拟点击模式
+    int SimulateClickMode = SC_MOUSE_EVENT; //模拟点击模式
     int ReadKeyStateMode = GK_BOTH;         //获取按键状态模式
     int ClickerPriorityMode = CP_NONE;      //左右键连点的优先级模式
    
@@ -350,6 +350,7 @@ struct ScriptInfo
     string file;
     string texture;// 图片的文件路径
     string title;
+    string link;
     HANDLE hThread{};
     vector<string> RestrictedFuncs;
     string RestrictedFuncsStr;
@@ -388,9 +389,9 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.39";          //版本号
-string title = "GAMECLICKER 3.39";      //标题名字
-const int ConfigVersion = 3;            //配置文件版本号
+const string version = "3.40";          //版本号
+string title = "GAMECLICKER 3.40";      //标题名字
+const int ConfigVersion = 4;            //配置文件版本号
 const int AgreementVersion = 1;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
@@ -401,7 +402,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
 //#define GC_REMOTE_DEBUG               //是否使用远程调试
-#define GC_MORE_DEBUG_INFO              //更多详细调试信息
+//#define GC_MORE_DEBUG_INFO            //更多详细调试信息
 //#define GC_NO_MSGBOX                  //禁用消息弹窗
 //#define GC_SERVER_DEBUG               //是否开启服务器通讯调试
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
@@ -435,7 +436,6 @@ const string ConfigDownloadFile = HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\
 const string ZipFileName =        HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\\gc.zip"      : "C:\\GameClicker\\GCDownloadFile\\gc.zip";
 const string IniFileVeision =     HasD_Drive ? "D:\\GameClicker\\Version.dat"                 : "C:\\GameClicker\\Version.dat";
 const string TempFile =           HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\\temp.dat"    : "C:\\GameClicker\\GCDownloadFile\\temp.dat";
-const string IniPosBackup =       HasD_Drive ? "D:\\GameClicker\\BackupSettings.ini"          : "C:\\GameClicker\\BackupSettings.ini";
 const string GCFollowBatFile =    HasD_Drive ? "D:\\GameClicker\\GC Follow.bat"               : "C:\\GameClicker\\GC Follow.bat";
 const string GameGuiFile =        "GameGui.exe";
 const string StatsRegPath =       "Software\\GameClicker\\Stats";

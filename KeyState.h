@@ -15,7 +15,7 @@ struct KeyEvent
 {
 	int vk;
 	bool isDown;
-	bool isInjected; // ‰∫∫Á±ªÁÇπÂáª
+	bool isInjected; // »À¿‡µ„ª˜
 };
 array<KeyState, 256> KeyStateMap;
 
@@ -109,7 +109,7 @@ LRESULT CALLBACK KeyStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		/*
 		KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
 		KeyEvent ks;
-		ks.isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; // ÊòØÂê¶ÊòØ‰∫∫Á±ªÊåâ‰∏ã
+		ks.isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; //  «∑Ò «»À¿‡∞¥œ¬
 		ks.vk = pKeyBoard->vkCode;
 		ks.isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
 		for (auto it : KeyStateCallbackList)
@@ -121,7 +121,7 @@ LRESULT CALLBACK KeyStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		int vk = pKeyBoard->vkCode;
 		if (vk > 0 && vk < 256)
 		{
-			KeyStateMap[vk].isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; // ÊòØÂê¶ÊòØ‰∫∫Á±ªÊåâ‰∏ã
+			KeyStateMap[vk].isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; //  «∑Ò «»À¿‡∞¥œ¬
 			KeyStateMap[vk].state = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
 		}
 	}
@@ -146,7 +146,7 @@ LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		if (ks.vk != -1)
 		{
 			MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-			ks.isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // ÊòØÂê¶ÊòØ‰∫∫Á±ªÊåâ‰∏ã
+			ks.isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; //  «∑Ò «»À¿‡∞¥œ¬
 			for (auto it : KeyStateCallbackList)
 			{
 				if (it.cb)
@@ -167,7 +167,7 @@ LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		if (vk > 0 && vk < 256)
 		{
 			MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-			KeyStateMap[vk].isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // ÊòØÂê¶ÊòØ‰∫∫Á±ªÊåâ‰∏ã
+			KeyStateMap[vk].isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; //  «∑Ò «»À¿‡∞¥œ¬
 			KeyStateMap[vk].state = isDown;
 		}
 	}
@@ -260,8 +260,18 @@ void SetKeyDown(int key, int mode)
 	{
 	case SC_MOUSE_EVENT:
 	{
-		if (key == Click::Left || key == Click::Right)
-			mouse_event((key == Click::Left) ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
+		if (key < 7)
+		{
+			DWORD dwFlags = 0;
+			switch (key)
+			{
+			case Click::Left: dwFlags = MOUSEEVENTF_LEFTDOWN; break;
+			case Click::Right: dwFlags = MOUSEEVENTF_RIGHTDOWN; break;
+			case VK_MBUTTON: dwFlags = MOUSEEVENTF_MIDDLEDOWN; break;
+			default: return; // keyŒﬁ–ß£¨÷±Ω”∑µªÿ
+			}
+			mouse_event(dwFlags, 0, 0, 0, 0);
+		}
 		else
 			keybd_event(key, 0, 0, 0);
 		break;
@@ -269,12 +279,33 @@ void SetKeyDown(int key, int mode)
 	default:
 	case SC_SEND_INPUT:
 	{
-		INPUT input{};
-		input.type = (key == Click::Left || key == Click::Right) ? INPUT_MOUSE : INPUT_KEYBOARD;
-
-		input.ki.wVk = key;
-		input.ki.dwFlags = 0;
-		SendInput(1, &input, sizeof(INPUT));
+		if (key < 7) //  Û±Í
+		{
+			DWORD dwFlags = 0;
+			switch (key)
+			{
+			case Click::Left:   dwFlags = MOUSEEVENTF_LEFTDOWN; break;
+			case Click::Right:  dwFlags = MOUSEEVENTF_RIGHTDOWN; break;
+			case VK_MBUTTON:    dwFlags = MOUSEEVENTF_MIDDLEDOWN; break;
+			default: return;
+			}
+			INPUT input = {};
+			input.type = INPUT_MOUSE;
+			input.mi.dwFlags = dwFlags;
+			SendInput(1, &input, sizeof(INPUT));
+		}
+		else // º¸≈Ã
+		{
+			INPUT inputs[2] = {};
+			// ∞¥œ¬
+			inputs[0].type = INPUT_KEYBOARD;
+			inputs[0].ki.wVk = key;
+			//  Õ∑≈£®»Áπ˚ƒ„–Ë“™∂¿¡¢ Õ∑≈£¨ø…∞— Õ∑≈∑≈‘⁄ SetKeyUp ÷–£©
+			inputs[1].type = INPUT_KEYBOARD;
+			inputs[1].ki.wVk = key;
+			inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+			SendInput(2, inputs, sizeof(INPUT));
+		}
 		break;
 	}
 	case SC_POST_MESSAGE:
@@ -296,45 +327,86 @@ void SetKeyDown(int key, int mode)
 	}
 	}
 }
-
 void SetKeyUp(int key, int mode)
 {
 	switch (mode)
 	{
 	case SC_MOUSE_EVENT:
 	{
-		if (key == Click::Left || key == Click::Right)
-			mouse_event((key == Click::Left) ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+		if (key < 7)
+		{
+			DWORD dwFlags = 0;
+			switch (key)
+			{
+			case Click::Left:   dwFlags = MOUSEEVENTF_LEFTUP;   break;
+			case Click::Right:  dwFlags = MOUSEEVENTF_RIGHTUP;  break;
+			case VK_MBUTTON:    dwFlags = MOUSEEVENTF_MIDDLEUP; break;
+			default: return;
+			}
+			mouse_event(dwFlags, 0, 0, 0, 0);
+		}
 		else
+		{
 			keybd_event(key, 0, KEYEVENTF_KEYUP, 0);
+		}
 		break;
 	}
+
 	default:
 	case SC_SEND_INPUT:
 	{
-		INPUT input{};
-		input.type = (key == Click::Left || key == Click::Right) ? INPUT_MOUSE : INPUT_KEYBOARD;
-
-		input.ki.wVk = key;
-		input.ki.dwFlags = KEYEVENTF_KEYUP;
-		SendInput(1, &input, sizeof(INPUT));
+		if (key < 7)
+		{
+			DWORD dwFlags = 0;
+			switch (key)
+			{
+			case Click::Left:   dwFlags = MOUSEEVENTF_LEFTUP;   break;
+			case Click::Right:  dwFlags = MOUSEEVENTF_RIGHTUP;  break;
+			case VK_MBUTTON:    dwFlags = MOUSEEVENTF_MIDDLEUP; break;
+			default: return;
+			}
+			INPUT input = {};
+			input.type = INPUT_MOUSE;
+			input.mi.dwFlags = dwFlags;
+			SendInput(1, &input, sizeof(INPUT));
+		}
+		else  // º¸≈Ã Õ∑≈
+		{
+			INPUT input = {};
+			input.type = INPUT_KEYBOARD;
+			input.ki.wVk = key;
+			input.ki.dwFlags = KEYEVENTF_KEYUP;
+			SendInput(1, &input, sizeof(INPUT));
+		}
 		break;
 	}
+
 	case SC_POST_MESSAGE:
 	{
 		HWND hwnd = GetForegroundWindow();
+		if (!hwnd) return;
+
 		if (key == Click::Left || key == Click::Right)
 		{
 			POINT point;
 			GetCursorPos(&point);
 			ScreenToClient(hwnd, &point);
-			if (key == Click::Left)
-				PostMessage(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y));
-			else
-				PostMessage(hwnd, WM_RBUTTONUP, 0, MAKELPARAM(point.x, point.y));
+			UINT msg = (key == Click::Left) ? WM_LBUTTONUP : WM_RBUTTONUP;
+			PostMessage(hwnd, msg, 0, MAKELPARAM(point.x, point.y));
 		}
-		else
-			PostMessage(hwnd, WM_KEYUP, key, 0);
+		else  // º¸≈Ã Õ∑≈
+		{
+			// ππ‘Ï±Í◊º WM_KEYUP µƒ lParam
+			LPARAM lParam = 0;
+			// bit 29-24: …®√Ë¬Î£®ø…”√ MapVirtualKey ªÒ»°£©
+			UINT scanCode = MapVirtualKey(key, MAPVK_VK_TO_VSC);
+			lParam |= (scanCode << 16);
+			// bit 30: ‘≠º¸◊¥Ã¨£® Õ∑≈«∞¥¶”⁄∞¥œ¬◊¥Ã¨£¨…ËŒ™ 1£©
+			lParam |= (1 << 30);
+			// bit 31: …œœ¬Œƒ¬Î£®“ª∞„Œ™ 0£©
+			// ∆‰À˚Œª‘›≤ª…Ë÷√£®¿©’πº¸–Ë“™∂ÓÕ‚≈–∂œ£¨¥À¥¶ºÚªØ£©
+			PostMessage(hwnd, WM_KEYUP, key, lParam);
+		}
 		break;
 	}
 	}
@@ -344,8 +416,18 @@ void SetKeyClick(int key, int sleep, int mode)
 {
 	if (sleep <= 0 && mode == SC_SEND_INPUT)
 	{
+		if (key == Click::Left)
+		{
+			app_status.ClickerClickCount.left++;
+			IsClickerDown.left = true;
+		}
+		else if (key == Click::Right)
+		{
+			app_status.ClickerClickCount.right++;
+			IsClickerDown.right = true;
+		}
 		INPUT input[2]{};
-		int type = (key == Click::Left || key == Click::Right) ? INPUT_MOUSE : INPUT_KEYBOARD;
+		int type = (key < 7) ? INPUT_MOUSE : INPUT_KEYBOARD;
 		
 		input[0].type = type;
 		input[0].ki.wVk = key;

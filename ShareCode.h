@@ -734,6 +734,17 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 			title = buffer;
 			script.ver = GetPrivateProfileInt("script", "ver", 1, InfoFile.c_str());
 			
+			GetPrivateProfileString("script", "link", "", buffer, MAX_BUF, InfoFile.c_str());
+			if (strlen(buffer) > 0)
+			{
+				script.link = buffer;
+				if (script.link.empty() || script.link.find("https://") == string::npos)
+					script.link.clear();
+#ifdef GC_MORE_DEBUG_INFO
+				PrintLog("[Script] 脚本" + script.name + "的链接为：" + script.link, PL_INFO);
+#endif
+			}
+
 			delete[] buffer;
 			buffer = nullptr;
 		}

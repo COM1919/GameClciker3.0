@@ -626,17 +626,17 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 			HasChanged.right = true;
 
 		const bool LeftClickerClick = HasChanged.left && IsClickerDown.left;
-		if (GetKeyClick(1, true, GK_HOOK) || LeftClickerClick)
+		if (GetKeyClick(1, false, GK_HOOK) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.left))
 			PlayWithVariation(CurrentMouseSource["1"]);
 		const bool RightClickerClick = HasChanged.right && IsClickerDown.right;
-		if (GetKeyClick(2, true, GK_HOOK) || RightClickerClick)
+		if (GetKeyClick(2, false, GK_HOOK) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.left))
 			PlayWithVariation(CurrentMouseSource["2"]);
 
 		const bool LeftClickerUp = HasChanged.left && !IsClickerDown.left;
-		if (GetKeyUp(1, true, GK_HOOK) || LeftClickerUp)
+		if (GetKeyUp(1, false, GK_HOOK) || LeftClickerUp)
 			PlayWithVariation(CurrentMouseSource["01"]);
 		const bool RightClickerUp = HasChanged.right && !IsClickerDown.left;
-		if (GetKeyUp(2, true, GK_HOOK) || RightClickerUp)
+		if (GetKeyUp(2, false, GK_HOOK) || RightClickerUp)
 			PlayWithVariation(CurrentMouseSource["02"]);
 
 		Sleep(config.MouseSoundSleep);

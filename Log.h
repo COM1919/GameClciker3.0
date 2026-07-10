@@ -15,17 +15,85 @@ static void SetConsoleColor(WORD color)
 }
 #endif // GC_DEBUG_CMD
 
-string LogFilePath;
+struct LogItem
+{
+    string str;
+    UINT type;
+    time_t time;
+    LogItem(const string& str, UINT type, time_t time) : str(str), type(type), time(time) {}
+};
 
-inline void SetLogFile(const string& filename);
-void PrintLog(const string& ch, UINT type);
+static string LogFilePath;
+
+shared_mutex LogQueueMtx;
+static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
+
+void InitLogSystem(const string& filename);
+void PrintLog(const string& str, UINT type);
 static ULONGLONG GetFolderSize(const string& FolderPath);
 static string FormatTime(time_t time);
+static void WriteLogThread();
 DWORD WINAPI DeleteOldLog(LPVOID lpParam);
 
-inline void SetLogFile(const string& filename)
+void InitLogSystem(const string& filename)
 {
     LogFilePath = filename;
+    thread th(WriteLogThread);
+    th.detach();
+}
+
+static void WriteLogThread()
+{
+    while (true)
+    {
+        if (LogQueue.size() > 0)
+        {
+            UINT type;
+            string str;
+            time_t now;
+            {
+                // 写入锁
+                shared_lock<shared_mutex> lock(LogQueueMtx);
+                type = LogQueue.front().type;
+                str = LogQueue.front().str;
+                now = LogQueue.front().time;
+                LogQueue.pop_front();
+            }
+
+            string TypeStr = (type == PL_INFO) ? "info" : ((type == PL_WARNING) ? "warning" : "error");
+            string TimeStr = FormatTime(now);
+
+            static fstream fLog(LogFilePath);
+            const string text = "[" + TimeStr + "] " + TypeStr + " : " + str + "\n";
+            fLog << text;
+            fLog.flush();
+
+#ifdef GC_DEBUG_VS
+            OutputDebugString(text.c_str());
+#endif // GC_DEBUG_VS
+
+#ifdef GC_DEBUG_CMD
+            switch (type)
+            {
+            case PL_INFO:
+                SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+                break;
+            case PL_WARNING:
+                SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_RED);
+                break;
+            case PL_ERROR:
+                SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+                break;
+            }
+
+            cout << text;
+            cout.flush();
+#endif // GC_DEBUG_CMD
+            Sleep(5);
+        }
+        else
+            Sleep(50); // 空闲时每秒20次
+    }
 }
 
 static string FormatTime(time_t time)
@@ -48,38 +116,11 @@ static string FormatTime(time_t time)
     return TimeStr;
 }
 
-void PrintLog(const string& ch, UINT type)
+void PrintLog(const string& str, UINT type)
 {
-	string TypeStr = (type == PL_INFO) ? "info" : ((type == PL_WARNING) ? "warning" : "error");
-	time_t now = time(0);
-    string TimeStr = FormatTime(now);
-
-	static fstream fLog(LogFilePath);
-	string text = "[" + TimeStr + "] " + TypeStr + " : " + ch + "\n";
-	fLog << text;
-	fLog.flush();
-
-#ifdef GC_DEBUG_VS
-	OutputDebugString(text.c_str());
-#endif // GC_DEBUG_VS
-
-#ifdef GC_DEBUG_CMD
-	switch (type)
-	{
-		case PL_INFO:
-			SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-			break;
-		case PL_WARNING:
-			SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_RED);
-			break;
-		case PL_ERROR:
-			SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-			break;
-	}
-
-	cout << text;
-	cout.flush();
-#endif // GC_DEBUG_CMD
+	// 写入锁
+    shared_lock<shared_mutex> lock(LogQueueMtx);
+    LogQueue.push_back(LogItem(str, type, time(0)));
 }
 
 static ULONGLONG GetFolderSize(const string& FolderPath)

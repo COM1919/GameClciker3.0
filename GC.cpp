@@ -139,7 +139,7 @@ int GCMainLoop()
 #ifdef GC_DEBUG_CMD
     if (!AllocConsole())
     {
-        OutputDebugString("[Init]无法分配控制台窗口");
+        OutputDebugString("[Init] 无法分配控制台窗口");
         return -2;
     }
     // 设置标准输入输出错误句柄到新控制台
@@ -154,7 +154,7 @@ int GCMainLoop()
     SetWindowPos(ConsoleHwnd, NULL, 0, 0, rect.right - rect.left + 100, rect.bottom - rect.top + 20, SWP_NOMOVE);
 #endif // GC_DEBUG_CMD
 
-    SetLogFile(LogFile);
+    InitLogSystem(LogFile); // 初始化日志系统，启动日志线程
 
     cout << "[彩蛋] 你是怎么看到我的呢，好难猜啊\n这么闲的吗？" << endl;
 
@@ -190,27 +190,12 @@ int GCMainLoop()
 
     if (_access(IniPath.c_str(), 0) != 0)
         CreateDirectory(IniPath.c_str(), NULL);
-
-    if (_access(ScriptShopDir.c_str(), 0) != 0)
-        CreateDirectory(ScriptShopDir.c_str(), NULL);
-
-    // 一定要在GetIni之前，这样储存的才是默认配置
-    SaveIni(IniPosBackup);
-
     GetIni(IniPos);
 
     if (_access(LogPath.c_str(), 0) != 0)
         CreateDirectory(LogPath.c_str(), NULL);
     if (_access(ShaderLogFile.c_str(), 0) != 0)
         CreateFile(ShaderLogFile);
-    if (_access(ScriptTemp.c_str(), 0) != 0)
-        CreateFile(ScriptTemp);
-    if (_access(ScriptShopTemp.c_str(), 0) != 0)
-        CreateDirectory(ScriptShopTemp.c_str(), NULL);
-    if (_access(Sound_KeybdPath.c_str(), 0) != 0)
-        CreateDirectory(Sound_KeybdPath.c_str(), NULL);
-    if (_access("D:\\GameClicker\\sound", 0) != 0)
-        DeleteDirectory("D:\\GameClicker\\sound");
     if (_access(Tmp_TempPath.c_str(), 0) != 0)
         CreateDirectory(Tmp_TempPath.c_str(), NULL);
 
@@ -392,19 +377,21 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     // 安装的脚本会在配置文件读取的函数中，获取到
     //RefreshScriptList(InstallScriptList, InstallTextureList, InstallScriptInfo, InstallScriptName);
     if (_access(DownloadPos.c_str(), 0) != 0)
-    {
         CreateDirectory(DownloadPos.c_str(), NULL);
-        PrintLog("[File] Download目录不存在，已创建", PL_WARNING);
-    }
     if (_access(ScriptPath.c_str(), 0) != 0)
     {
         CreateDirectory(ScriptPath.c_str(), NULL);
-
         InstalledScripts.clear();
         LuaStates.clear();
-
-        PrintLog("[File] Script目录不存在，已创建", PL_WARNING);
     }
+    if (_access(ScriptPath.c_str(), 0) != 0)
+        CreateDirectory(ScriptPath.c_str(), NULL);
+    if (_access(ScriptTemp.c_str(), 0) != 0)
+        CreateDirectory(ScriptTemp.c_str(), NULL);
+    if (_access(Sound_KeybdPath.c_str(), 0) != 0)
+        CreateDirectory(Sound_KeybdPath.c_str(), NULL);
+    if (_access("D:\\GameClicker\\sound", 0) != 0)
+        DeleteDirectory("D:\\GameClicker\\sound");
 
     string ver;
     char* buffer = new char[MAX_BUF];
@@ -461,15 +448,18 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     // 允许拖拽文件到窗口
     DragAcceptFiles(GCHWND, true);
 
-    if (DeleteDirectory(ScriptShopDir))
+    // 在RefushScriptList之前删除
+    if (DeleteDirectory(ScriptShopDir) && DeleteDirectory(ScriptShopTemp))
         PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
     else
         PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
-    // 在RefushScriptList之前删除
     if (DeleteDirectory(ScriptTemp))
         PrintLog("[File] 删除脚本临时文件成功！", PL_INFO);
     else
         PrintLog("[File] 删除脚本临时文件失败！", PL_ERROR);
+    CreateDirectory(ScriptShopDir.c_str(), NULL); // 注意顺序
+    CreateDirectory(ScriptShopTemp.c_str(), NULL);
+    CreateDirectory(ScriptTemp.c_str(), NULL);
     RefushScriptList();
 
     while (!IsCreateWindowSussce)
@@ -1715,8 +1705,8 @@ void RenderGui(ImGuiIO& io)
                     //-------------------------左右优先级--------------------------
                     static const array<const char*, 3> ClickerPriorityListText = {
                         (config.UseChinese ? u8"无" : "None"),
-                        (config.UseChinese ? u8"左键连点优先" : "RC Highter Priority"),
-                        (config.UseChinese ? u8"右键连点优先" : "LC Highter Priority")
+                        (config.UseChinese ? u8"右键连点优先" : "RC Highter Priority"),
+                        (config.UseChinese ? u8"左键连点优先" : "LC Highter Priority")
                     };
                     Text(config.UseChinese ? u8"左右优先级" : "AC Priority");
                     SetNextItemWidth(146);
@@ -3561,13 +3551,27 @@ void RenderGui(ImGuiIO& io)
                                     Text(script.title.c_str());
                                     SameLine();
                                     {
-                                        const string VersionStr = to_string(script.ver);
+                                        const string VersionStr = (config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver);
                                         const ImVec2 SteSize = CalcTextSize(VersionStr.c_str());
                                         SetCursorPosX(680 - 6 - SteSize.x);
                                         Text(VersionStr.c_str());
                                     }
                                     SameLine();
-                                    SetCursorPosX(pos2.x + (script.IsHasUpdate ? 480 - 48 - 6 : 480));
+                                    const bool HasRightLink = (!script.link.empty() && script.link.find("https://") != string::npos);
+                                    const float x = pos2.x + (script.IsHasUpdate ? 480 - 48 - 6 : 480);
+                                    SetCursorPosX(HasRightLink ? x - 72 : x);
+
+                                    if (HasRightLink)
+                                    {
+                                        if (Button(config.UseChinese ? u8"相关链接" : "Related Links"))
+                                        {
+                                            thread th([=]() {
+                                                ShellExecute(NULL, NULL, script.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                                            });
+                                            th.detach();
+                                        }
+                                        SameLine();
+                                    }
 
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Bmp_Download);
                                     if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(32, 32)))
@@ -3595,9 +3599,6 @@ void RenderGui(ImGuiIO& io)
                                 count++;
                             }
 
-                            const float ChildBottomPos = GetWindowPos().y + GetWindowHeight();
-                            if (GetCursorPosY() < ChildBottomPos)
-                                SetCursorPosY(ChildBottomPos);
                             BeginDisabled(CurrentPaper <= 1);
                             {
                                 if (Button(config.UseChinese ? u8"上一页" : "Back"))
@@ -3675,7 +3676,7 @@ void RenderGui(ImGuiIO& io)
                                 Text(script.title.c_str());
                                 SameLine();
                                 {
-                                    const string VersionStr = to_string(script.ver);
+                                    const string VersionStr = (config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver);
                                     const ImVec2 SteSize = CalcTextSize(VersionStr.c_str());
                                     SetCursorPosX(680 - 6 - SteSize.x);
                                     Text(VersionStr.c_str());
@@ -3690,13 +3691,13 @@ void RenderGui(ImGuiIO& io)
                                         SetCursorPosY(16);
                                         if (Button(config.UseChinese ? u8"更新" : "Update", ImVec2(48, 32)))
                                         {
-                                            thread FuncThread([&]() {
+                                            thread FuncThread([=]() { // 不要使用&，因为script作为for的变量，会改变
                                                 const string filename = ScriptShopDir + "\\" + script.name + ".gcdat";
                                                 const string target = ScriptPath + "\\" + script.name + ".zip";
                                                 if (CopyFile(filename.c_str(), target.c_str(), false))
                                                     RenderTip(config.UseChinese ? (script.name + u8"更新成功") : (script.title + " Update Success"), 2.0f, PT_INFO);
                                                 else
-                                                    RenderTip(config.UseChinese ? (script.name + u8"更新失败") : (script.title + " Update Failed"), 2.0f, PT_INFO);
+                                                    RenderTip(config.UseChinese ? (script.name + u8"更新失败") : (script.title + " Update Failed"), 2.0f, PT_ERROR);
                                                 RefushScriptList(); // 刷新
                                                 });
                                             FuncThread.detach();
@@ -3963,7 +3964,7 @@ void RenderGui(ImGuiIO& io)
                                 lock_guard<shared_mutex> lock2(ScriptStatesMtx);
                                 ScriptStates[filename].IsSuspend = false;
                             }
-                            PrintLog("[Script]已保存脚本配置：" + filename, PL_INFO);
+                            PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
                         }
 
                         EndPopupWindow();

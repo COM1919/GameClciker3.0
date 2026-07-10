@@ -514,11 +514,28 @@ HANDLE StartScript(const string& file)
 
             int ret = 0;
             {
+                // 写入锁
                 lock_guard<mutex> run_lock(lua->RunningMtx);
                 ret = CalledScriptFunction(lua->lua, "main");
             }
             if (ret != 0)
+            {
+                // 在 已安装 中，删除当前脚本
+                // 写入锁
+                lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                int count = 0;
+                for (const ScriptInfo& s : InstalledScripts)
+                {
+                    if (s.file == file)
+                    {
+                        InstalledScripts.erase(InstalledScripts.begin() + count);
+                        break;
+                    }
+                    count++;
+                }
+
                 break;
+            }
             Sleep(LoopDelay);
         }
         PrintLog("脚本线程退出：" + file, PL_INFO);

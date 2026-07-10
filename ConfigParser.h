@@ -82,6 +82,7 @@ void ClearFile(const string& fileName)
 
 void SaveIni(const string& file)
 {
+	PrintLog("[Config] 写入配置文件：" + file, PL_INFO);
 	const char* CIniPos = file.c_str();
 	if (_access(file.c_str(), 0) != 0)
 		CreateFile(file);
@@ -341,25 +342,27 @@ void SaveIni(const string& file)
 
 void GetIni(const string& file)
 {
+	PrintLog("[Config] 读取配置文件：" + file, PL_INFO);
 	const char* CIniPos = file.c_str();
 	char* buffer = new char[MAX_BUF];
 	string st;
 
 	//配置文件版本号
 	GetPrivateProfileString("Config", "Version", "-1", buffer, MAX_BUF, CIniPos);
-	int ver = stoi(buffer);
-	GetPrivateProfileString("Config", "AgreementVersion", "-1", buffer, MAX_BUF, CIniPos);
-	ver = stoi(buffer);
-	if (ver != AgreementVersion)
-		IsNeedReshowAgreement = true;
-
-	if (ver != ConfigVersion)
+	int ver1 = stoi(buffer);
+	if (ver1 != ConfigVersion)
 	{
 		DelFile(file);
 		CreateFile(file);
 		SaveIni(file);
 	}
-	if (_access(CIniPos, 0) == 0 && ver == ConfigVersion)
+
+	GetPrivateProfileString("Config", "AgreementVersion", "-1", buffer, MAX_BUF, CIniPos);
+	int ver2 = stoi(buffer);
+	if (ver2 != AgreementVersion)
+		IsNeedReshowAgreement = true;
+
+	if (_access(CIniPos, 0) == 0 && ver1 == ConfigVersion)
 	{
 		// BasicSettings section
 		config.LKEY                     = GetPrivateProfileInt("BasicSettings", "leftKeyShortcut", config.LKEY, CIniPos);
