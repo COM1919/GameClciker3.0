@@ -646,54 +646,60 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 
 LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0 && (config.UseKeybdSound || config.UseMouseSound) && SoundIsOpen)
+	if (nCode >= 0)
 	{
-		switch (wParam)
+		if ((config.UseKeybdSound || config.UseMouseSound) && SoundIsOpen)
 		{
-			case DBT_DEVICEREMOVECOMPLETE:
+			switch (wParam)
 			{
-				PDEV_BROADCAST_HDR pHdr = (PDEV_BROADCAST_HDR)lParam;
-				if (pHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
+				case DBT_DEVICEREMOVECOMPLETE:
 				{
-					PDEV_BROADCAST_DEVICEINTERFACE pDevInf = (PDEV_BROADCAST_DEVICEINTERFACE)pHdr;
-					if (IsEqualGUID(pDevInf->dbcc_classguid, GUID_DEVINTERFACE_VOLUME) && wParam == DBT_DEVICEARRIVAL)
+					PDEV_BROADCAST_HDR pHdr = (PDEV_BROADCAST_HDR)lParam;
+					if (pHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
 					{
-						thread th([]() {
-							PrintLog("[Sound]默认音频设备被切换，正在重新打开音频设备", PL_INFO);
-							RenderTip(config.UseChinese ? u8"正在切换音频设备" : "Switching audio device", 3.0f, PT_INFO);
-							SoundIsOpen = false;
-							ShutdownOpenAL();
-							Sleep(1000);
-							InitOpenAL();
-							SoundIsOpen = true;
-							});
-						th.detach();
+						PDEV_BROADCAST_DEVICEINTERFACE pDevInf = (PDEV_BROADCAST_DEVICEINTERFACE)pHdr;
+						if (IsEqualGUID(pDevInf->dbcc_classguid, GUID_DEVINTERFACE_VOLUME) && wParam == DBT_DEVICEARRIVAL)
+						{
+							thread th([]() {
+								PrintLog("[Sound] 默认音频设备被切换，正在重新打开音频设备", PL_INFO);
+								RenderTip(config.UseChinese ? u8"正在切换音频设备" : "Switching audio device", 3.0f, PT_INFO);
+								SoundIsOpen = false;
+								ShutdownOpenAL();
+								Sleep(1000);
+								InitOpenAL();
+								SoundIsOpen = true;
+								});
+							th.detach();
+						}
 					}
+					break;
 				}
-				break;
 			}
-		}
-		if (config.UseKeybdSound)
-		{
-			// 钩子线程没有 OpenAL context，需要手动设置；已设置则跳过
-			if (g_pALContext && alcGetCurrentContext() != g_pALContext)
-				alcMakeContextCurrent(g_pALContext);
-
-			KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-
-			// 只处理按下，不处理松开
-			if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
-				return CallNextHookEx(NULL, nCode, wParam, lParam);
-
-			// flags bit30 == 1 表示这是长按/重复触发的 WM_KEYDOWN，跳过
-			if (pKeyBoard->flags & (1 << 30))
-				return CallNextHookEx(NULL, nCode, wParam, lParam);
-
-			int vk = pKeyBoard->vkCode;
-			if (vk > 0 && vk < 256)
+			if (config.UseKeybdSound)
 			{
-				if (CurrentKeybdSource[vk] > 0)
-					alSourcePlay(CurrentKeybdSource[vk]);
+				if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+					alcMakeContextCurrent(g_pALContext);
+
+				KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
+				int vk = pKeyBoard->vkCode;
+				if (vk < 0 || vk >= 256)
+					return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+				static bool KeyPhysicalState[256] = { false };
+
+				if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
+				{
+					// 只有当前物理状态为 false（之前确实没有按下）时，才触发声音
+					if (!KeyPhysicalState[vk])
+					{
+						KeyPhysicalState[vk] = true;// 标记为已按下
+						if (CurrentKeybdSource[vk] > 0)
+							alSourcePlay(CurrentKeybdSource[vk]);
+					}
+					// 如果KeyPhysicalState[vk]已经是true，直接忽略（无论系统 flags 是什么）
+				}
+				else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+					KeyPhysicalState[vk] = false;
 			}
 		}
 	}

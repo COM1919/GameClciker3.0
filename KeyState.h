@@ -8,14 +8,8 @@ enum Click
 };
 struct KeyState
 {
-	bool state;
-	bool isInjected;
-};
-struct KeyEvent
-{
-	int vk;
 	bool isDown;
-	bool isInjected; // 人类点击
+	bool isHumanDown;
 };
 array<KeyState, 256> KeyStateMap;
 
@@ -27,102 +21,20 @@ bool GetKeyClick(int key, bool only_human = false, int mode = GK_API);
 void SetKeyDown(int key, int mode = SC_POST_MESSAGE);
 void SetKeyUp(int key, int mode = SC_POST_MESSAGE);
 void SetKeyClick(int key, int sleep = 20, int mode = SC_POST_MESSAGE);
-/*
-using KeyStateCallback = void(*)(KeyEvent, void*);
-struct KeyStateEntry
-{
-	void* instance;
-	KeyStateCallback cb;
-};
-vector<KeyStateEntry> KeyStateCallbackList;
 
-class KeyStateManager
-{
-private:
-	array<KeyState, 256> isNowDown{};
-	array<KeyState, 256> isClick{};
-	array<KeyState, 256> isReleased{};
-
-	void OnKeyEvent(int vk, bool isDown, bool isInjected)
-	{
-		if (vk < 0 || vk >= 256)
-			return;
-
-		KeyState prev = isNowDown[vk];
-		isNowDown[vk].state = isDown;
-		isNowDown[vk].isInjected = isInjected;
-		bool injected = isInjected || prev.isInjected;
-		if (isDown && !prev.state)
-		{
-			isClick[vk].isInjected = injected;
-			isClick[vk].state = true;
-		}
-		if (!isDown && prev.state)
-		{
-			isReleased[vk].isInjected = injected;
-			isReleased[vk].state = true;
-		}
-		cout << "asd" << endl;
-	}
-	static void StaticForward(KeyEvent e, void* instance)
-	{
-		((KeyStateManager*)instance)->OnKeyEvent(e.vk, e.isDown, e.isInjected);
-	}
-public:
-	KeyStateManager()
-	{
-		KeyStateCallbackList.push_back({ this, &StaticForward });
-	}
-	~KeyStateManager()
-	{
-		auto it = find_if(KeyStateCallbackList.begin(), KeyStateCallbackList.end(), [&](KeyStateEntry& h) {
-			return h.cb == StaticForward && h.instance == this;
-			});
-		if (it != KeyStateCallbackList.end())
-			KeyStateCallbackList.erase(it);
-	}
-
-	inline bool IsVkInRange     (int vk)const{return vk >= 0         && vk;                                                 }
-	bool        GetKeyDown      (int vk)const{return IsVkInRange(vk) && isNowDown  [vk].state;                              }
-	bool        GetKeyClick     (int vk)const{return IsVkInRange(vk) && isClick    [vk].state;                              }
-	bool        GetKeyUp        (int vk)const{return IsVkInRange(vk) && isReleased [vk].state;                              }
-
-	bool        GetHumanKeyDown (int vk)const{return IsVkInRange(vk) && !isNowDown [vk].isInjected && isNowDown [vk].state;}
-	bool        GetHumanKeyClick(int vk)const{return IsVkInRange(vk) && !isClick   [vk].isInjected && isClick   [vk].state;}
-	bool        GetHumanKeyUp   (int vk)const{return IsVkInRange(vk) && !isReleased[vk].isInjected && isReleased[vk].state;}
-
-	void UpdataState()
-	{
-		memset(isClick.data(), 0, isClick.size());
-		memset(isReleased.data(), 0, isReleased.size());
-		auto it = find_if(isClick.begin(), isClick.end(), [&](KeyState& h) {
-			if (h.state)
-				cout << "adfsvhijnadfsv" << endl;
-			return h.state;
-			});
-	}
-};*/
 LRESULT CALLBACK KeyStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
 	if (nCode >= 0)
 	{
-		/*
-		KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-		KeyEvent ks;
-		ks.isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
-		ks.vk = pKeyBoard->vkCode;
-		ks.isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
-		for (auto it : KeyStateCallbackList)
-		{
-			if (it.cb)
-				it.cb(ks, it.instance);
-		}*/
 		KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
 		int vk = pKeyBoard->vkCode;
 		if (vk > 0 && vk < 256)
 		{
-			KeyStateMap[vk].isInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
-			KeyStateMap[vk].state = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+			const bool IsInjected = (pKeyBoard->flags & LLMHF_INJECTED) == 0;// 是否是人类按下
+			const bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+			if (IsInjected) // 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
+				KeyStateMap[vk].isHumanDown = isDown; // 鼠标模式的BUG就是因为以前的代码，现在是正确的了
+			KeyStateMap[vk].isDown = isDown;
 		}
 	}
 	return CallNextHookEx(NULL, nCode, wParam, lParam);
@@ -132,34 +44,13 @@ LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
 	if (nCode >= 0)
 	{
-		/*
-		KeyEvent ks;
-		switch (wParam)
-		{
-			case WM_LBUTTONDOWN: ks.vk = VK_LBUTTON; ks.isDown = true; break;
-			case WM_RBUTTONDOWN: ks.vk = VK_RBUTTON; ks.isDown = true; break;
-			case WM_MBUTTONDOWN: ks.vk = VK_MBUTTON; ks.isDown = true; break;
-			case WM_LBUTTONUP:   ks.vk = VK_LBUTTON; ks.isDown = false; break;
-			case WM_RBUTTONUP:   ks.vk = VK_RBUTTON; ks.isDown = false; break;
-			case WM_MBUTTONUP:   ks.vk = VK_MBUTTON; ks.isDown = false; break;
-		}
-		if (ks.vk != -1)
-		{
-			MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-			ks.isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
-			for (auto it : KeyStateCallbackList)
-			{
-				if (it.cb)
-					it.cb(ks, it.instance);
-			}
-		}*/
 		int vk = -1145;
 		bool isDown = false;
 		switch (wParam)
 		{
-			case WM_LBUTTONDOWN: vk = VK_LBUTTON; isDown = true; break;
-			case WM_RBUTTONDOWN: vk = VK_RBUTTON; isDown = true; break;
-			case WM_MBUTTONDOWN: vk = VK_MBUTTON; isDown = true; break;
+			case WM_LBUTTONDOWN: vk = VK_LBUTTON; isDown = true;  break;
+			case WM_RBUTTONDOWN: vk = VK_RBUTTON; isDown = true;  break;
+			case WM_MBUTTONDOWN: vk = VK_MBUTTON; isDown = true;  break;
 			case WM_LBUTTONUP:   vk = VK_LBUTTON; isDown = false; break;
 			case WM_RBUTTONUP:   vk = VK_RBUTTON; isDown = false; break;
 			case WM_MBUTTONUP:   vk = VK_MBUTTON; isDown = false; break;
@@ -167,8 +58,10 @@ LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		if (vk > 0 && vk < 256)
 		{
 			MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-			KeyStateMap[vk].isInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
-			KeyStateMap[vk].state = isDown;
+			const bool IsInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
+			if (IsInjected) // 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
+				KeyStateMap[vk].isHumanDown = isDown;
+			KeyStateMap[vk].isDown = isDown;
 		}
 	}
 	return CallNextHookEx(NULL, nCode, wParam, lParam);
@@ -209,13 +102,13 @@ bool GetKeyDown(int key, bool only_human, int mode)
 		mode = GK_HOOK;
 	switch (mode)
 	{
-		case GK_API: return GetAsyncKeyState(key) & 0x8000;
+		case GK_API:
+			return GetAsyncKeyState(key) & 0x8000;
 		case GK_HOOK:
 			if (only_human)
-				return KeyStateMap[key].state && KeyStateMap[key].isInjected;
+				return KeyStateMap[key].isHumanDown;
 			else
-				return KeyStateMap[key].state;
-			break;
+				return KeyStateMap[key].isDown;
 	}
 	return false;
 }

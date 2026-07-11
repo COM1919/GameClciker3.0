@@ -1,6 +1,9 @@
 #pragma once
 #include "Log.h"
 
+#include <filesystem>
+namespace fs = std::filesystem;
+
 void SaveIni(const string& file);
 void GetIni(const string& file);
 int CreateFile(const string& fileName);
@@ -10,52 +13,48 @@ int DelFile(const string& file);
 
 bool DeleteDirectory(const string& path)
 {
-	WIN32_FIND_DATA findFileData;
-	HANDLE hFind = FindFirstFile((path + "\\*").c_str(), &findFileData);
-
-	if (hFind == INVALID_HANDLE_VALUE)
-		return false;
-
-	do
+	try
 	{
-		const string fileName = findFileData.cFileName;
-		if (fileName == "." || fileName == "..")
-			continue;
-
-		const string fullPath = path + "\\" + fileName;
-		if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-		{
-			if (!DeleteDirectory(fullPath))
-			{
-				FindClose(hFind);
-				return false;
-			}
-		}
-		else
-		{
-			if (!DelFile(fullPath))
-			{
-				FindClose(hFind);
-				return false;
-			}
-		}
-	} while (FindNextFile(hFind, &findFileData));
-
-	FindClose(hFind);
-	PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
-	return RemoveDirectory(path.c_str()) != 0;
+		fs::remove_all(path);
+		PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
+		return true;
+	}
+	catch (const fs::filesystem_error& e)
+	{
+		PrintLog("[Error] 删除文件夹失败：" + path + "，原因：" + e.what(), PL_ERROR);
+		return false;
+	}
 }
 
 int DelFile(const string& file)
 {
-	if (_access(file.c_str(), 0) == 0)
+	fs::path p(file);
+	// 如果文件不存在，视为删除成功
+	if (!fs::exists(p))
+		return 0;
+	try
 	{
-		int error = DeleteFile(file.c_str());
-		if (error == false)
-			return error;
+		// 移除只读、系统、隐藏等属性，确保可以删除
+		fs::permissions(p, fs::perms::all, fs::perm_options::add);
+		bool removed = fs::remove(p);
+		if (removed)
+		{
+			PrintLog("[File] 已删除文件：" + file, PL_INFO);
+			return 0;
+		}
+		else
+		{
+			// 理论上 exists 为 true 但 remove 返回 false 极少见
+			PrintLog("[Error] 删除文件失败（未知原因）：" + file, PL_ERROR);
+			return -1;
+		}
 	}
-	PrintLog("[File] 已删除文件：" + file, PL_INFO);
-	return 0;
+	catch (const fs::filesystem_error& e)
+	{
+		int err = e.code().value();
+		PrintLog("[Error] 删除文件失败：" + file + "，错误码：" + to_string(err), PL_ERROR);
+		return err;
+	}
 }
 
 int CreateFile(const string& fileName)

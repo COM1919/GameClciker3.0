@@ -791,7 +791,6 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			Sleep(20);
 
 		float ClickRates = (100 - (config.UseREmptyRate ? config.REmptyRateValue : 0)) / 100.0f;
-		ULONGLONG LastTime = 0;
 		ULONGLONG EndTime = GetTickCount64() + config.RCTime;
 		ULONGLONG SlepTime = EndTime + config.RCSleep;
 		bool IsEndTime = false;
@@ -809,6 +808,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			//=========================================默认模式=========================================
 			if (config.RClickerMode & C_BUTTONMODE && !(config.RClickerMode & C_SWITCHMODE))
 			{
+				static ULONGLONG LastTime = 0;
 				const bool IsKeyPressed = GetKeyDown(config.RKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				// 连点间隔专属变量
@@ -853,6 +853,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			//=========================================鼠标模式=========================================
 			if (config.RClickerMode & C_MOUSESMODE && !(config.RClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
+				static ULONGLONG LastTime = 0;
 				static bool IsDownMouse = false;
 				const bool IsKeyPressed = GetKeyDown(2, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
@@ -884,11 +885,12 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 
 				if (config.EnableRightClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
 				{
+					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
-						LastTime = GetTickCount64();
-					if (  (!config.UseRClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && 
-						  (!config.UseRStartClickerDelay || LastTime + config.RStartClickerDelay <= GetTickCount64()) &&
-						  (!config.UseFilterRSingleClick || LastTime + FILTER_SC_SLEEP <= GetTickCount64())  )
+						LastTime = time;
+					if (  (!config.UseRClickTime || (IsDelayEnd && time < EndTime)) &&
+						  (!config.UseRStartClickerDelay || (LastTime + config.RStartClickerDelay <= time)) &&
+						  (!config.UseFilterRSingleClick || (LastTime + FILTER_SC_SLEEP <= time))  )
 					{
 						IsClickering.right = true;
 						if (config.UseRPressInterval)
@@ -911,6 +913,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			if (config.RClickerMode & C_SWITCHMODE && !(config.RClickerMode & C_BUTTONMODE))
 			{
 				// 这个模式特殊一点
+				static ULONGLONG LastTime = 0;
 				const bool IsTrigger = SwitchMode_RClick;
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsTrigger;
 				bool IsDelayEnd = false;
@@ -958,6 +961,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			{
 				// 辅助模式没有连点间隙也没有延迟启动
 				// 不使用HumanCPS是因为防止误关闭，门限CPS只需要判断开始的
+				static ULONGLONG LastTime = 0;
 				const bool IsClicker = CurrentCPS.right >= config.AssistModeCPSThreshold;
 				const int ClickDealy = (1000 / max(HumanCPS.right, 1)) / max(config.RMultipleClickValue, 1);
 				const bool IsClickKey = GetKeyClick(2, true, config.ReadKeyStateMode);
@@ -1002,7 +1006,6 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			Sleep(10);
 
 		float ClickRates = (100 - (config.UseLEmptyRate ? config.LEmptyRateValue : 0)) / 100.0f;
-		ULONGLONG LastTime = 0;
 		ULONGLONG EndTime = GetTickCount64() + config.LCTime;
 		ULONGLONG SlepTime = EndTime + config.LCSleep;
 		bool IsEndTime = false;
@@ -1020,6 +1023,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			//=========================================默认模式=========================================
 			if (config.LClickerMode & C_BUTTONMODE && !(config.LClickerMode & C_SWITCHMODE))
 			{
+				static ULONGLONG LastTime = 0;
 				const bool IsKeyPressed = GetKeyDown(config.LKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
@@ -1063,6 +1067,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			//=========================================鼠标模式=========================================
 			if (config.LClickerMode & C_MOUSESMODE && !(config.LClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
+				static ULONGLONG LastTime = 0;
 				static bool IsDownMouse = false;
 				const bool IsKeyPressed = GetKeyDown(1, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
@@ -1095,11 +1100,12 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 
 				if (config.EnableLeftClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
 				{
+					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
-						LastTime = GetTickCount64();
-					if (  (!config.UseLClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && 
-						  (!config.UseLStartClickerDelay || LastTime + config.LStartClickerDelay <= GetTickCount64()) &&
-						  (!config.UseFilterLSingleClick || LastTime + FILTER_SC_SLEEP <= GetTickCount64())  )
+						LastTime = time;
+					if (  (!config.UseLClickTime || (IsDelayEnd && time < EndTime)) && 
+						  (!config.UseLStartClickerDelay || (LastTime + config.LStartClickerDelay <= time)) &&
+						  (!config.UseFilterLSingleClick || (LastTime + FILTER_SC_SLEEP <= time))  )
 					{
 						IsClickering.left = true;
 						if (config.UseLPressInterval)
@@ -1121,6 +1127,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			//=========================================开关模式=========================================
 			if (config.LClickerMode & C_SWITCHMODE && !(config.LClickerMode & C_BUTTONMODE))
 			{
+				static ULONGLONG LastTime = 0;
 				const bool IsTrigger = SwitchMode_LClick;
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsTrigger;
 				bool IsDelayEnd = false;
@@ -1168,6 +1175,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			if (config.LClickerMode & C_ASSISTMODE && !(config.LClickerMode & C_MOUSESMODE))
 			{
 				// 辅助模式没有连点间隙也没有延迟启动
+				static ULONGLONG LastTime = 0;
 				const bool IsClicker = CurrentCPS.left >= config.AssistModeCPSThreshold;
 				// ClickDealy的CPS保持在AssistModeMinCPS以上，防止CurrentCPS太低导致连点时间过长
 				const int ClickDealy = (1000 / max(HumanCPS.left, 1)) / max(config.LMultipleClickValue, 1);

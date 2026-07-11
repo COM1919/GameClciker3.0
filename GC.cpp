@@ -188,6 +188,15 @@ int GCMainLoop()
     else // 创建识别正常退出标识
         CreateFile(ExitFlagFile);
 
+    // 在RefushScriptList之前删除
+    if (DeleteDirectory(ScriptShopDir))
+        PrintLog("[File] 删除脚本缓存成功！", PL_INFO);
+    else
+        PrintLog("[File] 删除脚本缓存失败！", PL_ERROR);
+    if (DeleteDirectory(ScriptTemp))
+        PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
+    else
+        PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
     if (_access(IniPath.c_str(), 0) != 0)
         CreateDirectory(IniPath.c_str(), NULL);
     GetIni(IniPos);
@@ -448,15 +457,6 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     // 允许拖拽文件到窗口
     DragAcceptFiles(GCHWND, true);
 
-    // 在RefushScriptList之前删除
-    if (DeleteDirectory(ScriptShopDir) && DeleteDirectory(ScriptShopTemp))
-        PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
-    else
-        PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
-    if (DeleteDirectory(ScriptTemp))
-        PrintLog("[File] 删除脚本临时文件成功！", PL_INFO);
-    else
-        PrintLog("[File] 删除脚本临时文件失败！", PL_ERROR);
     CreateDirectory(ScriptShopDir.c_str(), NULL); // 注意顺序
     CreateDirectory(ScriptShopTemp.c_str(), NULL);
     CreateDirectory(ScriptTemp.c_str(), NULL);
@@ -3557,13 +3557,23 @@ void RenderGui(ImGuiIO& io)
                                         Text(VersionStr.c_str());
                                     }
                                     SameLine();
-                                    const bool HasRightLink = (!script.link.empty() && script.link.find("https://") != string::npos);
-                                    const float x = pos2.x + (script.IsHasUpdate ? 480 - 48 - 6 : 480);
-                                    SetCursorPosX(HasRightLink ? x - 72 : x);
 
-                                    if (HasRightLink)
+                                    const bool HasLinkButtonShow = !script.link.empty();
+                                    const char* LinkText = config.UseChinese ? u8"教程" : "Guide";
+                                    const float LinkButtonWidth = CalcTextSize(LinkText).x + 12;
                                     {
-                                        if (Button(config.UseChinese ? u8"相关链接" : "Related Links"))
+                                        float TagetX = pos2.x + 480;
+                                        if (script.IsHasUpdate)
+                                            TagetX -= 48 + 6;
+                                        if (HasLinkButtonShow)
+                                            TagetX -= LinkButtonWidth + 6;
+                                        SetCursorPosX(TagetX);
+                                    }
+
+                                    if (HasLinkButtonShow)
+                                    {
+                                        SetCursorPosY(12);
+                                        if (Button(LinkText, ImVec2(LinkButtonWidth, 32)))
                                         {
                                             thread th([=]() {
                                                 ShellExecute(NULL, NULL, script.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
@@ -3573,6 +3583,7 @@ void RenderGui(ImGuiIO& io)
                                         SameLine();
                                     }
 
+                                    SetCursorPosY(12);
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Bmp_Download);
                                     if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(32, 32)))
                                     {
@@ -3588,7 +3599,7 @@ void RenderGui(ImGuiIO& io)
                                         FuncThread.detach();
                                     }
 
-                                    SetCursorPos({ pos2.x, pos2.y + 16 });
+                                    SetCursorPos(ImVec2(pos2.x, pos2.y + 16));
                                     TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
 
                                     DisableAnimation(false);
@@ -3682,10 +3693,33 @@ void RenderGui(ImGuiIO& io)
                                     Text(VersionStr.c_str());
                                 }
                                 SameLine();
-                                SetCursorPosX(pos2.x + (script.IsHasUpdate ? 480 - 48 - 6 : 480));
+                                const bool IsLinkButtonShow = !script.link.empty();
+                                const char* LinkText = config.UseChinese ? u8"教程" : "Guide";
+                                const float LinkButtonWidth = CalcTextSize(LinkText).x + 12;
+                                {
+                                    float TagetX = pos2.x + 460;
+                                    if (script.IsHasUpdate)
+                                        TagetX -= 48 + 6;
+                                    if (IsLinkButtonShow)
+                                        TagetX -= LinkButtonWidth + 6;
+                                    SetCursorPosX(TagetX);
+                                }
 
                                 if (!script.IsInstalled)
                                 {
+                                    if (IsLinkButtonShow)
+                                    {
+                                        SetCursorPosY(16);
+                                        if (Button(config.UseChinese ? u8"教程" : "Guide", ImVec2(LinkButtonWidth, 32)))
+                                        {
+                                            thread th([=]() {
+                                                ShellExecute(NULL, NULL, script.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                                                });
+                                            th.detach();
+                                        }
+                                        SameLine();
+                                    }
+
                                     if (script.IsHasUpdate)
                                     {
                                         SetCursorPosY(16);
@@ -3704,6 +3738,7 @@ void RenderGui(ImGuiIO& io)
                                         }
                                         SameLine(0, 10);
                                     }
+
                                     SetCursorPosY(16);
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Bmp_Add);
                                     if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(32, 32)))// 安装
@@ -3806,14 +3841,12 @@ void RenderGui(ImGuiIO& io)
                                 SetCursorPos({ pos.x, pos.y + 16 });
                                 TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
 
-                                const string key_text = config.UseChinese ? u8"启动按键" : "Start key";
-                                const float text_width = CalcTextSize(key_text.c_str()).x;
-                                SetCursorPos(ImVec2(pos.x + 380 - text_width - 6, 26));
-
-                                Text(key_text.c_str());
+                                const string KeyText = config.UseChinese ? u8"启动按键" : "Start key";
+                                const float TextWidth = CalcTextSize(KeyText.c_str()).x;
+                                SetCursorPos(ImVec2(pos.x + 380 - TextWidth - 6, 26));
+                                Text(KeyText.c_str());
                                 SameLine();
                                 SetCursorPosY(26);
-
                                 SetNextItemWidth(100);
                                 {
                                     // 写入锁

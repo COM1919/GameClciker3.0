@@ -12,7 +12,7 @@
 #define DEFAULT_LCTIME  1000  //默认的点击时长
 #define DEFAULT_LCSLEEP 200   //默认的停止点击时长
 #define RESEND_SLEEP    2     //重新尝试发送的延迟
-#define FILTER_SC_SLEEP 140   //过滤单次点击的延迟
+#define FILTER_SC_SLEEP 130   //过滤单次点击的延迟
 
 //最大值和最小值
 #define MAX_VALUE        4096 //最高的数值
@@ -389,15 +389,15 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.40";          //版本号
-string title = "GAMECLICKER 3.40";      //标题名字
+const string version = "3.41";          //版本号
+string title = "GAMECLICKER 3.41";      //标题名字
 const int ConfigVersion = 4;            //配置文件版本号
 const int AgreementVersion = 1;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
 
-#define GC_NO_HOOK                    //是否禁用HOOK
+//#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画

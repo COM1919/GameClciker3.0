@@ -94,59 +94,6 @@ int RenderGuide(ImGuiIO& io)
             }
             case 2:
             {
-                BeginDisabled(config.UseMinimalistMode);
-                {
-                    Checkbox(config.UseChinese ? u8"精简模式" : "Concise mode", &config.UseConciseMode);
-                }
-                EndDisabled();
-
-                Checkbox(config.UseChinese ? u8"极简模式" : "Minimal mode", &config.UseMinimalistMode);
-
-                if (VarHasChanged(config.UseMinimalistMode, "UseMinimalistMode") && config.UseMinimalistMode)
-                {
-                    RenderMessageBox(config.UseChinese ? u8"打开极简功能后，大部分功能将隐藏。\n开启极简功能后，将会重置连点设置。" : "After opening the minimalist function, most functions will be hidden. \nEnabling the minimalist function will reset the clicker settings.", config.UseChinese ? u8"警告" : "Warning", MB_OK, false);
-                    config.UseConciseMode = true;
-                }
-
-                Text(config.UseChinese ? u8"右键连点按键" : "RClicker Key");
-                SameLine();
-                SetNextItemWidth(100);
-                InputKey("##RClickKey", &config.RKEY, config.UseChinese ? u8"请按下按键" : "Press a key");
-                if (config.RClickerMode & C_MOUSESMODE || config.RClickerMode & C_ASSISTMODE)
-                    AttachTooltip(config.UseChinese ? u8"&b辅助模式 &f或 &b鼠标模式&f不需要设置快捷键" : "AssistMode or MouseMode does not need to set a shortcut key");
-
-                Text(config.UseChinese ? u8"左键连点按键" : "LClicker Key");
-                SameLine();
-                SetNextItemWidth(100);
-                InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"请按下按键" : "Press a key");
-
-                Text(config.UseChinese ? u8"右键CPS" : "RClicker CPS");
-                AttachTooltip(config.UseChinese ? u8"CPS指每秒连点次数，越高越快，\n一般右键设置 20CPS 就可以。" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the left key sets 14CPS can be used.");
-                SameLine();
-                SetNextItemWidth(300);
-                SliderInt(u8"##rcps", &config.RCPS, MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
-
-                Text(config.UseChinese ? u8"左键CPS" : "LClicker CPS");
-                AttachTooltip(config.UseChinese ? u8"CPS指每秒连点次数，越高越快，\n一般左键设置 14CPS 就可以。" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the right key sets 20CPS can be used.");
-                SameLine();
-                SetNextItemWidth(300);
-                SliderInt(u8"##lcps", &config.LCPS, MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
-
-
-                const float CenterOffsetX = (GetWindowWidth() - 600) * 0.5f;
-                const float CenterOffsetY = (GetWindowHeight() - 400) * 0.5f;
-                const float ButtonGroupWidth = 70 + 70 + GetStyle().ItemSpacing.x;
-                SetCursorPos(ImVec2(CenterOffsetX + (600 - ButtonGroupWidth) * 0.5f, 400 - 40 - 6));
-
-                if (Button(config.UseChinese ? u8"上一步" : "Back", ImVec2(70, 40)))
-                    NextStep--;
-                SameLine();
-                if (Button(config.UseChinese ? u8"下一步" : "Next", ImVec2(70, 40)))
-                    NextStep++;
-                break;
-            }
-            case 3:
-            {
                 static const Texture2D image_texture = LoadTextureFromFile(Bmp_GCLogo);
 
                 const static float posx = (600 - 198) / 2.0f;

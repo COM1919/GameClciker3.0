@@ -80,6 +80,7 @@ struct ClipboardData
 
 bool SimulatedInputText(HWND hwnd, const string& text)
 {
+    /*
     if (OpenClipboard(NULL))
     {
         EmptyClipboard();
@@ -102,7 +103,7 @@ bool SimulatedInputText(HWND hwnd, const string& text)
     }
     else
         return false;
-
+    
     INPUT input[2]{};
     input[0].type = INPUT_KEYBOARD;
     input[0].ki.wVk = VK_CONTROL;
@@ -118,6 +119,13 @@ bool SimulatedInputText(HWND hwnd, const string& text)
     input[1].ki.wVk = 'V';
     input[1].ki.dwFlags = KEYEVENTF_KEYUP;
     SendInput(2, input, sizeof(INPUT));
+    */
+
+    size_t size = text.size();
+    if (size > 1024)
+        return false;
+    for (int i = 0; i < size; i++)
+        PostMessage(hwnd, WM_CHAR, text[i], 0);
 
     return true;
 }

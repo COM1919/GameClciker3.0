@@ -582,16 +582,21 @@ void CloseScriptThread(ScriptState& state, ScriptInfo& info)
 {
     state.IsExit = true;
 
-    DWORD ret = WaitForSingleObject(info.hThread, 1200);
-    if (state.IsExit && ret == WAIT_TIMEOUT)
+    ULONGLONG OutTime = GetTickCount64() + 1200;
+    while (state.IsExit && GetTickCount64() < OutTime)
+        Sleep(3);
+    if (state.IsExit)
     {
         PrintLog("脚本线程超时退出，将强制结束：" + info.file, PL_WARNING);
-        if (state.IsExit != NULL)
+        if (info.hThread != NULL)
+        {
             TerminateThread(info.hThread, -1);
+            state.IsExit = true;
+        }
     }
     else
         PrintLog("脚本线程退出：" + info.file, PL_INFO);
-    if (state.IsExit != NULL)
+    if (info.hThread != NULL)
     {
         CloseHandle(info.hThread);
         info.hThread = NULL;

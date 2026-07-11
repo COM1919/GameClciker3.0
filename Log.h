@@ -18,14 +18,16 @@ static void SetConsoleColor(WORD color)
 struct LogItem
 {
     string str;
-    UINT type;
-    time_t time;
+    UINT type = 0;
+    time_t time = 0;
     LogItem(const string& str, UINT type, time_t time) : str(str), type(type), time(time) {}
+    LogItem() = default;
 };
 
 static string LogFilePath;
 
-shared_mutex LogQueueMtx;
+mutex LogQueueMtx; // 更轻量的互斥锁
+std::condition_variable LogQueueCv;  // 条件变量
 static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
 
 void InitLogSystem(const string& filename);
@@ -44,27 +46,28 @@ void InitLogSystem(const string& filename)
 
 static void WriteLogThread()
 {
+    static fstream fLog(LogFilePath, ios::app);
     while (true)
     {
         if (LogQueue.size() > 0)
         {
-            UINT type;
-            string str;
-            time_t now;
+            LogItem item;
             {
-                // 写入锁
-                shared_lock<shared_mutex> lock(LogQueueMtx);
-                type = LogQueue.front().type;
-                str = LogQueue.front().str;
-                now = LogQueue.front().time;
+                unique_lock<mutex> lock(LogQueueMtx);
+                // 条件等待：队列为空时释放锁并阻塞，直到被唤醒且队列非空
+                LogQueueCv.wait(lock, [] { return !LogQueue.empty(); });
+
+                // 取出队首元素
+                item = move(LogQueue.front());
                 LogQueue.pop_front();
-            }
+            } // 锁在此处释放，不影响后续耗时的 IO 操作
 
-            string TypeStr = (type == PL_INFO) ? "info" : ((type == PL_WARNING) ? "warning" : "error");
-            string TimeStr = FormatTime(now);
+            // 无锁区域：处理日志输出（耗时操作）
+            string TypeStr = (item.type == PL_INFO) ? "info" :
+                (item.type == PL_WARNING) ? "warning" : "error";
+            string TimeStr = FormatTime(item.time);
 
-            static fstream fLog(LogFilePath);
-            const string text = "[" + TimeStr + "] " + TypeStr + " : " + str + "\n";
+            string text = "[" + TimeStr + "] " + TypeStr + " : " + item.str + "\n";
             fLog << text;
             fLog.flush();
 
@@ -73,7 +76,7 @@ static void WriteLogThread()
 #endif // GC_DEBUG_VS
 
 #ifdef GC_DEBUG_CMD
-            switch (type)
+            switch (item.type)
             {
             case PL_INFO:
                 SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
@@ -118,9 +121,11 @@ static string FormatTime(time_t time)
 
 void PrintLog(const string& str, UINT type)
 {
-	// 写入锁
-    shared_lock<shared_mutex> lock(LogQueueMtx);
-    LogQueue.push_back(LogItem(str, type, time(0)));
+    {
+        std::lock_guard<std::mutex> lock(LogQueueMtx);  // 独占锁（RAII）
+        LogQueue.push_back(LogItem(str, type, time(0)));
+    }
+    LogQueueCv.notify_one();  // 唤醒一个消费者线程
 }
 
 static ULONGLONG GetFolderSize(const string& FolderPath)
