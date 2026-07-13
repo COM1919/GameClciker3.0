@@ -15,6 +15,5 @@ Release/
 *.pdb
 *.ilk
 
-GC封装文件/
 GameClciker3.0/
 ImGui-old/
