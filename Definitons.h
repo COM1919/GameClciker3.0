@@ -389,15 +389,15 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.41";          //版本号
-string title = "GAMECLICKER 3.41";      //标题名字
+const string version = "3.42";          //版本号
+string title = "GAMECLICKER 3.42 - CPS稳定性内测版本 2";      //标题名字
 const int ConfigVersion = 4;            //配置文件版本号
 const int AgreementVersion = 1;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
 
-//#define GC_NO_HOOK                    //是否禁用HOOK
+#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -421,76 +421,88 @@ const int RenderFps = 60;               //渲染帧率
 #undef GC_NO_HOOK
 #endif // GC_RELEASE_MODE
 
-const bool HasD_Drive = (_access("D:\\", 0) == 0);
-
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
+const string WorkPath = []() -> string {
+    char buf[MAX_PATH]{};
+    if (GetModuleFileName(NULL, buf, MAX_PATH) == 0)
+        return "";
+    string str(buf);
+    size_t pos = str.find_last_of("\\/");
+    if (pos != string::npos)
+        return str.substr(0, pos);
+    else
+        return "";
+}();
+
 const string FontFile =           "C:\\Windows\\Fonts\\msyhbd.ttc";
-const string IniPath =            HasD_Drive ? "D:\\GameClicker"                              : "C:\\GameClicker";
-const string IniPos =             HasD_Drive ? "D:\\GameClicker\\settings.ini"                : "C:\\GameClicker\\settings.ini";
-const string CustomIniPos =       HasD_Drive ? "D:\\GameClicker\\custom.ini"                  : "C:\\GameClicker\\custom.ini";
-const string QQNumFile =          HasD_Drive ? "D:\\GameClicker\\RunData"                     : "C:\\GameClicker\\RunData";
+const string IniPath =            WorkPath + "\\GameClicker";
+const string IniPos =             WorkPath + "\\GameClicker\\settings.ini";
+const string CustomIniPos =       WorkPath + "\\GameClicker\\custom.ini";
+const string QQNumFile =          WorkPath + "\\GameClicker\\RunData";
 const string DownloadName =       config.UseChinese ? "GC连点器" : "GC Auto Click";
-const string DownloadPos =        HasD_Drive ? "D:\\GameClicker\\GCDownloadFile"              : "C:\\GameClicker\\GCDownloadFile";
-const string ConfigDownloadFile = HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\\Version.txt" : "C:\\GameClicker\\GCDownloadFile\\Version.txt";
-const string ZipFileName =        HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\\gc.zip"      : "C:\\GameClicker\\GCDownloadFile\\gc.zip";
-const string IniFileVeision =     HasD_Drive ? "D:\\GameClicker\\Version.dat"                 : "C:\\GameClicker\\Version.dat";
-const string TempFile =           HasD_Drive ? "D:\\GameClicker\\GCDownloadFile\\temp.dat"    : "C:\\GameClicker\\GCDownloadFile\\temp.dat";
-const string GCFollowBatFile =    HasD_Drive ? "D:\\GameClicker\\GC Follow.bat"               : "C:\\GameClicker\\GC Follow.bat";
+const string DownloadPos =        WorkPath + "\\GameClicker\\GCDownloadFile";
+const string ConfigDownloadFile = WorkPath + "\\GameClicker\\GCDownloadFile\\Version.txt";
+const string ZipFileName =        WorkPath + "\\GameClicker\\GCDownloadFile\\gc.zip";
+const string IniFileVeision =     WorkPath + "\\GameClicker\\Version.dat";
+const string TempFile =           WorkPath + "\\GameClicker\\GCDownloadFile\\temp.dat";
+const string GCFollowBatFile =    WorkPath + "\\GameClicker\\GC Follow.bat";
 const string GameGuiFile =        "GameGui.exe";
 const string StatsRegPath =       "Software\\GameClicker\\Stats";
 
-const string SoundPath =         "sound";
-const string Sound_Noise =       "sound\\noise.wav";
-const string Sound_MousePath =   "sound\\mouse";
-const string Sound_KeybdPath =    HasD_Drive ? "D:\\GameClicker\\sound\\keys"            : "C:\\GameClicker\\sound\\keys";
-const string Sound_Enable =      "sound\\func\\enable.wav";
-const string Sound_Disable =     "sound\\func\\disable.wav";
+const string SoundPath =          "sound";
+const string Sound_Noise =        "sound\\noise.wav";
+const string Sound_MousePath =    "sound\\mouse";
+const string Sound_Enable =       "sound\\func\\enable.wav";
+const string Sound_Disable =      "sound\\func\\disable.wav";
+const string Sound_KeybdPath =    WorkPath + "\\GameClicker\\sound\\keys";
 
-const string Tmp_TempPath =       HasD_Drive ? "D:\\GameClicker\\Temp"                   : "C:\\GameClicker\\Temp";
-const string Tmp_Ad =             HasD_Drive ? "D:\\GameClicker\\Temp\\AdImage.dat"      : "C:\\GameClicker\\Temp\\AdImage.dat";
-const string Tmp_MCServer =       HasD_Drive ? "D:\\GameClicker\\Temp\\mcserver%d.json"  : "C:\\GameClicker\\Temp\\mcserver%d.json";
-const string Tmp_KeySounds =      HasD_Drive ? "D:\\GameClicker\\Temp\\KeySounds.zip"    : "C:\\GameClicker\\Temp\\KeySounds.zip";
+const string Tmp_TempPath =       WorkPath + "\\GameClicker\\Temp";
+const string Tmp_Ad =             WorkPath + "\\GameClicker\\Temp\\AdImage.dat";
+const string Tmp_MCServer =       WorkPath + "\\GameClicker\\Temp\\mcserver%d.json";
+const string Tmp_KeySounds =      WorkPath + "\\GameClicker\\Temp\\KeySounds.zip";
 
-const string BmpPath =            "Bmp";
-const string Bmp_Itembar =        "Bmp\\item.bmp";
-const string Bmp_Background =     HasD_Drive ? "D:\\GameClicker\\bg.gcbg"                : "C:\\GameClicker\\bg.gcbg";
-const string Bmp_HotBar =         "Bmp\\hotbar.bmp";
-const string Bmp_GCLogo =         "Bmp\\Logo.bmp";
-const string Bmp_About =          "Bmp\\ico\\About.bmp";
-const string Bmp_Setting =        "Bmp\\ico\\Setting.bmp";
-const string Bmp_Home =           "Bmp\\ico\\Home.bmp";
-const string Bmp_Script =         "Bmp\\ico\\Script.bmp";
-const string Bmp_Info =           "Bmp\\ico\\Info.bmp";
-const string Bmp_Delete =         "Bmp\\ico\\Delete.bmp";
-const string Bmp_Add =            "Bmp\\ico\\Add.bmp";
-const string Bmp_Other =          "Bmp\\ico\\Other.bmp";
-const string Bmp_Refresh =        "Bmp\\ico\\Refresh.bmp";
-const string Bmp_FunSetting =     "Bmp\\ico\\FunSetting.bmp";
-const string Bmp_GCIcon =         "Bmp\\ico\\GCIcon.bmp";
-const string Bmp_ClearCache =     "Bmp\\ico\\ClearCache.bmp";
-const string Bmp_TipInfo =        "Bmp\\ico\\TipInfo.bmp";
-const string Bmp_TipError =       "Bmp\\ico\\TipError.bmp";
-const string Bmp_TipWarning =     "Bmp\\ico\\TipWarning.bmp";
-const string Bmp_Empyt =          "Bmp\\ico\\Empyt.bmp";
-const string Bmp_Book =           "Bmp\\ico\\Book.bmp";
-const string Bmp_Download =       "Bmp\\ico\\Download.bmp";
-const string Bmp_GCTitle =        "Bmp\\GCTitle.bmp";
+const string BmpPath =            "res\\pics";
+const string Bmp_Itembar =        "res\\pics\\item.bmp";
+const string Bmp_Background =     WorkPath + "\\GameClicker\\bg.gcbg";
+const string Bmp_HotBar =         "res\\pics\\hotbar.bmp";
+const string Bmp_GCLogo =         "res\\pics\\Logo.bmp";
+const string Bmp_About =          "res\\pics\\ico\\About.bmp";
+const string Bmp_Setting =        "res\\pics\\ico\\Setting.bmp";
+const string Bmp_Home =           "res\\pics\\ico\\Home.bmp";
+const string Bmp_Script =         "res\\pics\\ico\\Script.bmp";
+const string Bmp_Info =           "res\\pics\\ico\\Info.bmp";
+const string Bmp_Delete =         "res\\pics\\ico\\Delete.bmp";
+const string Bmp_Add =            "res\\pics\\ico\\Add.bmp";
+const string Bmp_Other =          "res\\pics\\ico\\Other.bmp";
+const string Bmp_Refresh =        "res\\pics\\ico\\Refresh.bmp";
+const string Bmp_FunSetting =     "res\\pics\\ico\\FunSetting.bmp";
+const string Bmp_GCIcon =         "res\\pics\\ico\\GCIcon.bmp";
+const string Bmp_ClearCache =     "res\\pics\\ico\\ClearCache.bmp";
+const string Bmp_TipInfo =        "res\\pics\\ico\\TipInfo.bmp";
+const string Bmp_TipError =       "res\\pics\\ico\\TipError.bmp";
+const string Bmp_TipWarning =     "res\\pics\\ico\\TipWarning.bmp";
+const string Bmp_Empyt =          "res\\pics\\ico\\Empyt.bmp";
+const string Bmp_Book =           "res\\pics\\ico\\Book.bmp";
+const string Bmp_Download =       "res\\pics\\ico\\Download.bmp";
+const string Bmp_GCTitle =        "res\\pics\\GCTitle.bmp";
 
-const string ScriptPath =         HasD_Drive ? "D:\\GameClicker\\Script"                      : "C:\\GameClicker\\Script";
-const string ScriptTemp =         HasD_Drive ? "D:\\GameClicker\\Script\\temp"                : "C:\\GameClicker\\Script\\temp";
-const string ScriptInstallList =  HasD_Drive ? "D:\\GameClicker\\Script\\InstallList.txt"     : "C:\\GameClicker\\Script\\InstallList.txt";
-const string ScriptShopDir =      HasD_Drive ? "D:\\GameClicker\\Script\\shop"                : "C:\\GameClicker\\Script\\shop";
-const string ScriptShopTemp =     HasD_Drive ? "D:\\GameClicker\\Script\\shop\\temp"          : "C:\\GameClicker\\Script\\shop\\temp";
+const string StartupMov =         "res\\startup.webp";
 
-const string LogPath =            HasD_Drive ? "D:\\GameClicker\\Logs"                        : "C:\\GameClicker\\Logs";
-const string LogFile =            HasD_Drive ? "D:\\GameClicker\\GC.log"                      : "C:\\GameClicker\\GC.log";
-const string ShaderLogFile =      HasD_Drive ? "D:\\GameClicker\\Shader.log"                  : "C:\\GameClicker\\Shader.log";
+const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
+const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
+const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";
+const string ScriptShopDir =      WorkPath + "\\GameClicker\\Script\\shop";
+const string ScriptShopTemp =     WorkPath + "\\GameClicker\\Script\\shop\\temp";
+
+const string LogPath =            WorkPath + "\\GameClicker\\Logs";
+const string LogFile =            WorkPath + "\\GameClicker\\GC.log";
+const string ShaderLogFile =      WorkPath + "\\GameClicker\\Shader.log";
 const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
-const string GameGuiLogFile =     HasD_Drive ? "D:\\GameClicker\\GameGui.log"                 : "C:\\GameClicker\\GameGui.log";
+const string GameGuiLogFile =     WorkPath + "\\GameClicker\\GameGui.log";
 
-const string CommandFile =        HasD_Drive ? "D:\\GameClicker\\Command.gccmd"               : "C:\\GameClicker\\Command.gccmd";
-const string ExitFlagFile =       HasD_Drive ? "D:\\GameClicker\\ExitFlag.gcf"                : "C:\\GameClicker\\ExitFlag.gcf";
+const string CommandFile =        WorkPath + "\\GameClicker\\Command.gccmd";
+const string ExitFlagFile =       WorkPath + "\\GameClicker\\ExitFlag.gcf";
 
 //用户协议 
 const string UserAgreement = config.UseChinese ? AgreementCNString : AgreementENString;
@@ -693,3 +705,26 @@ typedef struct GameGuiPipeData
     LRPair<bool> IsClickerDown = {};             //连点器的键按下
     LRPair<bool> IsHumanDown = {};               //鼠标键是否按下
 };
+/*
+class HightResTimeGuardClass // 使用RAII封装timeBeginPeriod，防止忘记关闭导致。。。
+{
+    int count = 0;
+    // 开启高精度计时器
+    HightResTimeGuardClass()
+    {
+        timeBeginPeriod(1);
+        count++;
+    }
+    void Clean()
+    {
+        if (count > 0)
+        {
+            timeEndPeriod(1);
+            count--;
+        }
+    }
+    ~HightResTimeGuardClass()
+    {
+        Clean();
+    }
+} HightResTimeGuard;*/

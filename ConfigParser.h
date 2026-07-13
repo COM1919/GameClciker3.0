@@ -1,9 +1,6 @@
 #pragma once
 #include "Log.h"
 
-#include <filesystem>
-namespace fs = std::filesystem;
-
 void SaveIni(const string& file);
 void GetIni(const string& file);
 int CreateFile(const string& fileName);

@@ -80,47 +80,6 @@ struct ClipboardData
 
 bool SimulatedInputText(HWND hwnd, const string& text)
 {
-    /*
-    if (OpenClipboard(NULL))
-    {
-        EmptyClipboard();
-        // 为多字节文本分配内存
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.length() + 1);
-        if (hMem)
-        {
-            char* pMem = static_cast<char*>(GlobalLock(hMem));
-            if (pMem)
-            {
-                // 使用 strcpy_s 复制多字节字符串
-                strcpy_s(pMem, text.length() + 1, text.c_str());
-                GlobalUnlock(pMem);
-
-                // 设置为 CF_TEXT 格式
-                SetClipboardData(CF_TEXT, hMem);
-            }
-        }
-        CloseClipboard();
-    }
-    else
-        return false;
-    
-    INPUT input[2]{};
-    input[0].type = INPUT_KEYBOARD;
-    input[0].ki.wVk = VK_CONTROL;
-    input[0].ki.dwFlags = 0;
-    input[1].type = INPUT_KEYBOARD;
-    input[1].ki.wVk = 'V';
-    input[1].ki.dwFlags = 0;
-    SendInput(2, input, sizeof(INPUT));
-    input[0].type = INPUT_KEYBOARD;
-    input[0].ki.wVk = VK_CONTROL;
-    input[0].ki.dwFlags = KEYEVENTF_KEYUP;
-    input[1].type = INPUT_KEYBOARD;
-    input[1].ki.wVk = 'V';
-    input[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(2, input, sizeof(INPUT));
-    */
-
     size_t size = text.size();
     if (size > 1024)
         return false;
@@ -468,6 +427,24 @@ namespace ScriptAPI
         lua_pushboolean(L, ::SimulatedInputText(GetForegroundWindow(), text));
         return 1;
     }
+
+    enum ProtocolType
+    {
+        PROTOCOL_UDP = 1,
+        PROTOCOL_TCP = 2
+    };
+    struct ConnectionInfo
+    {
+        HANDLE handle;     // 管道句柄 或 SOCKET（转成 HANDLE）
+        int type;          // PROTOCOL_*
+        bool connected;    // 是否已连接（UDP 可能不需要）
+    };
+    static map<int, ConnectionInfo> ScriptConnections;  // 原 PipeList 替换
+    static int NextId = 1;
+
+    /*
+    * https://chat.deepseek.com/share/poiuxxt8e5iyozm1tr
+    */
 
     static map<int, HANDLE> PipeList;
     int ConnectNamedPipe(lua_State* L)

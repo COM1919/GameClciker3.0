@@ -785,6 +785,7 @@ LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam)
 
 DWORD WINAPI RClickRun(LPVOID lpParam)
 {
+	PreciseSleep ptime;
 	while (!GCExit)
 	{
 		while (!IsClickerSuccess || StopClicker)
@@ -842,7 +843,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						if (config.UseRPressInterval)
 							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
 						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("RightClicker", ClickerDynamicDelay.right);
+						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
@@ -902,7 +903,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						}
 						else
 							SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("RightClicker", ClickerDynamicDelay.right);
+						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
@@ -948,7 +949,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						if (config.UseRPressInterval)
 						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right * 0.75f) : (ClickerDynamicDelay.right - config.RPressDuration);
 						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("RightClicker", ClickerDynamicDelay.right);
+						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
@@ -981,7 +982,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
-						EndSleep("RightClicker", ClickerDynamicDelay.right);
+						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
@@ -989,17 +990,18 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				else IsClickering.right = false;
 			}
 		label_rc_end:
-			BeginSleep("RightClicker");
+			ptime.BeginSleep();
 			if (!IsClickering.right || !config.EnableRightClicker || ((config.RClickerMode & C_SWITCHMODE) && !SwitchMode_RClick))
-				Sleep(config.MainClickSleep);
+				ptime.Sleep(config.MainClickSleep);
 		}
 	}
-	PrintLog("[Clicker]右键连点线程退出", PL_INFO);
+	PrintLog("[Clicker] 右键连点线程退出", PL_INFO);
 	return 0;
 }
 
 DWORD WINAPI LClickRun(LPVOID lpParam)
 {
+	PreciseSleep ptime;
 	while (!GCExit)
 	{
 		while (!IsClickerSuccess || StopClicker)
@@ -1056,8 +1058,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						if (config.UseLPressInterval)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
 						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("LeftClicker", ClickerDynamicDelay.left);	
-						EndSleep("LeftClicker", ClickerDynamicDelay.left);	
+						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
 					else IsClickering.left = false;
@@ -1117,7 +1118,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						}
 						else
 							SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("LeftClicker", ClickerDynamicDelay.left);
+						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
 					else IsClickering.left = false;
@@ -1164,7 +1165,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						if (config.UseLPressInterval)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
 						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
-						EndSleep("LeftClicker", ClickerDynamicDelay.left);
+						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
 					else IsClickering.left = false;
@@ -1196,7 +1197,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
-						EndSleep("LeftClicker", ClickDealy);
+						ptime.EndSleep(ClickDealy);
 						goto label_lc_end;
 					}
 					else IsClickering.left = false;
@@ -1204,11 +1205,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				else IsClickering.left = false;
 			}
 		label_lc_end:
-			BeginSleep("LeftClicker");
+			ptime.BeginSleep();
 			if (!IsClickering.left || !config.EnableLeftClicker || ((config.RClickerMode & C_SWITCHMODE) && !SwitchMode_LClick))
-				Sleep(config.MainClickSleep);
+				ptime.Sleep(config.MainClickSleep);
 		}
 	}
-	PrintLog("[Clicker]左键连点线程退出", PL_INFO);
+	PrintLog("[Clicker] 左键连点线程退出", PL_INFO);
 	return 0;
 }

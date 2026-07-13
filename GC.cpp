@@ -18,6 +18,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     MessageBox(NULL, "已开启远程调试，点击确定继续", "GC", MB_OK);
 #endif //GC_REMOTE_DEBUG
 
+    if (WorkPath.empty())
+    {
+        MessageBox(NULL, ("无法获取工作目录：" + to_string(GetLastError())).c_str(), "错误", MB_OK | MB_ICONERROR);
+        return -1;
+    }
+    {
+        char TempPath[MAX_PATH] = { 0 };
+        GetTempPath(MAX_PATH, TempPath);
+        string exe(WorkPath);
+        string temp(TempPath);
+        for (char& c : exe) c = tolower(c);
+        for (char& c : temp) c = tolower(c);
+        if (exe.find(temp) == 0)
+        {
+            MessageBox(NULL, "请解压文件后使用！", "错误", MB_OK | MB_ICONERROR);
+            return -2;
+        }
+    }
+
     // 初始化符号处理（用于更好的堆栈跟踪）
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
     // 设置崩溃处理器
@@ -25,20 +44,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     if (!IsProcessElevated())
     {
-        char szPath[MAX_PATH];
-        GetModuleFileName(NULL, szPath, MAX_PATH);
-
-        SHELLEXECUTEINFO sei = { sizeof(sei) };
-        sei.lpVerb = "runas";
-        sei.lpFile = szPath;
-        sei.nShow = SW_NORMAL;
-
-        if (!ShellExecuteEx(&sei))
-        {
-            // 提权失败或用户取消，显示提示
-            MessageBox(NULL, "该程序需要管理员权限才能运行。", "错误", MB_OK | MB_ICONERROR);
-        }
-        return -1; // 退出当前进程
+        MessageBox(NULL, "该程序需要管理员权限才能运行。", "错误", MB_OK | MB_ICONERROR);
+        return -1;
     }
 
     if (GetSystemLanguage() == LANG_CHINESE)
@@ -71,11 +78,31 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         PrintLog("[Exception] 程序发生崩溃，原因："s + e.what(), PL_ERROR);
         return -1919;
     }
+
+    //===============================结束===============================
+    client.Send("exit");
+    PrintLog("[Render] 释放GUI", PL_INFO);
+    ReleasGui(wcex, &MainGuiData);
+
+    PrintLog("[Render] 释放Dx11", PL_INFO);
+    DragAcceptFiles(GCHWND, FALSE);
+    ShowWindow(GCHWND, SW_HIDE);
+    if (IsFirstRun)
+        DelFile(IniPos.c_str());
+
+    Shell_NotifyIcon(NIM_DELETE, &TrayNid);
+    DeleteFile(ExitFlagFile.c_str());
+    CloseAllLua();
+
     // 关闭互斥量
     if (AntiMultiOpenMutex)
         CloseHandle(AntiMultiOpenMutex);
     // 清除符号处理
     SymCleanup(GetCurrentProcess());
+
+    PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
+    Sleep(450);
+    PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
     return 1919;
 }
 
@@ -255,27 +282,38 @@ int GCMainLoop()
         // 当程序最小化时，不渲染UI
         static bool RenderStoped = false;
         const bool IsMinWindows = (MainGuiData.pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) && MainGuiData.SwapChainOccluded;
-        const bool IsCoveredWindows = IsCoveredWindow(GCHWND);
-        if ((!(ShowGui || Starting) || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
+        static bool IsCoveredWindows = false; // 每秒更新一次
         {
-            if (!RenderStoped)
-                RenderStoped = true;
-            if (RenderSleepCount >= 0)
+            static ULONGLONG LastTime = GetTickCount64();
+            if (LastTime + 200 <= GetTickCount64())
             {
-                RenderSleepCount++;
-                if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
-                {
-                    ClearProcessMemory();
-                    RenderSleepCount = -1;
-                }
+                IsCoveredWindows = IsCoveredWindow(GCHWND, 0.8f);
+                LastTime = GetTickCount64();
             }
-            Sleep(20);
-            continue;
         }
-        else if (RenderSleepCount != 0)
-            RenderSleepCount = 0;
-        else if (RenderStoped)
-            RenderStoped = false;
+        if (!Starting)
+        {
+            if ((!ShowGui || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
+            {
+                if (!RenderStoped)
+                    RenderStoped = true;
+                if (RenderSleepCount >= 0)
+                {
+                    RenderSleepCount++;
+                    if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
+                    {
+                        ClearProcessMemory();
+                        RenderSleepCount = -1;
+                    }
+                }
+                Sleep(20);
+                continue;
+            }
+            else if (RenderSleepCount != 0)
+                RenderSleepCount = 0;
+            else if (RenderStoped)
+                RenderStoped = false;
+        }
         MainGuiData.SwapChainOccluded = false;
         //===============================处理其他渲染逻辑===============================
         // 处理窗口大小调整（我们不直接在WM_SIZE处理程序中调整大小）
@@ -341,24 +379,6 @@ int GCMainLoop()
         if (DeltaTime < SleepFps)
             Sleep(SleepFps - DeltaTime - 1);
     }
-    //===============================结束===============================
-    client.Send("exit");
-    PrintLog("[Render] 释放GUI", PL_INFO);
-    ReleasGui(wcex, &MainGuiData);
-
-    PrintLog("[Render] 释放Dx11", PL_INFO);
-    DragAcceptFiles(GCHWND, FALSE);
-    ShowWindow(GCHWND, SW_HIDE);
-    if (IsFirstRun)
-        DelFile(IniPos.c_str());
-
-    Shell_NotifyIcon(NIM_DELETE, &TrayNid);
-    DeleteFile(ExitFlagFile.c_str());
-    CloseAllLua();
-
-    PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
-    Sleep(450);
-    PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
     return 0;
 }
 
@@ -4652,7 +4672,7 @@ void RenderGui(ImGuiIO& io)
     static const Texture2D image_texture = LoadTextureFromFile(Bmp_GCIcon);
 
     GetForegroundDrawList()->
-        AddImage((ImTextureID)image_texture, ImVec2(6, 6), ImVec2(26, 26));
+        AddImage((ImTextureID)image_texture, ImVec2(4, 4), ImVec2(32, 32));
 
     End();
 

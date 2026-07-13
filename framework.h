@@ -2,12 +2,13 @@
 
 #define _WINSOCKAPI_
 
-// 鏀寔WIN7锛岄槻姝娇鐢╓IN7涓嶆敮鎸佺殑API
+// 支持WIN7，防止使用WIN7不支持的API
 #define _WIN32_WINNT   0x0601
 #define WINVER         0x0601
 
 #define byte win_byte_override
 #include <windows.h>
+#include <wincodec.h>
 #undef byte
 #include <iostream>
 #include <mmsystem.h>
@@ -31,6 +32,7 @@
 #include <deque>
 #include <queue>
 #include <shared_mutex>
+#include <filesystem>
 
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
@@ -63,5 +65,12 @@
 #include <ws2tcpip.h>
 #pragma comment (lib, "ws2_32.lib")
 
+#include <d2d1.h>
+#include <cstdlib>
+#include <cstdio>
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "windowscodecs.lib")
+
 using ::bind;
 using namespace std;
+namespace fs = std::filesystem;

@@ -1139,57 +1139,65 @@ DWORD GetSystemLanguage()
 }
 
 /**
- * 判断 hTop 是否直接或间接位于 hBottom 之上
- * 原理：获取 hBottom 紧邻的上层窗口，如果是 hTop，则判定为 Top 在 Bottom 之上
+ * 判断 hTop 是否直接或间接位于 hBottom 之上（Z-order 中在 hBottom 前面）
+ * 修复：循环向上查找，而非仅看紧邻
  */
 static bool IsZOrderAbove(HWND hTop, HWND hBottom)
 {
 	if (hTop == nullptr || hBottom == nullptr || hTop == hBottom)
 		return false;
-	// 获取 hBottom 正下方（Z-order 前面）的那个窗口
 	HWND hPrev = GetWindow(hBottom, GW_HWNDPREV);
-	// 如果紧邻下方的窗口正是 hTop，说明 hTop 在 hBottom 上面
-	return (hPrev == hTop);
+	while (hPrev != nullptr)
+	{
+		if (hPrev == hTop)
+			return true;
+		hPrev = GetWindow(hPrev, GW_HWNDPREV);
+	}
+	return false;
 }
 
 bool IsCoveredWindow(HWND hwnd, float rate)
 {
-	static map<HWND, bool> StateList;
-	HWND TegetHwnd = GetForegroundWindow();
-	if (TegetHwnd == hwnd || !IsWindowVisible(TegetHwnd) || TegetHwnd == hwnd)
+	// 基础校验
+	if (!hwnd || !IsWindowVisible(hwnd) || IsIconic(hwnd))
 		return false;
-	if (!IsZOrderAbove(TegetHwnd, hwnd))
+
+	RECT SelfRect;
+	if (!GetWindowRect(hwnd, &SelfRect))
 		return false;
-	RECT SelfRect{};
-	RECT TegetRect{};
-	GetWindowRect(hwnd, &SelfRect);
-	GetWindowRect(TegetHwnd, &TegetRect);
-	POINT TegetSize = {
-		TegetRect.right - TegetRect.left,
-		TegetRect.bottom - TegetRect.top
-	};
-	TegetSize.x -= max(0, TegetRect.right - SelfRect.right);
-	TegetSize.x -= max(0, SelfRect.left - TegetRect.left);
-	TegetSize.y -= max(0, TegetRect.bottom - SelfRect.bottom);
-	TegetSize.y -= max(0, SelfRect.top - TegetRect.top);
+	long selfArea = (SelfRect.right - SelfRect.left) * (SelfRect.bottom - SelfRect.top);
+	if (selfArea <= 0)
+		return false;
 
-	int CoveredSize = TegetSize.x * TegetSize.y;
-	bool IsCovered = (SelfRect.right - SelfRect.left) * (SelfRect.bottom - SelfRect.top) * rate <= CoveredSize;
-
-	if (IsCovered == false)
+	// 枚举所有顶层窗口，检查是否在目标窗口之上且遮挡
+	long coveredArea = 0;
+	HWND hTop = GetTopWindow(NULL);
+	while (hTop != nullptr)
 	{
-		StateList.erase(TegetHwnd);
-		return false;
+		// 跳过自身，只处理可见且非最小化的窗口
+		if (hTop != hwnd && IsWindowVisible(hTop) && !IsIconic(hTop))
+		{
+			// 判断该窗口是否在目标窗口之上（Z-order）
+			if (IsZOrderAbove(hTop, hwnd))
+			{
+				RECT topRect;
+				if (GetWindowRect(hTop, &topRect))
+				{
+					// 计算重叠部分
+					int overlapX = min(SelfRect.right, topRect.right) - max(SelfRect.left, topRect.left);
+					int overlapY = min(SelfRect.bottom, topRect.bottom) - max(SelfRect.top, topRect.top);
+					if (overlapX > 0 && overlapY > 0)
+					{
+						coveredArea += overlapX * overlapY;
+					}
+				}
+			}
+		}
+		hTop = GetWindow(hTop, GW_HWNDNEXT);
 	}
-	else
-		StateList[TegetHwnd] = IsCovered;
 
-	for (const auto& pair : StateList)
-	{
-		if (pair.second != true)
-			return false;
-	}
-	return true;
+	// 判断是否达到遮挡比例
+	return (coveredArea >= (long)(selfArea * rate));
 }
 
 bool UseRunAdmin()

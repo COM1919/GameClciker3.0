@@ -29,19 +29,57 @@ inline void EndSleep(const char* flag, int time);
 
 bool IsProcessElevated()
 {
-    HANDLE hToken = nullptr;
+    bool fIsElevated = false;
+    DWORD dwError = ERROR_SUCCESS;
+    HANDLE hToken = NULL;
+
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
-        return false;
+        return false; // 打开令牌失败，直接返回
 
-    TOKEN_ELEVATION elevation = { 0 };
-    DWORD dwSize = 0;
-    BOOL bResult = FALSE;
-
+    TOKEN_ELEVATION elevation;
+    DWORD dwSize;
     if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize))
-        bResult = elevation.TokenIsElevated;
+        fIsElevated = elevation.TokenIsElevated; // UAC 开启时的常规判断
+    else
+    {
+        dwError = GetLastError();
+        if (dwError == ERROR_INVALID_PARAMETER)
+        {
+            // 调用失败且参数错误，通常意味着 UAC 被禁用。
+            // 此时我们需要检查用户是否属于管理员组。
+            // 如果 UAC 被禁用，且当前用户是管理员，那么进程实际上拥有全部权限。
 
+            // 获取令牌中的组信息
+            DWORD dwSize2 = 0;
+            GetTokenInformation(hToken, TokenGroups, NULL, 0, &dwSize2);
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+            {
+                vector<BYTE> buffer(dwSize2);
+                PTOKEN_GROUPS pGroups = (PTOKEN_GROUPS)buffer.data();
+                if (GetTokenInformation(hToken, TokenGroups, pGroups, dwSize2, &dwSize2))
+                {
+                    // 查找管理员组的 SID
+                    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
+                    PSID AdministratorsGroup;
+                    if (AllocateAndInitializeSid(&NtAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &AdministratorsGroup))
+                    {
+                        // 检查令牌中是否包含管理员组
+                        for (DWORD i = 0; i < pGroups->GroupCount; i++)
+                        {
+                            if (EqualSid(pGroups->Groups[i].Sid, AdministratorsGroup))
+                            {
+                                fIsElevated = true;
+                                break;
+                            }
+                        }
+                        FreeSid(AdministratorsGroup);
+                    }
+                }
+            }
+        }
+    }
     CloseHandle(hToken);
-    return bResult != FALSE;
+    return fIsElevated;
 }
 
 string BytesToHex(const unsigned char* data, size_t len)
@@ -284,11 +322,6 @@ void ExceptionHandling(DWORD code, string what)
     GCExit = true;
 }
 
-inline void Sleep(DWORD ms)
-{
-    this_thread::sleep_for(chrono::milliseconds(ms));
-}
-
 template <typename T>
 bool Clamp(T& value, T min, T max)
 {
@@ -330,24 +363,62 @@ inline bool VarHasChanged(const T& var, const string& label, bool UseInit)
 
 inline ULONGLONG GetNowMs()
 {
-    return static_cast<int>
-        (
-            chrono::time_point_cast<chrono::milliseconds>
-            (chrono::high_resolution_clock::now())
-            .time_since_epoch().count()
-            );
+    return chrono::duration_cast<chrono::milliseconds>(
+        chrono::steady_clock::now().time_since_epoch()
+    ).count();
 }
+
+// sb windows，高精度启动！
+class PreciseSleep
+{
+private:
+    HANDLE hTimer = nullptr;
+    long long LastTime = 0;
+public:
+    PreciseSleep(const PreciseSleep&) = delete;
+    PreciseSleep& operator=(const PreciseSleep&) = delete; // 禁止拷贝、赋值
+    inline PreciseSleep()
+    {
+        hTimer = CreateWaitableTimer(nullptr, TRUE, nullptr);
+        if (hTimer == nullptr) // 当系统因为其他原因无法创建时，报错，退出程序
+            throw runtime_error("WaitableTimer句柄创建失败，可能是系统资源不足。"); // 被main的catch捕获
+    }
+    inline void Sleep(DWORD ms)
+    {
+        if (ms <= 0)
+            return;
+        LARGE_INTEGER due;
+        due.QuadPart = -10000LL * ms;
+        SetWaitableTimer(hTimer, &due, 0, nullptr, nullptr, FALSE);
+        WaitForSingleObject(hTimer, INFINITE);
+    }
+    inline void BeginSleep()
+    {
+        LastTime = GetNowMs();
+    }
+    inline void EndSleep(ULONGLONG time)
+    {
+        const time_t deltaTime = GetNowMs() - LastTime;
+        if (deltaTime < time)
+            Sleep(time - deltaTime);
+    }
+    inline ~PreciseSleep()
+    {
+        if (hTimer)
+            CloseHandle(hTimer);
+    }
+};
 
 static map<string, time_t> LastTime;
 // 不一定需要End
 inline void BeginSleep(const char* flag)
 {
-    LastTime[flag] = GetTickCount64();
+    LastTime[flag] = GetNowMs();
 }
 
 inline void EndSleep(const char* flag, int time)
 {
-    const ULONGLONG deltaTime = GetTickCount64() - LastTime[flag];
+    const time_t deltaTime = GetNowMs() - LastTime[flag];
     if (deltaTime < time)
         Sleep(time - deltaTime);
 }
