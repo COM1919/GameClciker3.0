@@ -1895,7 +1895,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         if (IsFirstRun)
         {
-            DelFile(IniPos.c_str());
+            DelFile(ConfigFile.c_str());
             GCExit = true;
         }
         ShowGui = false;

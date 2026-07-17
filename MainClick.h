@@ -224,7 +224,9 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			// 没什么用，保留就行
 			srand(time(NULL));
 
-			SaveIni(IniPos.c_str());
+			SaveConfig();
+			RenderTip(config.UseChinese ? u8"已保存配置" : "Successfully saved config", 4.0f, PT_INFO);
+
 			InitRandom();
 			ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
 			ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
@@ -253,6 +255,8 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		// 统一处理IsOpenGui和IsMoving
 		const bool IsJumping = GetKeyDown(VK_SPACE);
 		IsMoving = GetKeyDown('W') || GetKeyDown('S') || GetKeyDown('D') || GetKeyDown('A') || IsJumping;
+
+		// GUI是否打开的检测
 		{
 			// 用0来初始化，启动了GC就会初始化IsOpenGui和IsCursorHidden的内部
 			static ULONGLONG LastTime = 0;
@@ -292,10 +296,13 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		}
 		
 		// 物品栏检测
-		for (int i = 0; i < 9; i++)
+		if (!IsOpenGui || (GCHWND == GetForegroundWindow())) //  GCHWND = GetForegroundWindow()用于在GC设置里面耶可以通过快捷键切换，方便设置
 		{
-			if (GetKeyClick(config.ItemEnableClickerKey[i]))
-				ItemBarPos = i;
+			for (int i = 0; i < 9; i++)
+			{
+				if (GetKeyClick(config.ItemEnableClickerKey[i]))
+					ItemBarPos = i;
+			}
 		}
 
 		// 物品栏开关 & 物品栏预设CPS切换
@@ -362,6 +369,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			else
 				ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
 		}*/
+		
 		static LRPair<SmoothCPS> CPSSmooth;
 		if (IsCPSWaveSettingChanged || VarHasChanged(config.LCPS, "LCPS", true))
 		{
@@ -369,31 +377,46 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			CPSSmooth.left.MinCPS = config.LCPS - config.LFluctuationCPS;
 			CPSSmooth.left.MaxCPS = config.LCPS + config.LFluctuationCPS;
 			if (IsCPSWaveSettingChanged || CPSSmooth.left.GetWaveCount() <= 0)
-			{
-				CPSSmooth.left.SetWaveList(config.CPSWaves.left);
-				IsCPSWaveSettingChanged = false;
-			}
+				IsCPSWaveSettingChanged = true;
 		}
 		if (IsCPSWaveSettingChanged || VarHasChanged(config.RCPS, "RCPS", true))
 		{
 			CPSSmooth.right.BaseCPS = config.RCPS;
 			CPSSmooth.right.MinCPS = config.RCPS - config.RFluctuationCPS;
 			CPSSmooth.right.MaxCPS = config.RCPS + config.RFluctuationCPS;
-			if (IsCPSWaveSettingChanged || CPSSmooth.right.GetWaveCount() <= 0)
-			{
-				CPSSmooth.right.SetWaveList(config.CPSWaves.right);
-				IsCPSWaveSettingChanged = false;
-			}
+			if (CPSSmooth.right.GetWaveCount() <= 0)
+				IsCPSWaveSettingChanged = true;
 		}
-		if (config.UseRFluctuation)
-			ClickerDynamicDelay.right = CPSSmooth.right.GetDelayMs();
-		else
-			ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
-		if (config.UseLFluctuation)
-			ClickerDynamicDelay.left = CPSSmooth.left.GetDelayMs();
-		else
-			ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
-		
+		if (IsCPSWaveSettingChanged)
+		{
+			CPSSmooth.left.SetWaveList(config.CPSWaves.left);
+			CPSSmooth.right.SetWaveList(config.CPSWaves.right);
+			IsCPSWaveSettingChanged = false;
+		}
+
+		if (IsClickering.right)
+		{
+			if (config.UseRFluctuation)
+			{
+				const float ResultCPS = CPSSmooth.right.CalcCPS();
+				const int CPS = clamp(ResultCPS, config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS);
+				ClickerDynamicDelay.right = int(1000.0f / CPS);
+			}
+			else if (VarHasChanged(config.RCPS, "config.LCPS", true))
+				ClickerDynamicDelay.right = int(1000.0f / max(config.RCPS, 0));
+		}
+		if (IsClickering.left)
+		{
+			if (config.UseLFluctuation)
+			{
+				const float ResultCPS = CPSSmooth.left.CalcCPS();
+				const int CPS = clamp(ResultCPS, config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS);
+				ClickerDynamicDelay.left = int(1000.0f / CPS);
+			}
+			else if (VarHasChanged(config.LCPS, "config.LCPS", true))
+				ClickerDynamicDelay.left = int(1000.0f / max(config.LCPS, 0));
+		}
+
 		// 过热保护
 		if (config.UseOverheatProtec)
 		{
@@ -509,18 +532,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 
 		// 强制开关连点 - 这个权重大于一切
 		if (GetKeyClick(config.EnableRightClickerKey))
-			config.EnableRightClicker = !config.EnableRightClicker;
-		if (GetKeyClick(config.EnableLeftClickerKey))
-			config.EnableLeftClicker = !config.EnableLeftClicker;
-
-		// 播放开启或者关闭的提示音
-		if (VarHasChanged(config.EnableRightClicker, "config.EnableRightClicker"))
 		{
+			config.EnableRightClicker = !config.EnableRightClicker;
 			if (config.EnableRightClicker) PlayEnableSound();
 			else PlayDisableSound();
 		}
-		if (VarHasChanged(config.EnableLeftClicker, "config.EnableLeftClicker"))
+		if (GetKeyClick(config.EnableLeftClickerKey))
 		{
+			config.EnableLeftClicker = !config.EnableLeftClicker;
 			if (config.EnableLeftClicker) PlayEnableSound();
 			else PlayDisableSound();
 		}
@@ -604,7 +623,10 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 			continue;
 		}
 
-		if ((IsClickerDown.right || IsClickerDown.left) && GetForegroundWindow() != GCHWND)
+		if ((
+			(KeyStateMap[Click::Left].isDown && !KeyStateMap[Click::Left].isHumanDown) || 
+			KeyStateMap[Click::Right].isDown && !KeyStateMap[Click::Right].isHumanDown) && 
+			GetForegroundWindow() != GCHWND)
 		{
 			POINT pt{};
 			GetCursorPos(&pt);
@@ -652,7 +674,8 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 				moving = false;
 			}
 		}
-		EndSleep("MousShake", 1000 / 60);
+		static const int sleep = round(1000 / 60);
+		EndSleep("MousShake", sleep);
 	}
 	PrintLog("[Clicker] 鼠标抖动线程退出", PL_INFO);
 	return 0;
@@ -669,20 +692,17 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 	while (!GCExit)
 	{
 		// 综合统计CPS，包括连点器和人类点击
-		//if (IsHumanClick.left || IsClickerDown.left)
 		if (GetKeyClick(VK_LBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.left))
 		{
 			CurrentCPS.left++;
 			AllTimeList.left.push_back(GetNowMs() + 1000);
 		}
-		//if (IsHumanClick.right || IsClickerDown.right)
 		if (GetKeyClick(VK_RBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.right))
 		{
 			CurrentCPS.right++;
 			AllTimeList.right.push_back(GetNowMs() + 1000);
 		}
 		// 统计实际人类点击的CPS，忽略连点器
-		//if (IsHumanClick.left)
 		if (GetKeyClick(VK_LBUTTON, true))
 		{
 			app_status.MouseClickCount.left++;
@@ -690,7 +710,6 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 			HumanCPS.left++;
 			HumanTimeList.left.push_back(GetNowMs() + 1000);
 		}
-		//if (IsHumanClick.right)
 		if (GetKeyClick(VK_RBUTTON, true))
 		{
 			app_status.MouseClickCount.right++;
@@ -752,7 +771,6 @@ DWORD WINAPI RecordsCPS(LPVOID lpParam)
 		}
 		IsClickerDown.left = false;
 		IsClickerDown.right = false;
-
 		Sleep(2);
 	}
 	return 0;

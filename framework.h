@@ -34,6 +34,9 @@
 #include <shared_mutex>
 #include <filesystem>
 
+#include <commctrl.h>
+#pragma comment(lib, "comctl32.lib")
+
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
@@ -50,7 +53,6 @@
 #include "ImGui/imgui_range_slider.h"
 #include "ImGui/implot3d.h"
 #include "ImGui/imgui_stdlib.h"
-
 
 //#include "ImGui/Icons/fa.h"
 //#include "ImGui/Icons/IconsFontAwesome6.h"

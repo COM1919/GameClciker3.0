@@ -27,7 +27,7 @@ struct LogItem
 static string LogFilePath;
 
 mutex LogQueueMtx; // 更轻量的互斥锁
-std::condition_variable LogQueueCv;  // 条件变量
+condition_variable LogQueueCv;  // 条件变量
 static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
 
 void InitLogSystem(const string& filename);
@@ -35,19 +35,19 @@ void PrintLog(const string& str, UINT type);
 static ULONGLONG GetFolderSize(const string& FolderPath);
 static string FormatTime(time_t time);
 static void WriteLogThread();
-DWORD WINAPI DeleteOldLog(LPVOID lpParam);
+void DeleteOldLog();
 
 void InitLogSystem(const string& filename)
 {
     LogFilePath = filename;
-    thread th(WriteLogThread);
-    th.detach();
+    thread th1(WriteLogThread);
+    th1.detach();
 }
 
 static void WriteLogThread()
 {
     static fstream fLog(LogFilePath, ios::app);
-    while (true)
+    while (!GCExit)
     {
         if (LogQueue.size() > 0)
         {
@@ -63,17 +63,12 @@ static void WriteLogThread()
             } // 锁在此处释放，不影响后续耗时的 IO 操作
 
             // 无锁区域：处理日志输出（耗时操作）
-            string TypeStr = (item.type == PL_INFO) ? "info" :
-                (item.type == PL_WARNING) ? "warning" : "error";
+            string TypeStr = (item.type == PL_INFO) ? "info" : (item.type == PL_WARNING) ? "warning" : "error";
             string TimeStr = FormatTime(item.time);
 
             string text = "[" + TimeStr + "] " + TypeStr + " : " + item.str + "\n";
             fLog << text;
             fLog.flush();
-
-#ifdef GC_DEBUG_VS
-            OutputDebugString(text.c_str());
-#endif // GC_DEBUG_VS
 
 #ifdef GC_DEBUG_CMD
             switch (item.type)
@@ -88,11 +83,15 @@ static void WriteLogThread()
                 SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
                 break;
             }
-
             cout << text;
             cout.flush();
 #endif // GC_DEBUG_CMD
-            Sleep(5);
+
+#ifdef GC_DEBUG_VS
+            OutputDebugString(text.c_str());
+#endif // GC_DEBUG_VS
+
+            Sleep(1);
         }
         else
             Sleep(50); // 空闲时每秒20次
@@ -122,7 +121,7 @@ static string FormatTime(time_t time)
 void PrintLog(const string& str, UINT type)
 {
     {
-        std::lock_guard<std::mutex> lock(LogQueueMtx);  // 独占锁（RAII）
+        lock_guard<mutex> lock(LogQueueMtx);  // 独占锁（RAII）
         LogQueue.push_back(LogItem(str, type, time(0)));
     }
     LogQueueCv.notify_one();  // 唤醒一个消费者线程
@@ -156,7 +155,7 @@ static ULONGLONG GetFolderSize(const string& FolderPath)
     return totalSize;
 }
 
-DWORD WINAPI DeleteOldLog(LPVOID lpParam)
+void DeleteOldLog()
 {
     WIN32_FIND_DATA findFileData;
     HANDLE hFind = FindFirstFile(LogFilePath.c_str(), &findFileData);
@@ -201,5 +200,5 @@ DWORD WINAPI DeleteOldLog(LPVOID lpParam)
     } while (FindNextFile(hFind, &findFileData) != 0);
 
     FindClose(hFind);
-    return 0;
+    return;
 }

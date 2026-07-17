@@ -275,8 +275,8 @@ public:
     bool UseLOnlyJumpClicker = false;       //开关跳跃时启用左键连点
     bool UseRestTimeOnStopClicker = true;   //开关停止连点时，重置连点间隔的时间
     bool UseBrutalMode = false;             //开关暴力模式
-    bool UseBreakBlocksWithClicker = true;  //开关连点时可以挖掘方块
-    bool UseItemWithClicker = true;         //开关连点时可以使用物品
+    bool UseBreakBlocksWithClicker = false; //开关连点时可以挖掘方块
+    bool UseItemWithClicker = false;        //开关连点时可以使用物品
     bool UseRStartClickerDelay = false;     //开关右键启动延迟
     bool UseLStartClickerDelay = false;     //开关左键启动延迟
     bool UseFilterRSingleClick = false;     //开关过滤右键单次点击
@@ -389,15 +389,16 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.42";          //版本号
-string title = "GAMECLICKER 3.42 - CPS稳定性内测版本 2";      //标题名字
-const int ConfigVersion = 4;            //配置文件版本号
+const string version = "3.43";          //版本号
+string title = "GAMECLICKER 3.43";      //标题名字
+const int ConfigVersion = 5;            //配置文件版本号
 const int AgreementVersion = 1;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
 
-#define GC_NO_HOOK                    //是否禁用HOOK
+//#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
+#define GC_NO_HOOK                      //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -423,6 +424,9 @@ const int RenderFps = 60;               //渲染帧率
 
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
+#ifdef GC_USE_D_DRIVE
+const string WorkPath = "D:";
+#else
 const string WorkPath = []() -> string {
     char buf[MAX_PATH]{};
     if (GetModuleFileName(NULL, buf, MAX_PATH) == 0)
@@ -434,14 +438,15 @@ const string WorkPath = []() -> string {
     else
         return "";
 }();
+#endif // GC_USE_D_DRIVE
 
 const string FontFile =           "C:\\Windows\\Fonts\\msyhbd.ttc";
-const string IniPath =            WorkPath + "\\GameClicker";
-const string IniPos =             WorkPath + "\\GameClicker\\settings.ini";
-const string CustomIniPos =       WorkPath + "\\GameClicker\\custom.ini";
+const string ConfigPath =         WorkPath + "\\GameClicker";
+const string ConfigFile =         WorkPath + "\\GameClicker\\settings.ini";
+const string CustomConfigFile =   WorkPath + "\\GameClicker\\custom.ini";
 const string QQNumFile =          WorkPath + "\\GameClicker\\RunData";
 const string DownloadName =       config.UseChinese ? "GC连点器" : "GC Auto Click";
-const string DownloadPos =        WorkPath + "\\GameClicker\\GCDownloadFile";
+const string DownloadPath =       WorkPath + "\\GameClicker\\GCDownloadFile";
 const string ConfigDownloadFile = WorkPath + "\\GameClicker\\GCDownloadFile\\Version.txt";
 const string ZipFileName =        WorkPath + "\\GameClicker\\GCDownloadFile\\gc.zip";
 const string IniFileVeision =     WorkPath + "\\GameClicker\\Version.dat";
@@ -501,7 +506,6 @@ const string ShaderLogFile =      WorkPath + "\\GameClicker\\Shader.log";
 const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
 const string GameGuiLogFile =     WorkPath + "\\GameClicker\\GameGui.log";
 
-const string CommandFile =        WorkPath + "\\GameClicker\\Command.gccmd";
 const string ExitFlagFile =       WorkPath + "\\GameClicker\\ExitFlag.gcf";
 
 //用户协议 
@@ -591,8 +595,8 @@ bool IsDownloadRes           = false;           //是否正在下载资源
 bool ShowGui                 = true;            //是否显示GUI
 bool IsFirstRun              = false;           //第一次运行（是否显示向导）
 bool SoundIsOpen             = false;           //音效是否正常加载
-LRPair<bool> IsClickering    = {};              //是否连点
-LRPair<bool> IsClickerDown   = {};              //连点器的键按下
+LRPair<bool> IsClickering    = {};              //是否连点，CPS计数器专属变量，其他代码不能使用也不能访问
+LRPair<bool> IsClickerDown   = {};              //连点器的键按下，CPS计数器专属变量，其他代码不能使用也不能访问
 bool IsMoving                = false;           //是否移动
 bool IsOpenGui               = false;           //在游戏中是否打开GUI
 bool IsGameGuiInit           = false;           //GameGui是否初始化

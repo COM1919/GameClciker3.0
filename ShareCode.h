@@ -1158,46 +1158,42 @@ static bool IsZOrderAbove(HWND hTop, HWND hBottom)
 
 bool IsCoveredWindow(HWND hwnd, float rate)
 {
-	// 基础校验
-	if (!hwnd || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+	static map<HWND, bool> StateList;
+	HWND TegetHwnd = GetForegroundWindow();
+	if (TegetHwnd == hwnd || !IsWindowVisible(TegetHwnd) || TegetHwnd == hwnd)
 		return false;
+	if (!IsZOrderAbove(TegetHwnd, hwnd))
+		return false;
+	RECT SelfRect{};
+	RECT TegetRect{};
+	GetWindowRect(hwnd, &SelfRect);
+	GetWindowRect(TegetHwnd, &TegetRect);
+	POINT TegetSize = {
+		TegetRect.right - TegetRect.left,
+		TegetRect.bottom - TegetRect.top
+	};
+	TegetSize.x -= max(0, TegetRect.right - SelfRect.right);
+	TegetSize.x -= max(0, SelfRect.left - TegetRect.left);
+	TegetSize.y -= max(0, TegetRect.bottom - SelfRect.bottom);
+	TegetSize.y -= max(0, SelfRect.top - TegetRect.top);
 
-	RECT SelfRect;
-	if (!GetWindowRect(hwnd, &SelfRect))
-		return false;
-	long selfArea = (SelfRect.right - SelfRect.left) * (SelfRect.bottom - SelfRect.top);
-	if (selfArea <= 0)
-		return false;
+	int CoveredSize = TegetSize.x * TegetSize.y;
+	bool IsCovered = (SelfRect.right - SelfRect.left) * (SelfRect.bottom - SelfRect.top) * rate <= CoveredSize;
 
-	// 枚举所有顶层窗口，检查是否在目标窗口之上且遮挡
-	long coveredArea = 0;
-	HWND hTop = GetTopWindow(NULL);
-	while (hTop != nullptr)
+	if (IsCovered == false)
 	{
-		// 跳过自身，只处理可见且非最小化的窗口
-		if (hTop != hwnd && IsWindowVisible(hTop) && !IsIconic(hTop))
-		{
-			// 判断该窗口是否在目标窗口之上（Z-order）
-			if (IsZOrderAbove(hTop, hwnd))
-			{
-				RECT topRect;
-				if (GetWindowRect(hTop, &topRect))
-				{
-					// 计算重叠部分
-					int overlapX = min(SelfRect.right, topRect.right) - max(SelfRect.left, topRect.left);
-					int overlapY = min(SelfRect.bottom, topRect.bottom) - max(SelfRect.top, topRect.top);
-					if (overlapX > 0 && overlapY > 0)
-					{
-						coveredArea += overlapX * overlapY;
-					}
-				}
-			}
-		}
-		hTop = GetWindow(hTop, GW_HWNDNEXT);
+		StateList.erase(TegetHwnd);
+		return false;
 	}
+	else
+		StateList[TegetHwnd] = IsCovered;
 
-	// 判断是否达到遮挡比例
-	return (coveredArea >= (long)(selfArea * rate));
+	for (const auto& pair : StateList)
+	{
+		if (pair.second != true)
+			return false;
+	}
+	return true;
 }
 
 bool UseRunAdmin()
@@ -1301,42 +1297,94 @@ bool IsCursorHidden()
 }
 
 // 判断字符串是否为UTF-8编码
-static bool is_utf8(const string& str)
+bool is_utf8(const string& str)
 {
-	int i = 0;
-	int n = str.length();
-	while (i < n)
-	{
-		unsigned char c = str[i];
+	const unsigned char* bytes = reinterpret_cast<const unsigned char*>(str.data());
+	size_t len = str.size();
+	size_t i = 0;
+
+	while (i < len) {
+		unsigned char c = bytes[i];
 		int num_bytes = 0;
 
-		if (c >= 0x00 && c <= 0x7F)
-		{ // 0xxxxxxx
-			i++;
+		// 单字节 ASCII (0x00 ~ 0x7F)
+		if (c <= 0x7F)
+		{
+			++i;
 			continue;
 		}
+		// 双字节: 110xxxxx, 最小码点 U+0080, 最大 U+07FF
 		else if ((c & 0xE0) == 0xC0)
-		{ // 110xxxxx
-			num_bytes = 1;
-		}
-		else if ((c & 0xF0) == 0xE0)
-		{ // 1110xxxx
+		{
 			num_bytes = 2;
+			// 检查过短的编码（C0, C1）
+			if (c <= 0xC1) return false;
 		}
-		else if ((c & 0xF8) == 0xF0)
-		{ // 11110xxx
+		// 三字节: 1110xxxx, 最小码点 U+0800, 最大 U+FFFF（排除代理区）
+		else if ((c & 0xF0) == 0xE0)
+		{
 			num_bytes = 3;
+			// 如果首字节是 0xE0，第二个字节必须 >= 0xA0（防止过度编码）
+			// 但更精确的是检查整个序列
+		}
+		// 四字节: 11110xxx, 最小 U+10000, 最大 U+10FFFF
+		else if ((c & 0xF8) == 0xF0)
+		{
+			num_bytes = 4;
+			// 首字节 0xF4 时，后续字节必须 ≤ 0x8F 以保证码点 ≤ 0x10FFFF
 		}
 		else
-			return false; // 不是UTF-8编码
+			return false; // 非 UTF-8 首字节
 
-		for (int j = 0; j < num_bytes; j++)
+		// 检查后续字节数量是否超出范围
+		if (i + num_bytes > len)
+			return false;
+
+		// 检查后续字节必须为 10xxxxxx
+		for (int j = 1; j < num_bytes; ++j)
 		{
-			i++;
-			if (i >= n || (str[i] & 0xC0) != 0x80)
-				return false; // 不是UTF-8编码
+			unsigned char b = bytes[i + j];
+			if ((b & 0xC0) != 0x80)
+				return false;
 		}
-		i++;
+
+		// 根据首字节和后续字节检查码点范围
+		if (num_bytes == 2)
+		{
+			// 双字节: 首字节 0xC2~0xDF，后续字节 0x80~0xBF
+			unsigned char b1 = bytes[i + 1];
+			if (c < 0xC2 || c > 0xDF)
+				return false;
+			// 最小码点 U+0080: (c & 0x1F)<<6 | (b1 & 0x3F) >= 0x80，但 C2 80 正好是 0x80，所以 C2 以上都合法
+		}
+		else if (num_bytes == 3)
+		{
+			unsigned char b1 = bytes[i + 1];
+			unsigned char b2 = bytes[i + 2];
+			// 首字节 0xE0 时，b1 必须 >= 0xA0 (防止 U+0800 以下过度编码)
+			if (c == 0xE0 && b1 < 0xA0)
+				return false;
+			// 首字节 0xED 时，b1 必须 <= 0x9F (防止代理区 U+D800~U+DFFF)
+			if (c == 0xED && b1 > 0x9F)
+				return false;
+			// 一般范围 E1~EC, EE~EF 都可以，但无需额外检查
+		}
+		else if (num_bytes == 4)
+		{
+			unsigned char b1 = bytes[i + 1];
+			unsigned char b2 = bytes[i + 2];
+			unsigned char b3 = bytes[i + 3];
+			// 首字节 0xF0 时，b1 >= 0x90 (防止 U+10000 以下过度编码)
+			if (c == 0xF0 && b1 < 0x90)
+				return false;
+			// 首字节 0xF4 时，b1 <= 0x8F (确保码点 ≤ U+10FFFF)
+			if (c == 0xF4 && b1 > 0x8F)
+				return false;
+			// F1~F3 都合法
+			if (c > 0xF4)
+				return false; // F5~F7 无效
+		}
+		i += num_bytes;
 	}
 	return true;
 }

@@ -14,13 +14,49 @@ typedef HRESULT(WINAPI* PFNSETPROCESSDESCRIPTION)(HANDLE, PCSTR);
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
     StartTime = GetNowMs();
+
+    // 获取系统默认语言信息
+    if (PRIMARYLANGID(LANGIDFROMLCID(GetSystemDefaultLCID())) == LANG_CHINESE)
+        config.UseChinese = true;
+    else
+        config.UseChinese = false;
+
+    GCInstance = hInstance;
+    //服了，远古代码来的，千万不能改，否则会出现双开
+    AntiMultiOpenMutex = CreateMutex(NULL, FALSE, _T("GameClick_MC1919"));
+    if (GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        if (AntiMultiOpenMutex)
+            CloseHandle(AntiMultiOpenMutex);
+        MessageBox(NULL, config.UseChinese ? "你已经打开了一个GC连点器了!" : "You can only run one instance of GC at a time.", config.UseChinese ? "提示" : "Warning", MB_OK | MB_ICONQUESTION);
+        return -1145;
+    }
+
+#ifdef GC_DEBUG_CMD
+    if (!AllocConsole())
+    {
+        OutputDebugString("[Init] 无法分配控制台窗口");
+        return -2;
+    }
+    // 设置标准输入输出错误句柄到新控制台
+    FILE* stream;
+    freopen_s(&stream, "CONIN$", "r", stdin);
+    freopen_s(&stream, "CONOUT$", "w", stdout);
+    freopen_s(&stream, "CONOUT$", "w", stderr);
+
+    HWND ConsoleHwnd = GetConsoleWindow();
+    RECT rect;
+    GetWindowRect(ConsoleHwnd, &rect);
+    SetWindowPos(ConsoleHwnd, NULL, 0, 0, rect.right - rect.left + 100, rect.bottom - rect.top + 20, SWP_NOMOVE);
+#endif // GC_DEBUG_CMD
+
 #ifdef GC_REMOTE_DEBUG
     MessageBox(NULL, "已开启远程调试，点击确定继续", "GC", MB_OK);
 #endif //GC_REMOTE_DEBUG
 
     if (WorkPath.empty())
     {
-        MessageBox(NULL, ("无法获取工作目录：" + to_string(GetLastError())).c_str(), "错误", MB_OK | MB_ICONERROR);
+        MessageBox(NULL, ((config.UseChinese ? "无法获取工作目录：" : "Oops!\nFailed to obtain the working directory:") + to_string(GetLastError())).c_str(), config.UseChinese ? "错误" : "Error", MB_OK | MB_ICONERROR);
         return -1;
     }
     {
@@ -32,39 +68,43 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         for (char& c : temp) c = tolower(c);
         if (exe.find(temp) == 0)
         {
-            MessageBox(NULL, "请解压文件后使用！", "错误", MB_OK | MB_ICONERROR);
+            MessageBox(NULL, config.UseChinese ? "请解压文件后使用！" : "Please unzip the program file,\nand then you can run it.", "错误", MB_OK | MB_ICONERROR);
             return -2;
         }
     }
+
+    if (_access(LogFile.c_str(), 0) != 0)
+        CreateFile(LogFile);
+    else
+    {
+        PackageLogFile();
+        ClearFile(LogFile);
+    }
+    InitLogSystem(LogFile); // 初始化日志系统，启动日志线程
+
+    if (!IsRunAsAdmin())
+    {
+        const int ret = MessageBox(NULL, config.UseChinese ? "该程序需要管理员权限才能运行。\n但拒绝后你仍然可以使用，但可能不会正常工作。\n点击确定自动请求权限" : "This program requires admin privileges to run. \nBut even if you refuse, you can still use it,\nbut it may not work properly.\nClick OK to auto request permissions.", config.UseChinese ? "警告" : "Warning", MB_OKCANCEL);
+        if (ret == IDOK)
+        {
+            const int err = RequestAdminAndRestart();
+            if (err != 0)
+            {
+                PrintLog("请求管理员权限失败，错误代码：" + to_string(err), PL_ERROR);
+                MessageBox(NULL, config.UseChinese ? "请求管理员权限失败，\n请尝试手动选择管理员身份运行。" : "Failed to request administrator privileges.\nPlease try manually selecting the administrator identity to run.", config.UseChinese ? "错误" : "Error", MB_OK);
+            }
+        }
+    }
+
+    PrintLog("[Init] 开始加载动画", PL_INFO);
+    CreateThreadSafe(LoadAnimationThread, NULL, 0, "LoadAnimationThread");
 
     // 初始化符号处理（用于更好的堆栈跟踪）
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
     // 设置崩溃处理器
     SetupCrashHandler();
 
-    if (!IsProcessElevated())
-    {
-        MessageBox(NULL, "该程序需要管理员权限才能运行。", "错误", MB_OK | MB_ICONERROR);
-        return -1;
-    }
-
-    if (GetSystemLanguage() == LANG_CHINESE)
-        config.UseChinese = true;
-    else
-        config.UseChinese = false;
-
-    GCInstance = hInstance;
-    //服了，远古代码来的，千万不能改，否则会出现双开
-    AntiMultiOpenMutex = CreateMutex(NULL, FALSE, _T("GameClick_MC1919"));
-    if (GetLastError() == ERROR_ALREADY_EXISTS)
-    {
-        if(AntiMultiOpenMutex)
-            CloseHandle(AntiMultiOpenMutex);
-        MessageBox(NULL, config.UseChinese ? "你已经打开了一个GC连点器了!" : "You can only run one instance of GC at a time.", config.UseChinese ? "提示" : "Warning", MB_OK | MB_ICONQUESTION);
-        return -1145;
-    }
-
-    InitRandom();
+    InitRandom(); // 初始化随机器
 
     // 不管怎么try都抓不住你的心
     try
@@ -78,6 +118,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         PrintLog("[Exception] 程序发生崩溃，原因："s + e.what(), PL_ERROR);
         return -1919;
     }
+    catch (...)
+    {
+        ExceptionHandling(GetLastError(), "未知原因 - [Main]"s);
+        PrintLog("[Exception] 程序发生崩溃，原因很神秘", PL_ERROR);
+        return -1919;
+    }
 
     //===============================结束===============================
     client.Send("exit");
@@ -88,7 +134,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     DragAcceptFiles(GCHWND, FALSE);
     ShowWindow(GCHWND, SW_HIDE);
     if (IsFirstRun)
-        DelFile(IniPos.c_str());
+        DelFile(ConfigFile.c_str());
 
     Shell_NotifyIcon(NIM_DELETE, &TrayNid);
     DeleteFile(ExitFlagFile.c_str());
@@ -100,6 +146,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 清除符号处理
     SymCleanup(GetCurrentProcess());
 
+    SaveConfig();
+
     PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
     Sleep(450);
     PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
@@ -109,7 +157,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
 {
 #ifndef GC_NO_HOOK
-
+    bool IsRetry = false;
+retry:
     HHOOK Hook_MouseSound = SetWindowsHookEx(WH_KEYBOARD_LL, KeybdSoundHook, GetModuleHandle(NULL), 0);
     HHOOK Hook_Clicker = SetWindowsHookEx(WH_MOUSE_LL, ClickerControlHook, GetModuleHandle(NULL), 0);
     HHOOK Hook_KeyState = SetWindowsHookEx(WH_KEYBOARD_LL, KeyStateHookProc, GetModuleHandle(NULL), 0);
@@ -139,9 +188,23 @@ DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
 
     if (IsError)
     {
-        RenderMessageBox(config.UseChinese ? "无法设置全局钩子，这会导致部分功能无法使用。" : "Cannot set mouse sound hook, \nsome functions may not work.", config.UseChinese ? "错误" : "Error", MB_OK);
+        map<string, UINT> button;
+        map<string, ImVec4> colors;
+        button[u8"好的"] = IDOK;
+        button[u8"重试"] = IDRETRY;
+        colors[u8"好的"] = GuiColor[ImGuiCol_ButtonHovered];
+        colors[u8"重试"] = GuiColor[ImGuiCol_Button];
+        if (RenderMessageBoxEx(config.UseChinese ? "无法设置全局钩子（HOOK），这会导致部分功能无法使用。" : 
+            "Cannot set global hook.\nSome functions may not work!", config.UseChinese ? "错误" : "Error", 
+            button, colors, true) == IDRETRY);
+        {
+            IsRetry = true;
+            goto retry;
+        }
         return 0;
     }
+    else if (IsRetry)
+        RenderTip(config.UseChinese ? "全局钩子设置成功！" : "Global hook set successfully", 4.0f, PT_INFO);
     PrintLog("[Hook] 鼠标钩子安装成功", PL_INFO);
     
     MSG msg;
@@ -149,7 +212,8 @@ DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        if (GCExit) break;
+        if (GCExit)
+            break;
     }
 
     PrintLog("[Hook] 卸载鼠标HOOK", PL_INFO);
@@ -163,47 +227,17 @@ DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
 
 int GCMainLoop()
 {
-#ifdef GC_DEBUG_CMD
-    if (!AllocConsole())
-    {
-        OutputDebugString("[Init] 无法分配控制台窗口");
-        return -2;
-    }
-    // 设置标准输入输出错误句柄到新控制台
-    FILE* stream;
-    freopen_s(&stream, "CONIN$", "r", stdin);
-    freopen_s(&stream, "CONOUT$", "w", stdout);
-    freopen_s(&stream, "CONOUT$", "w", stderr);
-
-    HWND ConsoleHwnd = GetConsoleWindow();
-    RECT rect;
-    GetWindowRect(ConsoleHwnd, &rect);
-    SetWindowPos(ConsoleHwnd, NULL, 0, 0, rect.right - rect.left + 100, rect.bottom - rect.top + 20, SWP_NOMOVE);
-#endif // GC_DEBUG_CMD
-
-    InitLogSystem(LogFile); // 初始化日志系统，启动日志线程
-
+    thread th2(DeleteOldLog); // 删除和清理old日志
+    th2.detach();
     cout << "[彩蛋] 你是怎么看到我的呢，好难猜啊\n这么闲的吗？" << endl;
 
     // 一定要在下面文件初始化前面
 #ifdef GC_DEBUG_GUIDE_UI
     IsFirstRun = true;
 #else
-    IsFirstRun = (_access(IniPos.c_str(), 0) != 0);
+    IsFirstRun = (_access(ConfigFile.c_str(), 0) != 0);
 #endif // GC_DEBUG_GUIDE_UI
 
-    if (_access(LogFile.c_str(), 0) != 0)
-        CreateFile(LogFile);
-    else
-    {
-        PackageLogFile();
-        ClearFile(LogFile);
-    }
-
-    PrintLog("[Init] 开始加载动画", PL_INFO);
-    CreateThreadSafe(LoadAnimationThread, NULL, 0, "LoadAnimationThread");
-    CreateThreadSafe(DeleteOldLog, NULL, 0, "DeleteOldLog");
-    
     char path[MAX_PATH]{};
     if (GetModuleFileName(NULL, path, MAX_PATH) == 0)
         PrintLog("[Init] 当前程序的绝对位置："s + path, PL_INFO);
@@ -224,9 +258,9 @@ int GCMainLoop()
         PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
     else
         PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
-    if (_access(IniPath.c_str(), 0) != 0)
-        CreateDirectory(IniPath.c_str(), NULL);
-    GetIni(IniPos);
+    if (_access(ConfigPath.c_str(), 0) != 0)
+        CreateDirectory(ConfigPath.c_str(), NULL);
+    LoadConfig();
 
     if (_access(LogPath.c_str(), 0) != 0)
         CreateDirectory(LogPath.c_str(), NULL);
@@ -405,8 +439,8 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     PrintLog("[Init] 检查文件完整性 - InitThread", PL_INFO);
     // 安装的脚本会在配置文件读取的函数中，获取到
     //RefreshScriptList(InstallScriptList, InstallTextureList, InstallScriptInfo, InstallScriptName);
-    if (_access(DownloadPos.c_str(), 0) != 0)
-        CreateDirectory(DownloadPos.c_str(), NULL);
+    if (_access(DownloadPath.c_str(), 0) != 0)
+        CreateDirectory(DownloadPath.c_str(), NULL);
     if (_access(ScriptPath.c_str(), 0) != 0)
     {
         CreateDirectory(ScriptPath.c_str(), NULL);
@@ -558,10 +592,7 @@ void RenderGui(ImGuiIO& io)
     //}
 
     if (IsKeyPressed(ImGuiKey_LeftCtrl) && IsKeyPressed(ImGuiKey_S))
-    {
         ReloadClicker = true;
-        RenderTip(config.UseChinese ? u8"已保存设置" : "Saved settings", 1.5f, PT_INFO);
-    }
 
     PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Style.WindowPadding.x, 8));
     static const string label = StringToUTF8("       " + title).c_str();
@@ -743,9 +774,10 @@ void RenderGui(ImGuiIO& io)
 
     for (int i = 0; i < 2; i++)
     {
-        DrawList->AddRectFilled(rect.Min, rect.Max, ((i != 0) ? IsClickerDown.right : IsClickerDown.left) ? GetColorU32(GuiColor[ImGuiCol_Button]) : GetColorU32(GuiColor[ImGuiCol_FrameBg]), 6.0f);
+        const bool IsClickerDown = GetKeyDown((i == 0) ? Click::Left : Click::Right);
+        DrawList->AddRectFilled(rect.Min, rect.Max, IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_Button]) : GetColorU32(GuiColor[ImGuiCol_FrameBg]), 6.0f);
         DrawList->AddRect(rect.Min, rect.Max, GetColorU32(GuiColor[ImGuiCol_Border]), 5.0f); // 圆角不使用 6 的原因是，在相同圆角值时AddRectFilled的圆角小一点
-        DrawList->AddText(ImVec2(rect.Min.x + 5, rect.Min.y), ((i != 0) ? IsClickerDown.right : IsClickerDown.left) ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
+        DrawList->AddText(ImVec2(rect.Min.x + 5, rect.Min.y), IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
         
         if ((IsClickering.left && i == 0) || (IsClickering.right && i == 1))
             DrawList->AddRect(ImVec2(rect.Min.x - 1, rect.Min.y - 1), ImVec2(rect.Max.x + 1, rect.Max.y + 1), GetColorU32((ImVec4)ImColor(176, 51, 205, 255)), 5.5f, 0, 3.0f);
@@ -1224,10 +1256,7 @@ void RenderGui(ImGuiIO& io)
             const ImVec2 Pos2 = GetCursorPos();
             SetCursorPos(ImVec2(Pos.x + 500, Pos.y + 10));
             if (Button(config.UseChinese ? u8"保存设置" : "Save", ImVec2(80, 40)))
-            {
                 ReloadClicker = true;
-                RenderTip(config.UseChinese ? u8"已保存设置" : "Saved Settings", 1.5f, PT_INFO);
-            }
             SameLine();
             if (Button(config.UseChinese ? u8"重置配置" : "Reset Settings", ImVec2(80, 40)))
             {
@@ -1408,7 +1437,7 @@ void RenderGui(ImGuiIO& io)
                         }
                         lastOpenState = IsOpen;
 
-                        if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
+                        if (BeginPopupWindow(config.UseChinese ? u8"随机波形设置" : "Rand Wave Settings", &IsOpen))
                         {
                             // 左右独立状态
                             static int CurrentTab = 0;                     // 0=左键, 1=右键
@@ -1425,9 +1454,24 @@ void RenderGui(ImGuiIO& io)
                                 CurrentTab = 1;
                             SameLine();
                             if (CurrentTab == 0)
-                                Text(config.UseChinese ? u8"左键波形设置" : "LB Wave Settings");
+                                Text(config.UseChinese ? u8"左键波形设置" : "LB Wave");
                             else
-                                Text(config.UseChinese ? u8"右键波形设置" : "RB Wave Settings");
+                                Text(config.UseChinese ? u8"右键波形设置" : "RB Wave");
+
+                            {
+                                SameLine();
+                                const char* BtnText = config.UseChinese ? u8"保存" : "Save";
+                                const ImGuiStyle style = GetStyle();
+                                const float BtnWidth = 50;
+                                SetCursorPosX(GetWindowContentRegionMax().x - BtnWidth - style.FramePadding.x);
+                                if (Button(BtnText, ImVec2(BtnWidth, 0)))
+                                {
+                                    config.CPSWaves.left = WaveList.left;
+                                    config.CPSWaves.right = WaveList.right;
+                                    IsCPSWaveSettingChanged = true;
+                                    ReloadClicker = true; // 重载配置 / 保存配置
+                                }
+                            }
 
                             Separator();
 
@@ -1481,17 +1525,21 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             if (waveList.size() < 12)
                                             {
-                                                random_device rd;
-                                                mt19937 gen(rd());
-                                                uniform_real_distribution<> ampDist(0.5f, 3.0f);
-                                                uniform_real_distribution<> freqDist(0.05f, 2.0f);
-                                                uniform_real_distribution<> phaseDist(-3.1415926535f, 3.1415926535f);
-
                                                 WaveParam NewWave;
-                                                NewWave.amplitude = (float)ampDist(gen);
-                                                NewWave.frequency = (float)freqDist(gen);
-                                                NewWave.phase = (float)phaseDist(gen);
-                                                NewWave.enabled = true;
+                                                if (CurrentTab == 0)
+                                                {
+                                                    NewWave.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
+                                                    NewWave.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
+                                                    NewWave.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+                                                    NewWave.enabled = true;
+                                                }
+                                                else
+                                                {
+                                                    NewWave.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
+                                                    NewWave.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
+                                                    NewWave.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+                                                    NewWave.enabled = true;
+                                                }
                                                 waveList.push_back(NewWave);
                                                 SelectedIdx = (int)waveList.size() - 1;
                                             }
@@ -1647,7 +1695,7 @@ void RenderGui(ImGuiIO& io)
                 {
                     //-------------------------暴力模式--------------------------
                     Checkbox(config.UseChinese ? u8"暴力模式" : "Brutal Mode", &config.UseBrutalMode);
-                    AttachTooltip(config.UseChinese ? u8"让你的CPS轻松破百\n但可能会导致大量占用电脑CPU性能！\n并且可能会导致CPS记录器数据不准确！" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!");
+                    AttachTooltip(config.UseChinese ? u8"让你的CPS轻松破百\n但可能会导致大量占用电脑CPU性能！\n并且可能会导致CPS记录器数据不准确！\n&d开启该功能会导致 物品栏开关 功能失效。" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!\n&dEnabling this feature will cause the ItemBarSwitch function to malfunction.");
                     
                     //-------------------------启用连点--------------------------
                     Checkbox(config.UseChinese ? u8"启用右键连点" : "Enable RClicker", &config.EnableRightClicker);
@@ -1874,7 +1922,7 @@ void RenderGui(ImGuiIO& io)
                         AttachTooltip(config.UseChinese ? u8"开启后，你可以破坏方块。\n&d该功能与 按下间隔 冲突\n&d启用后将会禁用冲突功能。" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         if (config.UseBreakBlocksWithClicker)
-                            Text(config.UseChinese ? u8"&e注意：开启 破坏方块 可能出现卡刀的情况，请自行衡量！" : "&eNote: Enabling \"Break blocks\" may cause attack lag. Use at your own risk!");
+                            Text(config.UseChinese ? u8"&e注意：开启 破坏方块 可能出现卡刀的情况\n并且会导致鼠标声音识别异常！ 请自行衡量！" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nAnd it will cause abnormal mouse sound recognition!\nUse at your own risk!");
                     }
 
                     //-------------------------过滤单点--------------------------
@@ -2032,15 +2080,20 @@ void RenderGui(ImGuiIO& io)
                             // +25是因为中间有50px的高度空间，50/2=25
                             BeginChild("##ItembarChildIn", ImVec2(130, 66 + 35), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
                             {
-                                Checkbox(config.UseChinese ? u8"启用连点" : "Enable Clicker", &IsEnableClicker[ItemBarPos]);
-                                Checkbox(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos]);
-
-                                BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
+                                BeginDisabled(!config.UseItembarSwitch);
                                 {
-                                    Text("CPS");
-                                    SameLine();
-                                    SetNextItemWidth(80);
-                                    SliderInt("##ib_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
+                                    Checkbox(config.UseChinese ? u8"启用连点" : "Enable Clicker", &IsEnableClicker[ItemBarPos]);
+                                    Checkbox(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos]);
+                                    AttachTooltip(config.UseChinese ? u8"可以让每一个格子对应不同的CPS\n如果使用了CPS波动，&d会自动计算波动范围&f，你只需要调整CPS就可以" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
+
+                                    BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
+                                    {
+                                        Text("CPS");
+                                        SameLine();
+                                        SetNextItemWidth(80);
+                                        SliderInt("##ib_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
+                                    }
+                                    EndDisabled();
                                 }
                                 EndDisabled();
                             }
@@ -4660,7 +4713,7 @@ void RenderGui(ImGuiIO& io)
             if (Button(config.UseChinese ? u8"同意" : " Next", ImVec2(70, 40)) && IsCheck)
             {
                 IsNeedReshowAgreement = false;
-                thread th(SaveIni, IniPos);
+                thread th(SaveConfig);
                 th.detach();
             }
         }

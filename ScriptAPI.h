@@ -78,15 +78,65 @@ struct ClipboardData
     HANDLE hData;
 };
 
+// 将 GBK (ANSI) 字符串转换为 UTF-16 宽字符串
+wstring GBKToWide(const string& gbk)
+{
+    if (gbk.empty())
+        return L"";
+    int wlen = MultiByteToWideChar(CP_ACP, 0, gbk.c_str(), -1, nullptr, 0);
+    if (wlen <= 0)
+    {
+        // 若 CP_ACP 失败，尝试显式 GBK 代码页 936
+        wlen = MultiByteToWideChar(936, 0, gbk.c_str(), -1, nullptr, 0);
+        if (wlen <= 0)
+            return L"";
+    }
+    wstring wstr(wlen, L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, gbk.c_str(), -1, &wstr[0], wlen) == 0)
+    {
+        // 如果 CP_ACP 转换失败，再用 936
+        MultiByteToWideChar(936, 0, gbk.c_str(), -1, &wstr[0], wlen);
+    }
+    wstr.pop_back(); // 去掉末尾 L'\0'
+    return wstr;
+}
+
+// hwnd是以前代码废弃的，保留就行，以后改回PostMessage就方便一点
 bool SimulatedInputText(HWND hwnd, const string& text)
 {
-    size_t size = text.size();
-    if (size > 1024)
-        return false;
-    for (int i = 0; i < size; i++)
-        PostMessage(hwnd, WM_CHAR, text[i], 0);
+    if (text.empty())
+        return true;
 
-    return true;
+    // 1. 将 GBK 转为 UTF-16
+    wstring wtext = GBKToWide(text);
+    if (wtext.empty())
+        return false;
+
+    // 2. 构造 INPUT 数组（每个字符按下+释放）
+    vector<INPUT> inputs;
+    inputs.reserve(wtext.size() * 2);
+
+    for (wchar_t ch : wtext)
+    {
+        // 按下
+        INPUT in_down = {};
+        in_down.type = INPUT_KEYBOARD;
+        in_down.ki.wVk = 0;
+        in_down.ki.wScan = ch;
+        in_down.ki.dwFlags = KEYEVENTF_UNICODE;
+        inputs.push_back(in_down);
+
+        // 释放
+        INPUT in_up = {};
+        in_up.type = INPUT_KEYBOARD;
+        in_up.ki.wVk = 0;
+        in_up.ki.wScan = ch;
+        in_up.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+        inputs.push_back(in_up);
+    }
+
+    UINT sent = SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+    return (sent == inputs.size());
 }
 
 //=========================================功能API=========================================
@@ -144,7 +194,7 @@ namespace ScriptAPI
             case LUA_TBOOLEAN:  value = lua_toboolean(L, 3) ? (char*)"TRUE" : (char*)"FALSE";  break;
             default: value = "0"; break;
         }
-        WritePrivateProfileString(app, key, value.c_str(), IniPos.c_str()); 
+        WritePrivateProfileString(app, key, value.c_str(), ConfigFile.c_str()); 
         return 0;
     }
 
@@ -164,7 +214,7 @@ namespace ScriptAPI
         }
         char* buffer = new char[MAX_BUF];
         string st;
-        GetPrivateProfileString(app, key, value.c_str(), buffer, MAX_BUF, IniPos.c_str());
+        GetPrivateProfileString(app, key, value.c_str(), buffer, MAX_BUF, ConfigFile.c_str());
         st = buffer;
         lua_pushstring(L, st.c_str());
         return 1;
@@ -811,14 +861,48 @@ namespace ScriptAPI
         return 0;
     }
 
+    // InputText的静态回调，用于调整 string 的大小
+    static int InputTextCallback(ImGuiInputTextCallbackData* data)
+    {
+        if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+        {
+            // UserData 存储了 string* 指针
+            string* str = static_cast<string*>(data->UserData);
+            // 调整 string 大小（data->BufSize 包含末尾的 '\0'）
+            str->resize(data->BufSize);
+            // 更新缓冲区指针，指向 string 内部数据区
+            data->Buf = &(*str)[0];
+        }
+        return 0;
+    }
     int InputText(lua_State* L)
     {
         if (lua_gettop(L) != 2)
-            luaL_error(L, "InputText的参数不足或太多");
+            luaL_error(L, "InputText 需要两个参数");
+
+        // 将 Lua 字符串转为 UTF?8（假设 Lua 内部已为 UTF?8，此处仅为保险）
         string label = StringToUTF8(luaL_checkstring(L, 1));
-        string temp = StringToUTF8(luaL_checkstring(L, 2));
-        char* text = (char*)temp.c_str();
-        ImGui::InputText(label.c_str(), text, 128);
+        string text = StringToUTF8(luaL_checkstring(L, 2));
+
+        // 确保 text 至少有一个字符（存放 '\0'），以便 &text[0] 合法
+        if (text.empty())
+            text.resize(1);
+
+        // 预分配足够的初始容量（可根据需求调整，例如 256 或 1024）
+        text.reserve(256);
+
+        // 调用 ImGui::InputText，传入可写指针、当前容量+1（作为缓冲区大小）
+        // 并绑定回调，UserData 传入 text 的地址
+        ImGui::InputText(
+            label.c_str(),
+            &text[0],                               // 可写指针
+            static_cast<int>(text.capacity()) + 1,  // 缓冲区大小（包括 '\0'）
+            ImGuiInputTextFlags_CallbackResize,     // 启用调整回调
+            InputTextCallback,
+            &text                                   // 传递给回调的 UserData
+        );
+
+        // 将编辑后的 UTF?8 字符串转回 GBK（或系统默认编码），压栈返回
         lua_pushstring(L, UTF8ToString(text).c_str());
         return 1;
     }

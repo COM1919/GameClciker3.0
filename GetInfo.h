@@ -188,23 +188,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
 {
     while (UseServerOfType == -1)
         Sleep(200);
-    if (_access(CommandFile.c_str(), 0) == 0)
-    {
-        PrintLog("[Updata] 发现旧版本GC连点器，准备删除。", PL_INFO);
-        ifstream file(CommandFile);
-        if (!file.is_open())
-            PrintLog("[Updata] 打开文件失败：" + CommandFile, PL_ERROR);
-        else
-        {
-            string content;
-            stringstream buffer;
-            buffer << file.rdbuf();
-            content = buffer.str();
-            file.close();
-        }
-        DelFile(CommandFile.c_str());
-    }
-
+    
     PrintLog("[Updata] 检查版本", PL_INFO);
     string content;
     if (!ReadURLDatas((UseServerOfType == 2) ? URL_LZY_VER : URL_GITEE_UPDATA, content))
@@ -315,7 +299,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
         return 3;
     }
 
-    string filename = DownloadPos + "\\" + DownloadName + NewVersionStr + ".exe";
+    string filename = DownloadPath + "\\" + DownloadName + NewVersionStr + ".exe";
 
     string temp_url;
     if (DownloadURL.find("lanzouu.com") == string::npos)
@@ -345,22 +329,6 @@ DWORD WINAPI Updata(LPVOID lpParam)
     MoveFile(filename.c_str(), FilePath.c_str());
 
     PrintLog("[Updata] 移动GC文件到 " + FilePath, PL_INFO);
-
-    char path[MAX_PATH]{};
-    if (GetModuleFileName(NULL, path, MAX_PATH) != 0)
-        PrintLog("[Updata] 获取当前绝对路径失败。", PL_ERROR);
-    else
-    {
-        PrintLog("[Updata] 创建命令文件", PL_INFO);
-        CreateFile(CommandFile);
-        ofstream cmdfile(CommandFile);
-        if (!cmdfile.is_open())
-        {
-            PrintLog("[Updata] 打开文件失败：" + CommandFile, PL_ERROR);
-        }
-        cmdfile << path;
-        cmdfile.close();
-    }
 
     SHELLEXECUTEINFO ShExecInfo{};
     ShExecInfo.cbSize = sizeof(SHELLEXECUTEINFO);

@@ -1,12 +1,20 @@
 #pragma once
 #include "Log.h"
 
-void SaveIni(const string& file);
-void GetIni(const string& file);
+void SaveConfig();
+void LoadConfig();
 int CreateFile(const string& fileName);
 void ClearFile(const string& fileName);
 bool DeleteDirectory(const string& path);
 int DelFile(const string& file);
+
+void ClearFile(const string& fileName)
+{
+	ofstream file(fileName, ios::trunc);
+	file.clear();
+	file.close();
+	PrintLog("[File] 已清空文件：" + fileName, PL_INFO);
+}
 
 bool DeleteDirectory(const string& path)
 {
@@ -68,20 +76,12 @@ int CreateFile(const string& fileName)
 	return -1;
 }
 
-void ClearFile(const string& fileName)
+void SaveConfig()
 {
-	ofstream file(fileName, ios::trunc);
-	file.clear();
-	file.close();
-	PrintLog("[File] 已清空文件：" + fileName, PL_INFO);
-}
-
-void SaveIni(const string& file)
-{
-	PrintLog("[Config] 写入配置文件：" + file, PL_INFO);
-	const char* CIniPos = file.c_str();
-	if (_access(file.c_str(), 0) != 0)
-		CreateFile(file);
+	PrintLog("[Config] 写入配置文件：" + ConfigFile, PL_INFO);
+	const char* CIniPos = ConfigFile.c_str();
+	if (_access(CIniPos, 0) != 0)
+		CreateFile(CIniPos);
 
     // Config Version
     WritePrivateProfileString("Config", "Version", to_string(ConfigVersion).c_str(), CIniPos);
@@ -270,9 +270,6 @@ void SaveIni(const string& file)
 	WritePrivateProfileString("RandomSettings", "fluctuationRandomDist", to_string(config.Fluctuation_RandomDist).c_str(), CIniPos);
 	WritePrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), CIniPos);
 
-	// AdvancedSettings section
-	WritePrivateProfileString("AdvancedSettings", "memSearchSleep", to_string(config.MemSearchSleep).c_str(), CIniPos);
-
 	// Vector保存
 	string rCpsTrendStr, lCpsTrendStr;
 	for (size_t i = 0; i < config.RCPSChangeTrendList.size(); i++)
@@ -285,8 +282,8 @@ void SaveIni(const string& file)
 		lCpsTrendStr += to_string(config.LCPSChangeTrendList[i]);
 		if (i < config.LCPSChangeTrendList.size() - 1) lCpsTrendStr += ",";
 	}
-	WritePrivateProfileString("AdvancedSettings", "rightCpsChangeTrendList", rCpsTrendStr.c_str(), CIniPos);
-	WritePrivateProfileString("AdvancedSettings", "leftCpsChangeTrendList", lCpsTrendStr.c_str(), CIniPos);
+	WritePrivateProfileString("RandomSettings", "rightCpsChangeTrendList", rCpsTrendStr.c_str(), CIniPos);
+	WritePrivateProfileString("RandomSettings", "leftCpsChangeTrendList", lCpsTrendStr.c_str(), CIniPos);
 
 	//-----------------------统计信息-----------------------
 	HKEY hKey;
@@ -310,7 +307,7 @@ void SaveIni(const string& file)
 	}
 
 	//--------------------个性化设置------------------------------
-	CIniPos = CustomIniPos.c_str();
+	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
 	WritePrivateProfileString("个性化", "BgOffsetX", to_string(BgOffsetX).c_str(), CIniPos);
@@ -336,10 +333,10 @@ void SaveIni(const string& file)
 	}
 }
 
-void GetIni(const string& file)
+void LoadConfig()
 {
-	PrintLog("[Config] 读取配置文件：" + file, PL_INFO);
-	const char* CIniPos = file.c_str();
+	PrintLog("[Config] 读取配置文件：" + ConfigFile, PL_INFO);
+	const char* CIniPos = ConfigFile.c_str();
 	char* buffer = new char[MAX_BUF];
 	string st;
 
@@ -348,9 +345,9 @@ void GetIni(const string& file)
 	int ver1 = stoi(buffer);
 	if (ver1 != ConfigVersion)
 	{
-		DelFile(file);
-		CreateFile(file);
-		SaveIni(file);
+		DelFile(ConfigFile);
+		CreateFile(ConfigFile);
+		SaveConfig();
 	}
 
 	GetPrivateProfileString("Config", "AgreementVersion", "-1", buffer, MAX_BUF, CIniPos);
@@ -422,10 +419,10 @@ void GetIni(const string& file)
 				try
 				{
 					WaveParam w;
-					w.amplitude = stof(tokens[0]);
-					w.frequency = stof(tokens[1]);
-					w.phase = stof(tokens[2]);
-					w.enabled = (tokens[3] == "TRUE");
+					w.enabled = (tokens[0] == "TRUE");
+					w.amplitude = stof(tokens[1]);
+					w.frequency = stof(tokens[2]);
+					w.phase = stof(tokens[3]);
 					if (i == 0)
 						config.CPSWaves.left.push_back(w);
 					else
@@ -446,15 +443,19 @@ void GetIni(const string& file)
 			{
 				for (int i = 0; i < 8; i++)
 				{
-					WaveParam w;
-					w.amplitude = Random(5000, 30000) / 10000.0f; // 0.2 - 3.0
-					w.frequency = Random(100, 15000) / 10000.0f; // 0.01 - 1.5
-					w.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
-					w.enabled = true;
-					if (i == 0)
-						config.CPSWaves.left.push_back(w);
-					else
-						config.CPSWaves.right.push_back(w);
+					WaveParam w1;
+					w1.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
+					w1.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
+					w1.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+					w1.enabled = true;
+					config.CPSWaves.left.push_back(w1);
+
+					WaveParam w2;
+					w2.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
+					w2.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
+					w2.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+					w2.enabled = true;
+					config.CPSWaves.right.push_back(w2);
 				}
 			}
 		}
@@ -669,9 +670,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < MAX_QUICK_SWITCH)
-            {
                 config.QuickSwitchKey[i++] = stoi(token);
-            }
         }
 
         //==================================================ItemBarSettings section==================================================
@@ -682,9 +681,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemEnableClickerKey[i++] = stoi(token);
-            }
         }
 
         //==================================================LRPair arrays==================================================
@@ -695,9 +692,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemBarPresetCPS.left[i++] = stoi(token);
-            }
         }
 
         GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsRight", "", buffer, MAX_BUF, CIniPos);
@@ -707,9 +702,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemBarPresetCPS.right[i++] = stoi(token);
-            }
         }
 
         GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
@@ -719,9 +712,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemBarEnablePresetCPS.left[i++] = token.find("TRUE") != string::npos;
-            }
         }
 
         GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsRight", "", buffer, MAX_BUF, CIniPos);
@@ -731,9 +722,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemBarEnablePresetCPS.right[i++] = token.find("TRUE") != string::npos;
-            }
         }
 
         GetPrivateProfileString("ItemBarSettings", "itemEnableClickerLeft", "", buffer, MAX_BUF, CIniPos);
@@ -743,9 +732,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemEnableClicker.left[i++] = token.find("TRUE") != string::npos;
-            }
         }
 
         GetPrivateProfileString("ItemBarSettings", "itemEnableClickerRight", "", buffer, MAX_BUF, CIniPos);
@@ -755,9 +742,7 @@ void GetIni(const string& file)
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-            {
                 config.ItemEnableClicker.right[i++] = token.find("TRUE") != string::npos;
-            }
         }
 
         //==================================================RandomSettings section==================================================
@@ -774,12 +759,8 @@ void GetIni(const string& file)
         GetPrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
         config.Fluctuation_RandomGen = stoi(buffer);
 
-        //==================================================AdvancedSettings section==================================================
-        GetPrivateProfileString("AdvancedSettings", "memSearchSleep", to_string(config.MemSearchSleep).c_str(), buffer, MAX_BUF, CIniPos);
-        config.MemSearchSleep = stoi(buffer);
-
         //==================================================Vector读取==================================================
-        GetPrivateProfileString("AdvancedSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+        GetPrivateProfileString("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
             config.RCPSChangeTrendList.clear();
@@ -789,7 +770,7 @@ void GetIni(const string& file)
                 config.RCPSChangeTrendList.push_back(stoi(token));
         }
 
-        GetPrivateProfileString("AdvancedSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+        GetPrivateProfileString("RandomSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
         if (strlen(buffer) > 0)
         {
             config.LCPSChangeTrendList.clear();
@@ -824,7 +805,7 @@ void GetIni(const string& file)
 	}
 
 	//--------------------个性化设置------------------------------
-	CIniPos = CustomIniPos.c_str();
+	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) == 0)
 	{
 		GetPrivateProfileString("个性化", "BgOffsetX", to_string(BgOffsetX).c_str(), buffer, MAX_BUF, CIniPos);

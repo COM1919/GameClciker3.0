@@ -5,7 +5,9 @@
 #include <Wbemidl.h>
 #include <iphlpapi.h>
 #include <dbghelp.h>
+#include <winternl.h> // 需要包含此头文件以获取 TokenElevation 常量
 
+#pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "wbemuuid.lib")
@@ -19,7 +21,6 @@ inline ULONGLONG GetNowMs();
 string GetMachineCode();
 string GetPhysicalMacAddress();
 string GetDiskSerial();
-bool IsProcessElevated();
 string BytesToHex(const unsigned char* data, size_t len);
 bool IsContainsString(const string& str, const vector<string>& vec);
 void ExceptionHandling(DWORD code, string what);
@@ -27,59 +28,50 @@ LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo);
 inline void BeginSleep(const char* flag);
 inline void EndSleep(const char* flag, int time);
 
-bool IsProcessElevated()
+// 弹窗请求管理员权限并重启自身
+int RequestAdminAndRestart()
 {
-    bool fIsElevated = false;
-    DWORD dwError = ERROR_SUCCESS;
-    HANDLE hToken = NULL;
-
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
-        return false; // 打开令牌失败，直接返回
-
-    TOKEN_ELEVATION elevation;
-    DWORD dwSize;
-    if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize))
-        fIsElevated = elevation.TokenIsElevated; // UAC 开启时的常规判断
-    else
+    wchar_t szPath[MAX_PATH];
+    // 获取当前可执行文件的完整路径
+    if (GetModuleFileNameW(NULL, szPath, ARRAYSIZE(szPath)))
     {
-        dwError = GetLastError();
-        if (dwError == ERROR_INVALID_PARAMETER)
+        SHELLEXECUTEINFOW sei = { sizeof(sei) };
+        sei.lpVerb = L"runas";      // 关键：这个动词会触发UAC弹窗请求管理员权限
+        sei.lpFile = szPath;        // 要运行的程序（即自身）
+        sei.hwnd = NULL;
+        sei.nShow = SW_NORMAL;
+        // 执行提权启动
+        if (ShellExecuteExW(&sei)) // 成功以管理员权限启动了新进程，退出当前普通权限的进程
+            ExitProcess(0);
+        else
         {
-            // 调用失败且参数错误，通常意味着 UAC 被禁用。
-            // 此时我们需要检查用户是否属于管理员组。
-            // 如果 UAC 被禁用，且当前用户是管理员，那么进程实际上拥有全部权限。
-
-            // 获取令牌中的组信息
-            DWORD dwSize2 = 0;
-            GetTokenInformation(hToken, TokenGroups, NULL, 0, &dwSize2);
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-            {
-                vector<BYTE> buffer(dwSize2);
-                PTOKEN_GROUPS pGroups = (PTOKEN_GROUPS)buffer.data();
-                if (GetTokenInformation(hToken, TokenGroups, pGroups, dwSize2, &dwSize2))
-                {
-                    // 查找管理员组的 SID
-                    SID_IDENTIFIER_AUTHORITY NtAuthority = SECURITY_NT_AUTHORITY;
-                    PSID AdministratorsGroup;
-                    if (AllocateAndInitializeSid(&NtAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &AdministratorsGroup))
-                    {
-                        // 检查令牌中是否包含管理员组
-                        for (DWORD i = 0; i < pGroups->GroupCount; i++)
-                        {
-                            if (EqualSid(pGroups->Groups[i].Sid, AdministratorsGroup))
-                            {
-                                fIsElevated = true;
-                                break;
-                            }
-                        }
-                        FreeSid(AdministratorsGroup);
-                    }
-                }
-            }
+            DWORD err = GetLastError();
+            if (err == ERROR_CANCELLED)
+                return err;
         }
     }
-    CloseHandle(hToken);
-    return fIsElevated;
+    return 0;
+}
+
+bool IsRunAsAdmin()
+{
+    bool fIsRunAsAdmin = FALSE;
+    HANDLE hToken = NULL;
+
+    // 打开当前进程的令牌
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        TOKEN_ELEVATION elevation;
+        DWORD cbSize = sizeof(TOKEN_ELEVATION);
+        // 查询令牌的提升信息
+        if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &cbSize))
+            fIsRunAsAdmin = elevation.TokenIsElevated;
+    }
+
+    if (hToken)
+        CloseHandle(hToken);
+
+    return fIsRunAsAdmin;
 }
 
 string BytesToHex(const unsigned char* data, size_t len)

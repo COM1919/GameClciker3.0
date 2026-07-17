@@ -230,21 +230,20 @@ static bool DecodeWebPAnimation(const char* filename)
     if (decodedFrames > 0)
     {
         // 1. 先算出原始的相邻帧时间差（相对延迟）
-        std::vector<int> originalDurations(decodedFrames, 16);
+        vector<int> originalDurations(decodedFrames, 16);
         for (UINT i = 0; i < decodedFrames - 1; ++i)
         {
             int diff = frames[i + 1].duration_ms - frames[i].duration_ms;
-            if (diff <= 0) diff = 16;
+            if (diff <= 0)
+                diff = 16;
             originalDurations[i] = diff;
         }
 
         // 2. 重新组合：当前帧的延迟使用上一帧的延迟
-        std::vector<int> shiftedDurations(decodedFrames, 16);
+        vector<int> shiftedDurations(decodedFrames, 16);
         shiftedDurations[0] = originalDurations[0]; // 第一帧用自己默认的时间
         for (UINT i = 1; i < decodedFrames; ++i)
-        {
             shiftedDurations[i] = originalDurations[i - 1]; // 当前帧用上一帧的延迟
-        }
 
         // 3. 重新生成平滑后的绝对时间戳，供 WM_FRAME_UPDATE 使用
         int accumTimestamp = 0;
@@ -299,7 +298,6 @@ static void RenderFrame()
 
     RenderTarget->EndDraw();
 }
-
 
 void CALLBACK FrameTimerProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
 {

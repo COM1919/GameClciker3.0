@@ -81,21 +81,11 @@ public:
     int GetWaveCount() const { return waves.size(); }
 
     // 核心函数：返回当前应使用的延迟（毫秒），自动实时计算
-    int GetDelayMs() const
+    float CalcCPS() const
     {
         // 计算已运行秒数
-        float elapsed = (GetTickCount64() - StartTime) / 1000.0;
-
-        // 叠加正弦波
-        float cps = BaseCPS;
-        for (const auto& w : waves)
-            cps += w.amplitude * sin(2.0 * PI * w.frequency * elapsed + w.phase);
-        // 钳制并确保大于 0
-        cps = clamp(cps, MinCPS, MaxCPS);
-        if (cps <= 0) cps = 1.0; // 安全兜底
-
-        // 返回延迟毫秒（四舍五入）
-        return static_cast<int>(round(1000.0 / cps));
+        float elapsed = (GetTickCount64() - StartTime) / 1000.0 / 10;  // /10用于减慢变化速度
+        return EvaluateTotalCPS(elapsed, BaseCPS, waves);
     }
 };
 
