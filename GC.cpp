@@ -5,6 +5,7 @@
 #include "GetInfo.h"
 #include "Driver.h"
 #include "GameGui.h"
+#include "ScriptEditor.h"
 #include <ctime>
 
 //#include "CodeEditor.h"
@@ -3117,10 +3118,10 @@ void RenderGui(ImGuiIO& io)
                 BeginCard("##CCtrlSettings-3", ImVec2(215, 174), ImGuiChildFlags_Borders);
                 {
                     Checkbox(config.UseChinese ? u8"仅限游戏内连点" : "In-game clicker only", & config.UseInGameOnlyClicker);
-                    if (GameHwnd == 0)
-                        AttachTooltip(config.UseChinese ? u8"&e请先获取游戏窗口" : "&ePlease choose game window first");
+                    if (GameHwnd == NULL)
+                        Text(config.UseChinese ? u8"&e请先获取游戏窗口" : "&ePlease choose game window first");
                     else if (!config.AllowSetLClicker || config.AllowSetRClicker)
-                        AttachTooltip(config.UseChinese ? u8"&e请打开 允许控制连点开关" : "&ePlease enable \"Allow Control Clicker\"");
+                        Text(config.UseChinese ? u8"&e请打开 允许控制连点开关" : "&ePlease enable \"Allow Control Clicker\"");
 
                     Checkbox(config.UseChinese ? u8"停止移动时关闭连点" : "Stop Click On Stop Move", &config.UseDisableMoveOnStopMove);
                 }
@@ -3130,7 +3131,6 @@ void RenderGui(ImGuiIO& io)
                 BeginCard(config.UseChinese ? u8"快速切换CPS" : "Quick Switch CPS", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     bool IsSelectable = false;
-
                     static vector<int> ListContainer;
                     static bool IsInit = false;
                     if (!IsInit)
@@ -3588,18 +3588,32 @@ void RenderGui(ImGuiIO& io)
                         int count = 0;
 
                         static bool IsRefushSuccess = false; // 代替繁杂的mutex
-                        static bool IsRefushList = false;
-                        if (!IsRefushList || IsNeedRefushShopList)
+                        static bool IsRefushList = true;
+                        if (IsRefushList || IsNeedRefushShopList)
                         {
                             thread FuncThread([&]() {
                                 ScriptShopList.clear();
-                                TotalPaper = RefushScriptShopList(ScriptShopList, CurrentPaper, false);
+                                TotalPaper = RefushScriptShopList(ScriptShopList, CurrentPaper, false, IsScriptUseGitee);
                                 IsRefushSuccess = true;
-                                });
+                            });
                             FuncThread.detach();
-                            IsRefushList = true;
+                            IsRefushList = false;
                             IsNeedRefushShopList = false;
                         }
+
+                        static const char* SourceNames[] = { config.UseChinese ? u8"Gitee仓库源" : "Gitee Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
+                        static int SourceIndex = 1;
+                        Text(config.UseChinese ? u8"下载源" : "Source");
+                        SameLine();
+                        SetNextItemWidth(110.0f);
+                        if (Combo("##ScriptMarketSourceCombo", &SourceIndex, SourceNames, IM_ARRAYSIZE(SourceNames)))
+                        {
+                            IsRefushList = true;
+                            IsNeedRefushShopList = true;
+                            IsRefushSuccess = false; // 触发刷新动画
+                        }
+                        IsScriptUseGitee = (SourceIndex == 0);
+
                         if (IsRefushSuccess)
                         {
                             for (const ScriptInfo& script : ScriptShopList)
@@ -3660,13 +3674,27 @@ void RenderGui(ImGuiIO& io)
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Bmp_Download);
                                     if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(32, 32)))
                                     {
-                                        thread FuncThread([&]() {
-                                            const string filename = ScriptShopDir + "\\" + script.name + ".gcdat";
-                                            const string target = ScriptPath + "\\" + script.name + ".zip";
-                                            if (CopyFile(filename.c_str(), target.c_str(), false))
-                                                RenderTip(config.UseChinese ? (script.name + u8"下载成功") : (script.title + " Download Success"), 2.0f, PT_INFO);
+                                        thread FuncThread([=]() {
+                                            if (IsScriptUseGitee)
+                                            {
+                                                const string filename = ScriptShopDir + "\\" + script.name + ".gcdat";
+                                                const string target = ScriptPath + "\\" + script.name + ".zip";
+                                                if (!CopyFile(filename.c_str(), target.c_str(), false))
+                                                {
+                                                    RenderTip(config.UseChinese ? (script.name + u8"下载失败") : (script.title + " Download Failed"), 2.0f, PT_INFO);
+                                                    PrintLog("[ScriptMarket] 脚本下载失败：" + filename, PL_ERROR);
+                                                }
+                                            }
                                             else
-                                                RenderTip(config.UseChinese ? (script.name + u8"下载失败") : (script.title + " Download Failed"), 2.0f, PT_INFO);
+                                            {
+                                                const string target = ScriptPath + "\\" + script.name + ".zip";
+                                                if (!DownloadURLFiles(script.file, target))
+                                                {
+                                                    RenderTip(config.UseChinese ? (script.name + u8"下载失败") : (script.title + " Download Failed"), 2.0f, PT_INFO);
+                                                    PrintLog("[ScriptMarket] 脚本下载失败，URL：" + script.file, PL_ERROR);
+                                                }
+                                            }
+                                            RenderTip(config.UseChinese ? (script.name + u8"下载成功") : (script.title + " Download Success"), 2.0f, PT_INFO);
                                             RefushScriptList(); // 刷新
                                             });
                                         FuncThread.detach();
@@ -3688,7 +3716,7 @@ void RenderGui(ImGuiIO& io)
                                 if (Button(config.UseChinese ? u8"上一页" : "Back"))
                                 {
                                     CurrentPaper--;
-                                    IsRefushList = false;
+                                    IsRefushList = true;
                                     IsRefushSuccess = false;
                                 }
                             }
@@ -3703,7 +3731,7 @@ void RenderGui(ImGuiIO& io)
                                 if (Button(config.UseChinese ? u8"下一页" : "Next"))
                                 {
                                     CurrentPaper++;
-                                    IsRefushList = false;
+                                    IsRefushList = true;
                                     IsRefushSuccess = false;
                                 }
                             }
@@ -3998,6 +4026,53 @@ void RenderGui(ImGuiIO& io)
                             PopID();
 
                             count++;
+                        }
+                        EndTabItem();
+                    }
+
+                    if (BeginTabItem(config.UseChinese ? u8"脚本开发" : "Script Creator", NULL))
+                    {
+                        ScriptEditor::Render();
+
+                        static bool IsRunning = false;
+                        static HANDLE ThreadHandle = nullptr;
+                        SetCursorPos(ImVec2(GetContentRegionAvail().x - 60 - 6, 0));
+                        if (!IsRunning)
+                        {
+                            if (Button(config.UseChinese ? u8"运行" : "Run", ImVec2(60, 24)))
+                            {
+                                auto func = [&](const string& code)
+                                    {
+                                        const string filename = ScriptPath + "\\test.lua";
+                                        ofstream file(filename);
+                                        if (!file.is_open())
+                                        {
+                                            PrintLog("[Script] 无法打开或者创建文件：" + filename, PL_ERROR);
+                                            RenderTip("无法打开或者创建文件：" + filename, 5.0f, PT_ERROR);
+                                            return;
+                                        }
+                                        file << UTF8ToString(code);
+
+                                        ThreadHandle = StartScript(filename);
+                                        IsRunning = true;
+                                    };
+                                thread th(func, ScriptEditor::editor.GetText());
+                                th.detach();
+                            }
+                        }
+                        else
+                        {
+                            if (Button(config.UseChinese ? u8"停止" : "Stop", ImVec2(60, 24)))
+                            {//改为优雅退出
+                                auto func = [=]()
+                                    {
+                                        if (ThreadHandle)
+                                            TerminateThread(ThreadHandle, -1);
+                                        IsRunning = false;
+                                    };
+                                thread th(func);
+                                th.detach();
+                            }
                         }
                         EndTabItem();
                     }

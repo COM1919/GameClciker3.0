@@ -53,6 +53,9 @@
 #include "ImGui/imgui_range_slider.h"
 #include "ImGui/implot3d.h"
 #include "ImGui/imgui_stdlib.h"
+#include "ImGui/TextEditor/TextEditor.h"
+
+#include "json/picojson.h"
 
 //#include "ImGui/Icons/fa.h"
 //#include "ImGui/Icons/IconsFontAwesome6.h"

@@ -30,157 +30,7 @@ void BeginSleep(const char* flag);
 void EndSleep(const char* flag, int time);
 DWORD WINAPI RClickRun(LPVOID lpParam);
 DWORD WINAPI LClickRun(LPVOID lpParam);
-/*
-DWORD WINAPI ItemBarSwitch(LPVOID lpParam)
-{
-	HWND backup_hwnd = GameHwnd;
-	while (!GCExit)
-	{
-		IsSearchState = MS_NONE;
-		if (!IsMemSearch || GetForegroundWindow() != GameHwnd || GameHwnd == 0)
-		{
-			Sleep(20);
-			continue;
-		}
 
-		IsSearchState = MS_SEARCHING;
-		backup_hwnd = GameHwnd;
-
-		RenderTip(u8"2秒后开始内存搜索", 1.5f, PT_INFO);
-
-		Sleep(2000);
-
-		PrintLog("[MemSearch]开始寻找物品栏的数值地址", PL_INFO);
-		RenderTip(u8"开始内存搜索", 2.0f, PT_WARNING);
-		MessageBeep(MB_ICONINFORMATION);
-		void* address = 0;
-
-		DWORD GamePid;
-		GetWindowThreadProcessId(GameHwnd, &GamePid);
-		
-		MemorySearch mem(GamePid);
-		{
-			mem.LoadProcess();
-			if (!mem.IsSuccess())
-			{
-				PrintLog("[MemSearch]加载游戏进程失败！", PL_ERROR);
-				RenderTip(u8"无法打开进程: " + to_string(GamePid), 2.0f, PT_ERROR);
-				IsSearchState = MS_ERROR;
-				IsMemSearch = false;
-				Sleep(100);
-				continue;
-			}
-
-			// 开始寻找地址
-			int value = 8;
-			SetKeyClick(config.ItemEnableClickerKey[value], 80);
-			Sleep(100);
-			int err = mem.SearchMemory(&value, sizeof(int));
-			if (err <= 0)
-			{
-				PrintLog("[MemSearch]第一次内存搜索出现错误！错误代码:" + to_string(err), PL_ERROR);
-				RenderTip(u8"第一次内存搜索出现错误！", 2.0f, PT_ERROR);
-				MessageBeep(MB_ICONERROR);
-				IsSearchState = MS_ERROR;
-				IsMemSearch = false;
-			}
-			vector<void*> results = mem.GetSearchResults();
-
-			int CountAgain = 0;
-			size_t size = results.size();
-			size_t LastSize = 0;
-			PrintLog("[MemSearch]第一次搜索结果数量: " + to_string(size), PL_INFO);
-
-			while (size > 2 && MemSearchCount < 3)
-			{
-				if (LastSize == size)
-					MemSearchCount++;
-				else
-					MemSearchCount = 0;
-
-				CountAgain++;
-
-				if (GetForegroundWindow() != GameHwnd)
-				{
-					PrintLog("[MemSearch]游戏已窗口切换，停止寻找物品栏的数值地址。", PL_INFO);
-					RenderTip(u8"你在搜索中途切换了游戏窗口，搜索失败。", 2.0f, PT_ERROR);
-					MessageBeep(MB_ICONERROR);
-					IsSearchState = MS_ERROR;
-					break;
-				}
-
-				value = Random(0, 8);
-				SetKeyClick(config.ItemEnableClickerKey[value], 80);
-				Sleep(100);
-				int err = mem.SearchMemoryAgain(&value, sizeof(int));
-				if (err < 0)
-				{
-					PrintLog("[MemSearch]内存搜索中途出现错误！错误代码:" + to_string(err), PL_WARNING);
-					RenderTip(u8"在第 " + to_string(CountAgain) + u8" 内存搜索中途出现错误！\n将尝试继续搜索。", 2.0f, PT_WARNING);
-					MessageBeep(MB_ICONWARNING);
-				}
-				else
-				{
-					results = mem.GetSearchResults();
-					size = results.size();
-					PrintLog("[MemSearch]已完成内存搜索的第 " + to_string(CountAgain) + " 次，搜索结果数量:" + to_string(size), PL_INFO);
-					RenderTip(u8"已完成第 " + to_string(CountAgain) + u8" 次搜索。", 1.5f, PT_INFO);
-					MessageBeep(MB_ICONINFORMATION);
-				}
-				LastSize = size;
-			}
-
-			if (!results.empty() && results.size() < 100)
-			{
-				address = results[0];
-				char szAddress[64] = { 0 };
-				wsprintf(szAddress, "0x%p", address);
-				PrintLog("[MemSearch]已经找到物品栏的数值地址" + string(szAddress), PL_INFO);
-				RenderTip(u8"搜索成功！", 2.0f, PT_INFO);
-				MessageBeep(MB_ICONINFORMATION);
-				IsSearchState = MS_SUCCESS;
-			}
-			else
-			{
-				PrintLog("[MemSearch]未找到物品栏的数值地址。", PL_ERROR);
-				RenderTip(u8"未找到物品栏的数值地址，搜索失败！", 2.0f, PT_ERROR);
-				MessageBeep(MB_ICONERROR);
-				IsSearchState = MS_ERROR;
-			}
-		}
-
-		PrintLog("[MemSearch]开始监控物品栏位置内存。", PL_INFO);
-		MemSearchCount = 0;
-		IsMemSearch = false;
-		while (!GCExit && IsSearchState != MS_ERROR)
-		{
-			if (IsSetItembarPos)
-			{
-				mem.WriteMemoryValue(address, WillSetItembarPos);
-				WillSetItembarPos = 0;
-				IsSetItembarPos = false;
-			}
-
-			ItemBarPos = mem.GetAddressValue<int>(address);
-
-			config.EnableRightClicker = config.ItemEnableClicker.right[ItemBarPos];
-			config.EnableLeftClicker = config.ItemEnableClicker.left[ItemBarPos];
-
-			if (backup_hwnd != GameHwnd)
-			{
-				backup_hwnd = GameHwnd;
-				PrintLog("[MemSearch]游戏已窗口切换，等待确定重新搜索。", PL_INFO);
-				RenderTip(u8"你重新选择了游戏窗口，需要重新搜索！", 4.0f, PT_WARNING);
-				IsMemSearch = false;
-				break;
-			}
-			Sleep(MemSearchSleep);
-		}
-	}
-	PrintLog("[MemSearch]游戏内存读取线程退出", PL_INFO);
-	return 0;
-}
-*/
 POINT GetGameWindowCenter(HWND hwnd)
 {
 	RECT rc{};
@@ -215,7 +65,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				LastTime = GetTickCount64() + 3000;
 			}
 		}
-
 		if (ReloadClicker)
 		{
 			IsClickerSuccess = false;
@@ -234,10 +83,12 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			PrintLog("[Clicker] 重新加载连点成功", PL_INFO);
 		}
 
+		HWND CurrForegroundHwnd = GetForegroundWindow(); // 防止重复获取
+
 		// 一些快捷键处理
 		if (GetKeyClick(config.SetGameWindowKey))
 		{
-			GameHwnd = GetForegroundWindow();
+			GameHwnd = CurrForegroundHwnd;
 			PrintLog("[Clicker] 已设置游戏窗口", PL_INFO);
 		}
 		if (GetKeyClick(config.HideClickerKey))
@@ -245,7 +96,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			PrintLog("[Clicker] 已隐藏GC窗口", PL_INFO);
 			ShowWindow(GCHWND, SW_HIDE);
 		}
-		if (GetForegroundWindow() != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
+		if (CurrForegroundHwnd != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
 		{
 			GCExit = true;
 			PrintLog("[Clicker] 程序退出，用户按下了自毁键", PL_INFO);
@@ -253,9 +104,8 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		}
 
 		// 统一处理IsOpenGui和IsMoving
-		const bool IsJumping = GetKeyDown(VK_SPACE);
+		IsJumping = GetKeyDown(VK_SPACE);
 		IsMoving = GetKeyDown('W') || GetKeyDown('S') || GetKeyDown('D') || GetKeyDown('A') || IsJumping;
-
 		// GUI是否打开的检测
 		{
 			// 用0来初始化，启动了GC就会初始化IsOpenGui和IsCursorHidden的内部
@@ -268,35 +118,133 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 
-		// 仅移动连点 & 仅跳跃连点
-		if (config.UseROnlyMoveClicker && config.AllowSetRClicker)
 		{
-			const bool Temp = IsClickering.right || IsMoving;
-			if (config.UseDisableMoveOnStopMove)
-				config.EnableRightClicker = IsMoving;
-			else if (VarHasChanged(Temp, "ClickerControl_Temp1")) // 使用VarHasChanged防止无法手动关闭或者其他控制（防止一直写变量）
-				config.EnableRightClicker = Temp;
-		}
-		if (config.UseLOnlyMoveClicker && config.AllowSetLClicker)
-		{
-			const bool Temp = IsClickering.left || IsMoving;
-			if (config.UseDisableMoveOnStopMove)
-				config.EnableLeftClicker = IsMoving;
-			else if(VarHasChanged(Temp, "ClickerControl_Temp2"))
-				config.EnableLeftClicker = Temp;
-		}
+			LRPair<vector<bool>> EnableFlags;
+			// 仅移动连点
+			if (config.UseROnlyMoveClicker)
+				EnableFlags.right.push_back(IsMoving);
+			if (config.UseLOnlyMoveClicker)
+				EnableFlags.left.push_back(IsMoving);
+			// 仅跳跃触发连点
+			if (config.UseROnlyJumpClicker && !config.UseROnlyMoveClicker)
+				EnableFlags.right.push_back(IsJumping);
+			if (config.UseLOnlyJumpClicker && !config.UseLOnlyMoveClicker)
+				EnableFlags.left.push_back(IsJumping);
 
-		// GUI检测 - 注意和（仅移动连点 & 仅跳跃连点）的顺序，GUI检测权重要大，所以放这个后面
-		if (config.UseGUIDetection && VarHasChanged(IsOpenGui, "IsOpenGui"))
-		{
+			// GUI检测 - 注意和（仅移动连点 & 仅跳跃连点）的顺序，GUI检测权重要大，所以放这个后面
+			if (config.UseGUIDetection)
+			{
+				EnableFlags.right.push_back(!IsOpenGui);
+				EnableFlags.left.push_back(!IsOpenGui);
+			}
+
+			// 物品栏开关 & 物品栏预设CPS切换
+			if (config.UseItembarSwitch)
+			{
+				Clamp(ItemBarPos, 0, 8);
+				EnableFlags.right.push_back(config.ItemEnableClicker.right[ItemBarPos]);
+				EnableFlags.left.push_back(config.ItemEnableClicker.left[ItemBarPos]);
+				if (!config.UseBrutalMode && VarHasChanged(ItemBarPos, "ItemBarPos"))
+				{
+					if (config.ItemBarEnablePresetCPS.right[ItemBarPos])
+						config.RCPS = config.ItemBarPresetCPS.right[ItemBarPos];
+					if (config.ItemBarEnablePresetCPS.left[ItemBarPos])
+						config.LCPS = config.ItemBarPresetCPS.left[ItemBarPos];
+
+				}
+			}
+			// 过热保护
+			if (config.UseOverheatProtec)
+			{
+				static ULONGLONG OverTime = GetTickCount64() + 100;
+				static bool IsTrigger = false;
+				if (GetTickCount64() >= OverTime)
+				{
+					if (IsClickering.right || IsClickering.left)
+					{
+						if (OverheatProtecTimer >= config.OverheatTime)
+						{
+							EnableFlags.right.push_back(false);
+							EnableFlags.left.push_back(false);
+							IsTrigger = true;
+							{
+								static ULONGLONG LastTime = 0;
+								if (LastTime + 800 <= GetTickCount64() && config.UseOHPPlaySound)
+								{
+									MessageBeep(MB_ICONWARNING);
+									LastTime = GetTickCount64();
+								}
+							}
+						}
+						else
+							OverheatProtecTimer += 0.1f;
+					}
+					else
+					{
+						if (config.UseOHPResetTimerOnStop)
+							OverheatProtecTimer = 0;
+						else if (OverheatProtecTimer >= 0)
+							OverheatProtecTimer -= config.OHPTimerTimeLossSpeed;
+						if (OverheatProtecTimer < 0)
+							OverheatProtecTimer = 0;
+					}
+					if (OverheatProtecTimer == 0)
+					{
+						EnableFlags.right.push_back(true);
+						EnableFlags.left.push_back(true);
+					}
+					OverTime = GetTickCount64() + 100;
+				}
+			}
+
+			// 仅限游戏中连点
+			if (config.UseInGameOnlyClicker)
+			{
+				const bool IsInGame = (CurrForegroundHwnd == GameHwnd);
+				EnableFlags.right.push_back(IsInGame);
+				EnableFlags.left.push_back(IsInGame);
+			}
+
 			if (config.AllowSetLClicker)
-				config.EnableLeftClicker = !IsOpenGui;
+			{
+				bool state = true;
+				for (const bool& v : EnableFlags.left)
+				{
+					if (v == false) // 必须全部都是true，如果有一个false就说明需要关闭连点
+						state = false;
+				}
+				if (!EnableFlags.left.empty())
+					config.EnableLeftClicker = state;
+			}
 			if (config.AllowSetRClicker)
-				config.EnableRightClicker = !IsOpenGui;
+			{
+				bool state = true;
+				for (const bool& v : EnableFlags.right)
+				{
+					if (v == false) // 和上面同理
+						state = false;
+				}
+				if (!EnableFlags.right.empty())
+					config.EnableRightClicker = state;
+			}
+
+			// 强制开关连点 - 这个权重大于一切
+			if (GetKeyClick(config.EnableRightClickerKey))
+			{
+				config.EnableRightClicker = !config.EnableRightClicker;
+				if (config.EnableRightClicker) PlayEnableSound();
+				else PlayDisableSound();
+			}
+			if (GetKeyClick(config.EnableLeftClickerKey))
+			{
+				config.EnableLeftClicker = !config.EnableLeftClicker;
+				if (config.EnableLeftClicker) PlayEnableSound();
+				else PlayDisableSound();
+			}
 		}
 		
-		// 物品栏检测
-		if (!IsOpenGui || (GCHWND == GetForegroundWindow())) //  GCHWND = GetForegroundWindow()用于在GC设置里面耶可以通过快捷键切换，方便设置
+		// 物品栏切换的同步逻辑
+		if (!IsOpenGui || (GCHWND == CurrForegroundHwnd)) //  GCHWND = CurrForegroundHwnd用于在GC设置里面耶可以通过快捷键切换，方便设置
 		{
 			for (int i = 0; i < 9; i++)
 			{
@@ -304,31 +252,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 					ItemBarPos = i;
 			}
 		}
-
-		// 物品栏开关 & 物品栏预设CPS切换
-		if (config.UseItembarSwitch && VarHasChanged(ItemBarPos, "ItemBarPos"))
-		{
-			Clamp(ItemBarPos, 0, 8);
-			if (config.AllowSetRClicker)
-				config.EnableRightClicker = config.ItemEnableClicker.right[ItemBarPos];
-			if (config.AllowSetLClicker)
-				config.EnableLeftClicker = config.ItemEnableClicker.left[ItemBarPos];
-
-			if (!config.UseBrutalMode)
-			{
-				if (config.ItemBarEnablePresetCPS.right[ItemBarPos])
-					config.RCPS = config.ItemBarPresetCPS.right[ItemBarPos];
-				if (config.ItemBarEnablePresetCPS.left[ItemBarPos])
-					config.LCPS = config.ItemBarPresetCPS.left[ItemBarPos];
-			}
-		}
-
-		// 仅跳跃触发连点
-		const bool IsJumpHasChanged = VarHasChanged(IsJumping, "IsJumping");
-		if (IsJumpHasChanged && config.UseROnlyJumpClicker && !config.UseROnlyMoveClicker && config.AllowSetRClicker)
-			config.EnableRightClicker = IsJumping;
-		if (IsJumpHasChanged && config.UseLOnlyJumpClicker && !config.UseLOnlyMoveClicker && config.AllowSetLClicker)
-			config.EnableLeftClicker = IsJumping;
 
 		// 快速切换CPS
 		for (int i = 0; i < config.QuickSwitchTotal; i++)
@@ -417,84 +340,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				ClickerDynamicDelay.left = int(1000.0f / max(config.LCPS, 0));
 		}
 
-		// 过热保护
-		if (config.UseOverheatProtec)
-		{
-			static ULONGLONG OverTime = GetTickCount64() + 100;
-			static bool IsTrigger = false;
-			if (GetTickCount64() >= OverTime)
-			{
-				if (IsClickering.right || IsClickering.left)
-				{
-					if (OverheatProtecTimer >= config.OverheatTime)
-					{
-						if (config.AllowSetLClicker) config.EnableLeftClicker = false;
-						if (config.AllowSetRClicker) config.EnableRightClicker = false;
-						IsTrigger = true;
-						if (config.UseOHPPlaySound)
-							MessageBeep(MB_ICONWARNING);
-					}
-					else
-						OverheatProtecTimer += 0.1f;
-				}
-				else
-				{
-					if (config.UseOHPResetTimerOnStop)
-						OverheatProtecTimer = 0;
-					else if (OverheatProtecTimer >= 0)
-						OverheatProtecTimer -= config.OHPTimerTimeLossSpeed;
-					if (OverheatProtecTimer < 0) OverheatProtecTimer = 0;
-				}
-				if (OverheatProtecTimer == 0)
-				{
-					if (config.UseOHPResetTimerOnStop)
-					{
-						if (config.AllowSetLClicker) config.EnableLeftClicker = true;
-						if (config.AllowSetRClicker) config.EnableRightClicker = true;
-						IsTrigger = false;
-						if (config.UseOHPPlaySound)
-							MessageBeep(MB_ICONINFORMATION);
-					}
-					else
-					{
-						bool RClickerState = false;
-						bool LClickerState = false;
-						switch (config.RClickerMode)
-						{
-						case C_MOUSESMODE:
-							RClickerState = GetKeyDown(VK_RBUTTON); break;
-						case C_ASSISTMODE:
-							RClickerState = config.RCPS >= config.AssistModeCPSThreshold; break;
-						case C_BUTTONMODE:
-							RClickerState = GetKeyDown(config.RKEY); break;
-						case C_SWITCHMODE:
-							RClickerState = SwitchMode_RClick; break;
-						}
-						switch (config.LClickerMode)
-						{
-						case C_MOUSESMODE:
-							LClickerState = GetKeyDown(VK_LBUTTON); break;
-						case C_ASSISTMODE:
-							LClickerState = config.LCPS >= config.AssistModeCPSThreshold; break;
-						case C_BUTTONMODE:
-							LClickerState = GetKeyDown(config.LKEY); break;
-						case C_SWITCHMODE:
-							LClickerState = SwitchMode_LClick; break;
-						}
-
-						if (!RClickerState && !LClickerState)
-						{
-							if (config.AllowSetLClicker && !IsOpenGui) config.EnableLeftClicker = true;
-							if (config.AllowSetRClicker && !IsOpenGui) config.EnableRightClicker = true;
-							if (config.UseOHPPlaySound)
-								MessageBeep(MB_ICONINFORMATION);
-						}
-					}
-				}
-				OverTime = GetTickCount64() + 100;
-			}
-		}
-
 		{
 			static ULONGLONG LastTime = GetTickCount64();
 			// RecordTime为1小时
@@ -513,36 +358,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		* unsigned long long 类型（通常为64位，最大值约为18,446,744,073,709,551,615）会在大约 86,542,663.67 天后溢出。
 		* 这远远超过了实际可能的游戏时间，因此在使用 unsigned long long 类型记录鼠标点击次数时，溢出的风险非常低。
 		*/
-
-		// 仅限游戏中连点
-		if (config.UseInGameOnlyClicker)
-		{
-			HWND hwnd = GetForegroundWindow();
-			if (VarHasChanged(hwnd, "ClickerControl_ForegroundWindow") && hwnd != GameHwnd)
-			{
-				if (config.AllowSetLClicker) config.EnableLeftClicker = false;
-				if (config.AllowSetRClicker) config.EnableRightClicker = false;
-			}
-			else
-			{
-				if (config.AllowSetLClicker) config.EnableLeftClicker = true;
-				if (config.AllowSetRClicker) config.EnableRightClicker = true;
-			}
-		}
-
-		// 强制开关连点 - 这个权重大于一切
-		if (GetKeyClick(config.EnableRightClickerKey))
-		{
-			config.EnableRightClicker = !config.EnableRightClicker;
-			if (config.EnableRightClicker) PlayEnableSound();
-			else PlayDisableSound();
-		}
-		if (GetKeyClick(config.EnableLeftClickerKey))
-		{
-			config.EnableLeftClicker = !config.EnableLeftClicker;
-			if (config.EnableLeftClicker) PlayEnableSound();
-			else PlayDisableSound();
-		}
 
 		Sleep(10);
 	}

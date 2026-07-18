@@ -189,7 +189,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="ImGui\imgui_stdlib.h" />
+    <ClInclude Include="ImGui\TextEditor\TextEditor.h" />
     <ClInclude Include="json\picojson.h" />
+    <ClInclude Include="ScriptEditor.h" />
     <ClInclude Include="StartAnim.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </ExcludedFromBuild>
@@ -272,6 +274,7 @@
     <ClCompile Include="ImGui\implot3d_items.cpp" />
     <ClCompile Include="ImGui\implot3d_meshes.cpp" />
     <ClCompile Include="ImGui\implot_items.cpp" />
+    <ClCompile Include="ImGui\TextEditor\TextEditor.cpp" />
     <ClCompile Include="stb\stb_vorbis.c" />
     <ClCompile Include="Test.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>

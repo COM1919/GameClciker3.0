@@ -409,7 +409,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -496,6 +496,7 @@ const string StartupMov =         "res\\startup.webp";
 
 const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
 const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
+const string ScriptIconTemp =     WorkPath + "\\GameClicker\\Script\\shop\\icons";
 const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";
 const string ScriptShopDir =      WorkPath + "\\GameClicker\\Script\\shop";
 const string ScriptShopTemp =     WorkPath + "\\GameClicker\\Script\\shop\\temp";
@@ -595,9 +596,10 @@ bool IsDownloadRes           = false;           //是否正在下载资源
 bool ShowGui                 = true;            //是否显示GUI
 bool IsFirstRun              = false;           //第一次运行（是否显示向导）
 bool SoundIsOpen             = false;           //音效是否正常加载
-LRPair<bool> IsClickering    = {};              //是否连点，CPS计数器专属变量，其他代码不能使用也不能访问
+LRPair<bool> IsClickering    = {};              //是否连点
 LRPair<bool> IsClickerDown   = {};              //连点器的键按下，CPS计数器专属变量，其他代码不能使用也不能访问
-bool IsMoving                = false;           //是否移动
+bool IsMoving                = false;           //玩家是否移动
+bool IsJumping               = false;           //玩家是否跳跃
 bool IsOpenGui               = false;           //在游戏中是否打开GUI
 bool IsGameGuiInit           = false;           //GameGui是否初始化
 bool GameGuiError            = false;           //GameGui是否出错
@@ -618,6 +620,7 @@ bool AllowConnectServer      = false;           //是否允许连接服务器
 bool IsDragingFile           = false;           //是否正在拖入文件
 bool IsEnableScript          = true;            //是否启用LUA脚本系统，这个针对LUA系统崩溃后的处理
 bool IsCPSWaveSettingChanged = false;           //是否更改了CPS波形设置
+bool IsScriptUseGitee        = false;           //脚本商场是否使用gitee
 
 float OverheatProtecTimer = 0;                  //过热保护计时器
 int UseServerOfType = -1;                       //使用的服务器的类型
@@ -709,26 +712,3 @@ typedef struct GameGuiPipeData
     LRPair<bool> IsClickerDown = {};             //连点器的键按下
     LRPair<bool> IsHumanDown = {};               //鼠标键是否按下
 };
-/*
-class HightResTimeGuardClass // 使用RAII封装timeBeginPeriod，防止忘记关闭导致。。。
-{
-    int count = 0;
-    // 开启高精度计时器
-    HightResTimeGuardClass()
-    {
-        timeBeginPeriod(1);
-        count++;
-    }
-    void Clean()
-    {
-        if (count > 0)
-        {
-            timeEndPeriod(1);
-            count--;
-        }
-    }
-    ~HightResTimeGuardClass()
-    {
-        Clean();
-    }
-} HightResTimeGuard;*/

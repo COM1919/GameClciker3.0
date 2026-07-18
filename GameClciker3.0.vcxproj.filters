@@ -25,6 +25,9 @@
     <Filter Include="json">
       <UniqueIdentifier>{bab33df8-71f1-4347-b12c-a226affac1d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ImGui\TextEditor">
+      <UniqueIdentifier>{924f8eea-112d-4225-95a2-82bd9b781c10}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Definitons.h">
@@ -231,6 +234,12 @@
     <ClInclude Include="ImGui\imgui_stdlib.h">
       <Filter>ImGui</Filter>
     </ClInclude>
+    <ClInclude Include="ScriptEditor.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\TextEditor\TextEditor.h">
+      <Filter>ImGui\TextEditor</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GC.cpp">
@@ -292,6 +301,9 @@
     </ClCompile>
     <ClCompile Include="ImGui\imgui_stdlib.cpp">
       <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\TextEditor\TextEditor.cpp">
+      <Filter>ImGui\TextEditor</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

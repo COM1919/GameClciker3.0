@@ -1284,7 +1284,19 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
 
 Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, D3D11_FILTER filterMode, int* w, int* h)
 {
-    // 检查文件是否存在
+    // 假设文件没了就使用缓存，不影响...
+    // 检查缓存
+    if (!CacheDisabled)
+    {
+        auto it = TextureMap.find(filename);
+        if (it != TextureMap.end())
+        {
+            if (w != nullptr) *w = it->second.width;
+            if (h != nullptr) *h = it->second.height;
+            return it->second.texture;
+        }
+    }
+    // 检查文件是否存在，
     try
     {
         if (_access(filename.c_str(), 0) != 0)
@@ -1301,18 +1313,6 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, D3D11_
             PrintLog("[Render] 无效的图片路径: " + filename, PL_ERROR);
         TextureErrorMap[filename] = true;
         return nullptr;
-    }
-
-    // 检查缓存
-    if (!CacheDisabled)
-    {
-        auto it = TextureMap.find(filename);
-        if (it != TextureMap.end())
-        {
-            if (w != nullptr) *w = it->second.width;
-            if (h != nullptr) *h = it->second.height;
-            return it->second.texture;
-        }
     }
 
     // 加载图片

@@ -56,7 +56,7 @@ void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
 bool AddFollowStartup(const string& file);
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear);
+int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
 bool RemoveFollowStartup();
 bool DeleteDirectoryRecursively(const string& dirPath);
 static DWORD WINAPI SafeThreadEntry(LPVOID lpContext);
@@ -314,10 +314,195 @@ bool ReadURLDatas(const string& url, vector<char>& datas)
 	return datas.size();
 }
 
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear) // 返回总页数
+// 辅助结构：存储市场脚本元数据
+struct MarketScriptMeta {
+	int scriptid;
+	string title;
+	string author;
+	string motd;
+	int ver;
+	string iconurl;
+	string bbsurl;
+};
+int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
 {
-	static vector<string> ScriptList;
-	if (ScriptList.empty() || clear)
+	const int PaperSize = 10;
+	const string baseUrl = "https://scripts.mcgc.top";
+
+	// ---------- 静态缓存（分开存储两种源） ----------
+	static vector<string> GiteeScriptList;            // Gitee 文本列表
+	static vector<MarketScriptMeta> MarketScriptList; // 市场元数据列表
+
+	// ======================== 市场源 ========================
+	if (!fromGitee)
+	{
+		// 1拉取列表（若缓存为空或强制刷新）
+		if (MarketScriptList.empty() || clear)
+		{
+			MarketScriptList.clear();
+			const int FetchSize = 20;   // 每次请求条数
+			int begin = 1;
+			bool hasMore = true;
+
+			while (hasMore)
+			{
+				int end = begin + FetchSize - 1;
+				string url = baseUrl + "/api/app/list?begin=" + to_string(begin) + "&end=" + to_string(end);
+				string content;
+
+				if (!ReadURLDatas(url, content))
+				{
+					PrintLog("[ScriptMarket] 获取列表失败", PL_ERROR);
+					return 0;
+				}
+
+				// 解析 JSON
+				picojson::value v;
+				string err = picojson::parse(v, content);
+				if (!err.empty())
+				{
+					PrintLog("[ScriptMarket] JSON 解析错误: " + err, PL_ERROR);
+					return 0;
+				}
+				if (!v.is<picojson::object>())
+				{
+					PrintLog("[ScriptMarket] 响应不是对象", PL_ERROR);
+					return 0;
+				}
+				auto& obj = v.get<picojson::object>();
+
+				// 检查 success 和 code
+				if (!obj.count("success") || !obj["success"].is<bool>() || !obj["success"].get<bool>())
+				{
+					PrintLog("[ScriptMarket] success为false", PL_ERROR);
+					return 0;
+				}
+				if (!obj.count("code") || !obj["code"].is<double>() || (int)obj["code"].get<double>() != 0)
+				{
+					PrintLog("[ScriptMarket] code 非 0", PL_ERROR);
+					return 0;
+				}
+				if (!obj.count("data") || !obj["data"].is<picojson::array>())
+				{
+					PrintLog("[ScriptMarket] data 缺失或非数组", PL_ERROR);
+					return 0;
+				}
+				auto& data = obj["data"].get<picojson::array>();
+				if (data.empty())
+					break;  // 无更多数据
+
+				// 提取元数据
+				for (auto& item : data)
+				{
+					if (!item.is<picojson::object>()) continue;
+					auto& it = item.get<picojson::object>();
+					MarketScriptMeta meta;
+					meta.scriptid = (int)it["scriptid"].get<double>();
+					meta.title = it["title"].get<string>();
+					meta.author = it["author"].get<string>();
+					meta.motd = it["motd"].get<string>();
+					string verstr = it["ver"].get<string>();
+					verstr.erase(verstr.begin());
+					try
+					{
+						meta.ver = stoi(verstr);
+					}
+					catch (...)
+					{
+						meta.ver = 0;
+					}
+					meta.iconurl = it["iconurl"].get<string>();
+					meta.bbsurl = it["bbsurl"].get<string>();
+					MarketScriptList.push_back(meta);
+				}
+
+				// 判断是否已到末尾
+				if (data.size() < FetchSize)
+					hasMore = false;
+				else
+					begin = end + 1;
+			}
+		}
+
+		// 2. 计算总页数
+		int totalCount = (int)MarketScriptList.size();
+		int totalPages = (totalCount + PaperSize - 1) / PaperSize;
+		if (totalCount == 0)
+			return 0;
+
+		// 3. 截取当前页
+		int beginIdx = (paper - 1) * PaperSize;
+		int endIdx = min(beginIdx + PaperSize, totalCount);
+		scripts.clear();
+
+		// 图标缓存目录
+		if (_access(ScriptIconTemp.c_str(), 0) != 0)
+			CreateDirectory(ScriptIconTemp.c_str(), NULL);
+
+		for (int i = beginIdx; i < endIdx; ++i)
+		{
+			const auto& meta = MarketScriptList[i];
+
+			ScriptInfo info;
+			info.name = meta.title;
+			info.title = meta.title;
+			info.ver = meta.ver;
+			info.link = meta.bbsurl;
+
+			const string title = meta.title;
+			const string author = meta.author;
+			const string motd = meta.motd;
+			const string bbslink = meta.bbsurl;
+
+			// 构建描述信息（类似原 GetScriptsInfo 的拼接）
+			info.info = StringToUTF8(meta.motd + (config.UseChinese ? u8"\n&7脚本作者：" : "\nAuthor: ") + meta.author);
+
+			// 下载图标
+			string localIconPath;
+			if (!meta.iconurl.empty())
+			{
+				// 从 URL 中提取文件名（用于确定扩展名）
+				string filename = meta.iconurl.substr(meta.iconurl.find_last_of('/') + 1);
+				size_t dotPos = filename.find_last_of('.');
+				string ext = (dotPos != string::npos) ? filename.substr(dotPos) : ".png"; // 默认 .png
+				// 防止路径注入，只取扩展名，文件名用 scriptid
+				string safeExt = ext;
+				for (char& c : safeExt)
+					if (!isalnum(c) && c != '.') c = '_';
+				if (safeExt.empty() || safeExt[0] != '.') safeExt = ".png";
+
+				localIconPath = ScriptIconTemp + "\\" + to_string(meta.scriptid) + safeExt;
+
+				// 若图标文件不存在，则下载
+				if (_access(localIconPath.c_str(), 0) != 0)
+				{
+					// 先下载到临时文件，再重命名
+					string tempFile = ScriptIconTemp + "\\" + to_string(meta.scriptid) + ".tmp";
+					if (DownloadURLFiles(meta.iconurl, tempFile))
+					{
+						// 重命名为正确的扩展名
+						if (rename(tempFile.c_str(), localIconPath.c_str()) != 0)
+						{
+							// 重命名失败则删除临时文件
+							_unlink(tempFile.c_str());
+							localIconPath.clear();
+						}
+					}
+					else
+						localIconPath.clear();
+				}
+			}
+			info.texture = localIconPath; // 可能为空
+			// 注意：此时未下载脚本文件，info.file 就填为脚本下载链接
+			info.file = "https://scripts.mcgc.top/download/" + to_string(meta.scriptid);
+			scripts.push_back(info);
+		}
+		// 市场模式下 不调用 GetScriptsInfo，也不重命名
+		return totalPages;
+	}
+
+	// ======================== Gitee 源（保留原逻辑） ========================
+	if (GiteeScriptList.empty() || clear)
 	{
 		string content;
 		if (!ReadURLDatas(URL_GITEE_SCRIPTS, content))
@@ -325,23 +510,20 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear) // 
 			PrintLog("[Init] Gitee: 获取脚本列表失败", PL_ERROR);
 			return 0;
 		}
-		SplitString(content, "\r\n", ScriptList);
+		SplitString(content, "\r\n", GiteeScriptList);
 	}
 
-	const int PaperSize = 10; // 一页10个
 	const int BeginCount = (paper - 1) * PaperSize;
 	const int EndCount = BeginCount + PaperSize;
 	scripts.clear();
 	int count = 0;
-	for (const string& script : ScriptList)
+	for (const string& script : GiteeScriptList)
 	{
 		count++;
 		if (BeginCount >= count || EndCount < count)
 			continue;
 		const string filename = ScriptShopDir + "\\" + script + ".gcdat";
-		// 如果文件已存在，直接跳过下载
-		if (_access(filename.c_str(), 0) != 0)
-		{
+		if (_access(filename.c_str(), 0) != 0) {
 			const string url = URL_GITEE_SC_ROOT + script + ".zip";
 			if (!DownloadURLFiles(url, filename))
 			{
@@ -355,8 +537,9 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear) // 
 	}
 	GetScriptsInfo(scripts, ScriptShopTemp);
 	for (const ScriptInfo& info : scripts)
-		rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str()); // 防止文件名和脚本名字不同，所以强制文件名字为脚本名字
-	return (ScriptList.size() + PaperSize - 1) / PaperSize; // 这是向上取整的经典算法：(总数 + 每页大小 - 1) / 每页大小
+		rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str());
+
+	return (GiteeScriptList.size() + PaperSize - 1) / PaperSize;
 }
 
 // 定义一个结构体来打包所有需要传递给线程的信息

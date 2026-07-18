@@ -2,7 +2,6 @@
 #include "maths.h"
 #include "MainClick.h"
 #include "ALFamework/Famewrok.h"
-#include "json/picojson.h"
 #include <Dbt.h>
 
 #include <unordered_map>
