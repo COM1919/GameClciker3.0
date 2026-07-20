@@ -24,7 +24,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam);
 DWORD WINAPI MouseShakeMove(LPVOID lpParam);
 DWORD WINAPI GameGuiThread(LPVOID lpParam);
 DWORD WINAPI RecordsCPS(LPVOID lpParam);
-POINT UseMouseShakeAlgorithm(POINT& view, POINT center);
+POINT MouseShakeAlgorithm(POINT& view, POINT center);
 LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam);
 void BeginSleep(const char* flag);
 void EndSleep(const char* flag, int time);
@@ -371,12 +371,12 @@ struct FPOINT {
 	void operator = (POINT pt) { x = pt.x; y = pt.y; }
 };
 
-POINT UseMouseShakeAlgorithm(POINT& view, POINT center)
+POINT MouseShakeAlgorithm(POINT& view, POINT center)
 {
 	RECT ShakeRect{};
-	ShakeRect.left =   center.x - config.MouseShakeRect;
-	ShakeRect.top =    center.y - config.MouseShakeRect;
-	ShakeRect.right =  center.x + config.MouseShakeRect;
+	ShakeRect.left = center.x - config.MouseShakeRect;
+	ShakeRect.top = center.y - config.MouseShakeRect;
+	ShakeRect.right = center.x + config.MouseShakeRect;
 	ShakeRect.bottom = center.y + config.MouseShakeRect;
 	POINT MousePos{};
 
@@ -416,11 +416,11 @@ POINT UseMouseShakeAlgorithm(POINT& view, POINT center)
 
 DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 {
-	POINT view{0, 0};
+	POINT view{};
 	FPOINT MousePos{};
 	FPOINT AnimPos{};
 	HWND hwnd = 0;
-	bool moving = false;
+	bool IsMoving = false;
 
 	const int ScreenWidth = GetSystemMetrics(SM_CXSCREEN) - 1;
 	const int ScreenHeight = GetSystemMetrics(SM_CYSCREEN) - 1;
@@ -438,25 +438,26 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 			continue;
 		}
 
+		static ULONGLONG LastTime = GetTickCount64();
 		if ((
-			(KeyStateMap[Click::Left].isDown && !KeyStateMap[Click::Left].isHumanDown) || 
-			KeyStateMap[Click::Right].isDown && !KeyStateMap[Click::Right].isHumanDown) && 
+			(KeyStateMap[Click::Left].isDown && !KeyStateMap[Click::Left].isHumanDown) ||
+			KeyStateMap[Click::Right].isDown && !KeyStateMap[Click::Right].isHumanDown) &&
 			GetForegroundWindow() != GCHWND)
 		{
 			POINT pt{};
 			GetCursorPos(&pt);
-			if (!moving)
+			if (!IsMoving)
 				AnimPos = pt;
-
 			// 不能使用相对坐标(设置中心为0)来一点鼠标，因为anime会导致移动多次，因为SendInput移动是相对位置
-			MousePos = UseMouseShakeAlgorithm(view, pt);
-			moving = true;
-		}
+			MousePos = MouseShakeAlgorithm(view, pt);
+			IsMoving = true;
 
-		if (IsOpenGui)
+			LastTime = GetTickCount64();
+		}
+		if (LastTime + 700 <= GetTickCount64())
 			view = { 0, 0 };
 
-		if (moving)
+		if (IsMoving)
 		{
 			input.mi.dwFlags = (MOUSEEVENTF_MOVE | (config.UseMouseShakeRawInput ? MOUSEEVENTF_ABSOLUTE : 0));
 			if (config.UseMSSmoothSpeed)
@@ -468,14 +469,14 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 
 				POINT pt{};
 				GetCursorPos(&pt);
-				input.mi.dx = config.UseMouseShakeRawInput ? 
+				input.mi.dx = config.UseMouseShakeRawInput ?
 					(AnimPos.x * 65535) / ScreenWidth : round(AnimPos.x) - pt.x;
-				input.mi.dy = config.UseMouseShakeRawInput ? 
+				input.mi.dy = config.UseMouseShakeRawInput ?
 					(AnimPos.y * 65535) / ScreenHeight : round(AnimPos.y) - pt.y;
-				
+
 				SendInput(1, &input, sizeof(INPUT));
 				if (abs(AnimPos.x - MousePos.x) <= 1 && abs(AnimPos.y - MousePos.y) <= 1)
-					moving = false;
+					IsMoving = false;
 			}
 			else
 			{
@@ -486,7 +487,7 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 				input.mi.dy = config.UseMouseShakeRawInput ?
 					(MousePos.y * 65535) / ScreenHeight : round(AnimPos.y) - pt.y;
 				SendInput(1, &input, sizeof(INPUT));
-				moving = false;
+				IsMoving = false;
 			}
 		}
 		static const int sleep = round(1000 / 60);
@@ -673,9 +674,9 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					if ((!config.UseRClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && (!config.UseRStartClickerDelay || LastTime + config.RStartClickerDelay <= GetTickCount64()))
 					{
 						IsClickering.right = true;
-						if (config.UseRPressInterval)
+						if (config.UseRClickPressTime)
 							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
-						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
@@ -727,7 +728,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						  (!config.UseFilterRSingleClick || (LastTime + FILTER_SC_SLEEP <= time))  )
 					{
 						IsClickering.right = true;
-						if (config.UseRPressInterval)
+						if (config.UseRClickPressTime)
 							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
 						if (config.UseItemWithClicker)
 						{
@@ -735,7 +736,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 							IsDownMouse = true;
 						}
 						else
-							SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+							SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
@@ -779,9 +780,9 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					if ((!config.UseRClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && (!config.UseRStartClickerDelay || LastTime + config.RStartClickerDelay <= GetTickCount64()))
 					{
 						IsClickering.right = true;
-						if (config.UseRPressInterval)
+						if (config.UseRClickPressTime)
 						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right * 0.75f) : (ClickerDynamicDelay.right - config.RPressDuration);
-						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
@@ -810,9 +811,9 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						if (IsClickKey)
 							AssistModeCount += config.RMultipleClickValue;
 						IsClickering.right = true;
-						if (config.UseRPressInterval)
+						if (config.UseRClickPressTime)
 						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
-						SetKeyClick(Click::Right, config.UseRPressInterval ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
 						ptime.EndSleep(ClickerDynamicDelay.right);
@@ -888,9 +889,9 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					if ((!config.UseLClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && (!config.UseLStartClickerDelay || LastTime + config.LStartClickerDelay <= GetTickCount64()))
 					{
 						IsClickering.left = true;
-						if (config.UseLPressInterval)
+						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
-						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
@@ -942,7 +943,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						  (!config.UseFilterLSingleClick || (LastTime + FILTER_SC_SLEEP <= time))  )
 					{
 						IsClickering.left = true;
-						if (config.UseLPressInterval)
+						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
 						if (config.UseItemWithClicker)
 						{
@@ -950,7 +951,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 							IsDownMouse = true;
 						}
 						else
-							SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
+							SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
@@ -995,9 +996,9 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					if ((!config.UseLClickTime || (IsDelayEnd && GetTickCount64() < EndTime)) && (!config.UseLStartClickerDelay || LastTime + config.LStartClickerDelay <= GetTickCount64()))
 					{
 						IsClickering.left = true;
-						if (config.UseLPressInterval)
+						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
-						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
@@ -1025,9 +1026,9 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						if (IsClickKey)
 							AssistModeCount += config.LMultipleClickValue;
 						IsClickering.left = true;
-						if (config.UseLPressInterval)
+						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickDealy * 0.75f) : (ClickDealy - config.LPressDuration);
-						SetKeyClick(Click::Left, config.UseLPressInterval ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
+						SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
 						ptime.EndSleep(ClickDealy);

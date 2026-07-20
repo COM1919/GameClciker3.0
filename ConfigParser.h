@@ -16,50 +16,122 @@ void ClearFile(const string& fileName)
 	PrintLog("[File] 已清空文件：" + fileName, PL_INFO);
 }
 
-bool DeleteDirectory(const string& path)
-{
-	try
-	{
-		fs::remove_all(path);
-		PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
-		return true;
-	}
-	catch (const fs::filesystem_error& e)
-	{
-		PrintLog("[Error] 删除文件夹失败：" + path + "，原因：" + e.what(), PL_ERROR);
-		return false;
-	}
-}
-
 int DelFile(const string& file)
 {
-	fs::path p(file);
-	// 如果文件不存在，视为删除成功
-	if (!fs::exists(p))
+	// 检查文件是否存在
+	DWORD attr = GetFileAttributesA(file.c_str());
+	if (attr == INVALID_FILE_ATTRIBUTES)
+		return 0;   // 不存在视为成功
+
+	// 清除只读、系统、隐藏等属性
+	SetFileAttributesA(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+
+	if (DeleteFileA(file.c_str()))
+	{
+		PrintLog("[File] 已删除文件：" + file, PL_INFO);
 		return 0;
-	try
-	{
-		// 移除只读、系统、隐藏等属性，确保可以删除
-		fs::permissions(p, fs::perms::all, fs::perm_options::add);
-		bool removed = fs::remove(p);
-		if (removed)
-		{
-			PrintLog("[File] 已删除文件：" + file, PL_INFO);
-			return 0;
-		}
-		else
-		{
-			// 理论上 exists 为 true 但 remove 返回 false 极少见
-			PrintLog("[Error] 删除文件失败（未知原因）：" + file, PL_ERROR);
-			return -1;
-		}
 	}
-	catch (const fs::filesystem_error& e)
+	else
 	{
-		int err = e.code().value();
+		int err = GetLastError();
 		PrintLog("[Error] 删除文件失败：" + file + "，错误码：" + to_string(err), PL_ERROR);
 		return err;
 	}
+}
+
+bool DeleteDirectory(const string& path)
+{
+	DWORD attr = GetFileAttributesA(path.c_str());
+
+	// 路径不存在 → 视为成功（与 fs::remove_all 行为一致）
+	if (attr == INVALID_FILE_ATTRIBUTES)
+	{
+		PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
+		return true;
+	}
+
+	// 若路径指向文件，转交给 DelFile 处理
+	if (!(attr & FILE_ATTRIBUTE_DIRECTORY))
+		return DelFile(path) == 0;
+
+	vector<string> dirs;          // 所有待删除的目录（含根目录）
+	vector<string> stack;         // 工作栈
+	stack.push_back(path);
+
+	while (!stack.empty())
+	{
+		string cur = stack.back();
+		stack.pop_back();
+
+		// 记录当前目录（最后统一删除）
+		dirs.push_back(cur);
+
+		// 构造搜索模式
+		string searchPattern = cur + "\\*";
+		WIN32_FIND_DATAA fd;
+		HANDLE hFind = FindFirstFileA(searchPattern.c_str(), &fd);
+
+		if (hFind == INVALID_HANDLE_VALUE)
+		{
+			DWORD err = GetLastError();
+			if (err == ERROR_FILE_NOT_FOUND)   // 空目录，无文件需处理
+				continue;
+			else
+			{
+				PrintLog("[Error] 无法访问目录：" + cur + "，错误码：" + to_string(err), PL_ERROR);
+				return false;
+			}
+		}
+
+		do
+		{
+			// 跳过 "." 和 ".."
+			if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+				continue;
+
+			string fullPath = cur + "\\" + fd.cFileName;
+
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			{
+				// 子目录压入栈，稍后遍历
+				stack.push_back(fullPath);
+			}
+			else
+			{
+				// 删除文件：清除属性后删除
+				SetFileAttributesA(fullPath.c_str(), FILE_ATTRIBUTE_NORMAL);
+				if (!DeleteFileA(fullPath.c_str()))
+				{
+					DWORD err = GetLastError();
+					PrintLog("[Error] 删除文件失败：" + fullPath + "，错误码：" + to_string(err), PL_ERROR);
+					FindClose(hFind);
+					return false;
+				}
+			}
+		} while (FindNextFileA(hFind, &fd));
+
+		FindClose(hFind);
+	}
+
+	sort(dirs.begin(), dirs.end(),
+		[](const string& a, const string& b)
+		{
+			return a.length() > b.length();
+		});
+
+	for (const string& d : dirs)
+	{
+		SetFileAttributesA(d.c_str(), FILE_ATTRIBUTE_NORMAL);
+		if (!RemoveDirectoryA(d.c_str()))
+		{
+			DWORD err = GetLastError();
+			PrintLog("[Error] 删除目录失败：" + d + "，错误码：" + to_string(err), PL_ERROR);
+			return false;
+		}
+	}
+
+	PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
+	return true;
 }
 
 int CreateFile(const string& fileName)
@@ -158,8 +230,8 @@ void SaveConfig()
 	WritePrivateProfileString("FeatureSwitches", "useLeftClickTime", config.UseLClickTime ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useRightClickTime", config.UseRClickTime ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLPressInterval ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRPressInterval ? "TRUE" : "FALSE", CIniPos);
+	WritePrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE", CIniPos);
+	WritePrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useLeftAutoPressDuration", config.UseLAutoPressDuration ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useStartWithWindows", config.UseStartWithWindows ? "TRUE" : "FALSE", CIniPos);
@@ -493,12 +565,12 @@ void LoadConfig()
 		GetPrivateProfileString("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseGUIDetection = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLPressInterval ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		GetPrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
-		config.UseLPressInterval = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRPressInterval ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		config.UseLClickPressTime = st.find("TRUE") != string::npos;
+		GetPrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
-		config.UseRPressInterval = st.find("TRUE") != string::npos;
+		config.UseRClickPressTime = st.find("TRUE") != string::npos;
 		GetPrivateProfileString("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseRAutoPressDuration = st.find("TRUE") != string::npos;

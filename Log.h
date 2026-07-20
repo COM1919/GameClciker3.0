@@ -25,6 +25,8 @@ struct LogItem
 };
 
 static string LogFilePath;
+mutex LogContextMtx;
+string LogContext; // 完整日志内容，用于imgui显示
 
 mutex LogQueueMtx; // 更轻量的互斥锁
 condition_variable LogQueueCv;  // 条件变量
@@ -33,7 +35,7 @@ static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
 void InitLogSystem(const string& filename);
 void PrintLog(const string& str, UINT type);
 static ULONGLONG GetFolderSize(const string& FolderPath);
-static string FormatTime(time_t time);
+static string FormatTime(time_t time, bool OnlyOneDay = false);
 static void WriteLogThread();
 void DeleteOldLog();
 
@@ -46,7 +48,7 @@ void InitLogSystem(const string& filename)
 
 static void WriteLogThread()
 {
-    static fstream fLog(LogFilePath, ios::app);
+    static fstream fLog(LogFilePath, ios::app | ios::out);
     while (!GCExit)
     {
         if (LogQueue.size() > 0)
@@ -62,13 +64,26 @@ static void WriteLogThread()
                 LogQueue.pop_front();
             } // 锁在此处释放，不影响后续耗时的 IO 操作
 
-            // 无锁区域：处理日志输出（耗时操作）
-            string TypeStr = (item.type == PL_INFO) ? "info" : (item.type == PL_WARNING) ? "warning" : "error";
-            string TimeStr = FormatTime(item.time);
-
-            string text = "[" + TimeStr + "] " + TypeStr + " : " + item.str + "\n";
-            fLog << text;
+             // 无锁区域：处理日志输出（耗时操作）
+            const string FullTimeStr = FormatTime(item.time);
+            const string SimpleTimeStr = FormatTime(item.time, true);
+            const string TypeStr = (item.type == PL_INFO) ? "info" : (item.type == PL_WARNING) ? "warning" : "error";
+            fLog << "[" + FullTimeStr + "] " + TypeStr + " : " + item.str + "\n";
             fLog.flush();
+
+            const string SimpleText = "&7[" + SimpleTimeStr + "] " + TypeStr + " : " + item.str + "\n";
+
+            {
+                const string TypeStr = (item.type == PL_INFO) ? "&finfo" : (item.type == PL_WARNING) ? "&ewarning" : "&cerror";
+                lock_guard<mutex> lock(LogContextMtx);
+                LogContext += ("&7[" + SimpleTimeStr + "] " + TypeStr + " : " + item.str + "\n");
+                while (LogContext.size() > 1024 * 40)
+                {
+                    size_t CutPos = LogContext.find('\n', 512);
+                    if (CutPos != string::npos)
+                        LogContext.erase(0, CutPos + 1);
+                }
+            }
 
 #ifdef GC_DEBUG_CMD
             switch (item.type)
@@ -83,12 +98,12 @@ static void WriteLogThread()
                 SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
                 break;
             }
-            cout << text;
+            cout << SimpleText;
             cout.flush();
 #endif // GC_DEBUG_CMD
 
 #ifdef GC_DEBUG_VS
-            OutputDebugString(text.c_str());
+            OutputDebugString(SimpleText.c_str());
 #endif // GC_DEBUG_VS
 
             Sleep(1);
@@ -98,18 +113,21 @@ static void WriteLogThread()
     }
 }
 
-static string FormatTime(time_t time)
+static string FormatTime(time_t time, bool OnlyOneDay)
 {
     string TimeStr;
     tm ptm;
     localtime_s(&ptm, &time);
 
-    TimeStr += to_string(ptm.tm_year + 1900);
-    TimeStr += "/";
-    TimeStr += to_string(ptm.tm_mon + 1);
-    TimeStr += "/";
-    TimeStr += to_string(ptm.tm_mday);
-    TimeStr += " ";
+    if (!OnlyOneDay)
+    {
+        TimeStr += to_string(ptm.tm_year + 1900);
+        TimeStr += "/";
+        TimeStr += to_string(ptm.tm_mon + 1);
+        TimeStr += "/";
+        TimeStr += to_string(ptm.tm_mday);
+        TimeStr += " ";
+    }
     TimeStr += to_string(ptm.tm_hour);
     TimeStr += ":";
     TimeStr += to_string(ptm.tm_min);

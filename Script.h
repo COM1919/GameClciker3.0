@@ -9,7 +9,7 @@ static int panic_handler(lua_State* L);
 bool RenderScriptGui(const string& file);
 int SaveScriptConfig(const string& file);
 int LoadScript(lua_State* L, const string& file);
-void CloseScriptThread(ScriptState& state, ScriptInfo& info);
+void CloseScriptThread(const string& filename, ScriptInfo& info);
 int CalledScriptFunction(lua_State* L, const string& func);
 inline bool InitLuaState(const string& file, LuaState& lua);
 
@@ -448,7 +448,7 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
 
 HANDLE StartScript(const string& file)
 {
-    PrintLog("启动脚本线程：" + file, PL_INFO);
+    PrintLog("[Script] 启动脚本线程：" + file, PL_INFO);
     
     auto thread_func = [](HANDLE* hThread, const string& file)
     {
@@ -469,11 +469,10 @@ HANDLE StartScript(const string& file)
             }
             lua = &LuaStates[file];   // 重新获取
         }
-        else
+        // 无论是否第一次运行，都需要复制线程句柄
         {
             HANDLE hRealHandle = NULL;
             HANDLE hPseudoHandle = GetCurrentThread();
-            // 复制一个真实句柄
             if (!DuplicateHandle(GetCurrentProcess(), hPseudoHandle, GetCurrentProcess(), &hRealHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
             {
                 PrintLog("[Script] 复制线程句柄失败(Error ID:1)", PL_ERROR);
@@ -489,18 +488,16 @@ HANDLE StartScript(const string& file)
         }
         // 启动脚本！！！开始脚本循环
         bool IsSuspend = false;
+        bool IsExit = false;
         int LoopDelay = 0;
         while (!GCExit)
         {
             {
-                // 写入锁
-                lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                // 读取锁
+                shared_lock<shared_mutex> lock(ScriptStatesMtx);
                 auto& it = ScriptStates[file];
                 if (it.IsExit)
-                {
-                    it.IsExit = true;
-                    break;
-                }
+                    break; // 退出脚本
                 IsSuspend = it.IsSuspend;
                 LoopDelay = it.LoopDelay;
             }
@@ -520,35 +517,38 @@ HANDLE StartScript(const string& file)
             }
             if (ret != 0)
             {
-                // 在 已安装 中，删除当前脚本
-                // 写入锁
-                lock_guard<shared_mutex> lock(InstalledScriptsMtx);
-                int count = 0;
-                for (const ScriptInfo& s : InstalledScripts)
+                if (file != ScriptTestFile) // 测试脚本就不管
                 {
-                    if (s.file == file)
+                    // 脚本崩溃了，在 已安装 中，删除当前脚本
+                    // 写入锁
+                    lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                    int count = 0;
+                    for (const ScriptInfo& s : InstalledScripts)
                     {
-                        InstalledScripts.erase(InstalledScripts.begin() + count);
-                        break;
+                        if (s.file == file)
+                        {
+                            InstalledScripts.erase(InstalledScripts.begin() + count);
+                            break;
+                        }
+                        count++;
                     }
-                    count++;
                 }
-
-                break;
+                break; // 退出！
             }
             Sleep(LoopDelay);
         }
-        PrintLog("脚本线程退出：" + file, PL_INFO);
+        lua->release();
+        PrintLog("[Script] 脚本线程退出：" + file, PL_INFO);
     };
     HANDLE hThread = nullptr;
     thread t(thread_func, &hThread, file);
     t.detach();
 
     // 等待线程启动并且获得到线程句柄
-    int try_count = 10;
+    int try_count = 20; // 50 * 20 = 1000 = 1s
     while (hThread == nullptr && try_count > 0)
     {
-        Sleep(2);
+        Sleep(50);
         try_count--;
     }
     return hThread;
@@ -558,11 +558,13 @@ bool RenderScriptGui(const string& file)
 {
     LuaState* lua = nullptr;
     {
+        // 写入锁
         lock_guard<shared_mutex> lock(LuaStatesMtx);
         lua = &LuaStates[file];
     }
     if (!InitLuaState(file, *lua))
         return 0;
+    // 写入锁
     lock_guard<mutex> lock(lua->RunningMtx);
     const int ret = CalledScriptFunction(lua->lua, "render") == 0;
     return ret;
@@ -573,33 +575,52 @@ int SaveScriptConfig(const string& file)
     auto& lua = LuaStates[file];
     if (!InitLuaState(file, lua))
         return 0;
+    // 写入锁
     lock_guard<mutex> lock(lua.RunningMtx);
     const int ret = CalledScriptFunction(lua.lua, "saveConfig") == 0;
     return ret;
 }
 
-void CloseScriptThread(ScriptState& state, ScriptInfo& info)
+void CloseScriptThread(const string& filename, ScriptInfo& info)
 {
-    state.IsExit = true;
-
-    ULONGLONG OutTime = GetTickCount64() + 1200;
-    while (state.IsExit && GetTickCount64() < OutTime)
-        Sleep(3);
-    if (state.IsExit)
     {
-        PrintLog("脚本线程超时退出，将强制结束：" + info.file, PL_WARNING);
-        if (info.hThread != NULL)
-        {
-            TerminateThread(info.hThread, -1);
-            state.IsExit = true;
-        }
+        // 写入锁
+        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+        ScriptStates[filename].IsExit = true;
     }
-    else
-        PrintLog("脚本线程退出：" + info.file, PL_INFO);
+
+    bool IsExit = false;
+    DWORD ret = WaitForSingleObject(info.hThread, 2000);
+    if (ret == WAIT_FAILED)
+        PrintLog("[Script] 脚本线程句柄无效：" + info.file, PL_ERROR);
+    else if (ret == WAIT_TIMEOUT)
+    {
+        PrintLog("[Script] 脚本线程超时退出，将强制结束：" + info.file, PL_WARNING);
+        if (info.hThread)
+            TerminateThread(info.hThread, -1);
+        else
+            PrintLog("[Script] 线程句柄无效：" + info.file, PL_ERROR);
+    }
+
     if (info.hThread != NULL)
     {
         CloseHandle(info.hThread);
         info.hThread = NULL;
+    }
+    {
+        // 写入锁
+        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+        ScriptStates.erase(filename);
+    }
+    // 清理 LuaStates，以便下次运行时重新加载脚本
+    {
+        lock_guard<shared_mutex> lock(LuaStatesMtx);
+        auto it = LuaStates.find(filename);
+        if (it != LuaStates.end())
+        {
+            it->second.release();
+            LuaStates.erase(it);
+        }
     }
 }
 
@@ -612,10 +633,12 @@ void ClearScriptCache()
         {
             // 写入锁
             lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
-            lock_guard<shared_mutex> lock2(ScriptStatesMtx);
             for (ScriptInfo& script : InstalledScripts)
-                CloseScriptThread(ScriptStates[script.name], script);
+                CloseScriptThread(script.name, script);
             InstalledScripts.clear();
+        }
+        {
+            lock_guard<shared_mutex> lock2(ScriptStatesMtx);
             ScriptStates.clear();
         }
         {
@@ -664,7 +687,7 @@ void CloseAllLua()
         // 写入锁
         lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
         for (ScriptInfo script : InstalledScripts)
-            CloseScriptThread(ScriptStates[script.name], script);
+            CloseScriptThread(script.name, script);
         InstalledScripts.clear();
         ScriptStates.clear();
     }

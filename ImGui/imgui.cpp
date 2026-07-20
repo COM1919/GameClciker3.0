@@ -1425,6 +1425,8 @@ std::map <ImGuiID, bool> SMA_Start;
 std::map <ImGuiID, bool> SMA_End;
 bool SMA_IsStart = false;
 bool SMA_Disable = false;
+// 是否启用彩色文字（比如&d）
+bool IsEnableColorText = true;
 
 // Memory Allocator functions. Use SetAllocatorFunctions() to change them.
 // - You probably don't want to modify that mid-program, and if you use global/static e.g. ImVector<> instances you may need to keep them accessible during program destruction.

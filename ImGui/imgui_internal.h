@@ -232,6 +232,8 @@ extern std::map <ImGuiID, bool> SMA_Start;
 extern std::map <ImGuiID, bool> SMA_End;
 extern bool SMA_IsStart;
 extern bool SMA_Disable;
+// 是否启用彩色文字（比如&d）
+extern bool IsEnableColorText;
 
 //-----------------------------------------------------------------------------
 // [SECTION] Macros
@@ -3767,6 +3769,8 @@ namespace ImGui
     inline static void ResetAnimation() { srand(1919); }
     inline static int  GetTextRandomID() { return rand(); }
     inline static void DisableAnimation(bool b) { SMA_Disable = b; }
+
+    inline static void DisableColorText(bool b) { IsEnableColorText = !b; }
 
     // COM1919添加的CalcWidgetsAnimVert函数
     static ImVec2 CalcWidgetsAnimVert(ImGuiID id)

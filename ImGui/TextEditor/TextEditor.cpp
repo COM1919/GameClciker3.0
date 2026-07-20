@@ -3117,41 +3117,6 @@ const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::Lua()
 		for (auto& k : keywords)
 			langDef.mKeywords.insert(k);
 
-		// =========================================================
-	    // 【在这里添加你的自定义代码】
-	    // =========================================================
-		static const char* const customApis[] = {
-			"PrintLog", "GetVersion", "GetKeyDown", "GetKeyUp", "GetKeyClick",
-			"SetKeyDown", "SetKeyUp", "SetKeyClick", "GetMousePos", "SetMousePos",
-			"GetCpsRight", "GetCpsLeft", "GetHumanCpsLeft", "GetHumanCpsRight",
-			"Sleep", "GetItemBarPos", "SetIniFile", "GetIniFile", "SetItemBarPos",
-			"SetClickerSettings", "GetClickerSettings", "RandomBool", "RandomInt",
-			"GetTickCount", "SimulatedInputText", "GetScreenSize",
-			"ConnectNamedPipe", "ReadNamedPipe", "WriteNamedPipe", "CloseNamedPipe",
-			"GetClipboardText", "SetClipboardText", "RenderMessageBox", "RenderPopTip",
-			"IsScriptKeyDown", "IsScriptKeyClick", "IsScriptKeyUp",
-			"MessageBeep", "SetScriptLoopDelay", "IsOpenGui", "IsPlayerMoving",
-			"PlayEnableSound", "PlayDisableSound",
-			"IsCloseUI", "Button", "Checkbox", "Text", "InputText",
-			"SliderInt", "SliderFloat", "SameLine", "InputKey", "DrawSpiltLine",
-			"AttachTooltip", "PopTip", "RadioButton",
-			"SetCursorPos", "GetCursorPos", "SetNextItemWidth",
-			"SetCurentColor", "SetDrawOverAll",
-			"DrawLine", "DrawRect", "DrawRectFilled", "DrawCircle", "DrawCircleFilled",
-			"DrawImage", "DrawText"
-		};
-		// 将自定义 API 作为 Identifier 添加，这样它们会显示为函数名颜色
-		for (const char* k : customApis)
-		{
-			TextEditor::Identifier id;
-			id.mDeclaration = "Script API";
-			langDef.mIdentifiers.insert(std::make_pair(std::string(k), id));
-		}
-		// 添加 KEY, SC, GK 作为关键字（显示为关键字颜色）
-		langDef.mKeywords.insert("KEY");
-		langDef.mKeywords.insert("SC");
-		langDef.mKeywords.insert("GK");
-
 		static const char* const identifiers[] = {
 			"assert", "collectgarbage", "dofile", "error", "getmetatable", "ipairs", "loadfile", "load", "loadstring",  "next",  "pairs",  "pcall",  "print",  "rawequal",  "rawlen",  "rawget",  "rawset",
 			"select",  "setmetatable",  "tonumber",  "tostring",  "type",  "xpcall",  "_G",  "_VERSION","arshift", "band", "bnot", "bor", "bxor", "btest", "extract", "lrotate", "lshift", "replace",
@@ -3192,3 +3157,889 @@ const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::Lua()
 	}
 	return langDef;
 }
+
+const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::GCLua(bool UseChinese)
+{
+	// ---------------- 公共初始化逻辑 ----------------
+	auto InitCommon = [](LanguageDefinition& langDef) {
+		static const char* const keywords[] = {
+			"and", "break", "do", "else", "elseif", "end", "false", "for",
+			"function", "goto", "if", "in", "local", "nil", "not", "or",
+			"repeat", "return", "then", "true", "until", "while"
+		};
+		for (auto& k : keywords)
+			langDef.mKeywords.insert(k);
+
+		langDef.mKeywords.insert("KEY");
+		langDef.mKeywords.insert("SC");
+		langDef.mKeywords.insert("GK");
+
+		static const char* const identifiers[] = {
+			"assert", "collectgarbage", "dofile", "error", "getmetatable", "ipairs",
+			"loadfile", "load", "loadstring", "next", "pairs", "pcall", "print",
+			"rawequal", "rawlen", "rawget", "rawset", "select", "setmetatable",
+			"tonumber", "tostring", "type", "xpcall", "_G", "_VERSION",
+			"arshift", "band", "bnot", "bor", "bxor", "btest", "extract", "lrotate",
+			"lshift", "replace", "rrotate", "rshift", "create", "resume", "running",
+			"status", "wrap", "yield", "isyieldable", "debug", "getuservalue",
+			"gethook", "getinfo", "getlocal", "getregistry", "getmetatable",
+			"getupvalue", "upvaluejoin", "upvalueid", "setuservalue", "sethook",
+			"setlocal", "setmetatable", "setupvalue", "traceback", "close", "flush",
+			"input", "lines", "open", "output", "popen", "read", "tmpfile", "type",
+			"write", "__gc", "__tostring", "abs", "acos", "asin", "atan", "ceil",
+			"cos", "deg", "exp", "tointeger", "floor", "fmod", "ult", "log", "max",
+			"min", "modf", "rad", "random", "randomseed", "sin", "sqrt", "string",
+			"tan", "atan2", "cosh", "sinh", "tanh", "pow", "frexp", "ldexp", "log10",
+			"pi", "huge", "maxinteger", "mininteger", "loadlib", "searchpath",
+			"seeall", "preload", "cpath", "path", "searchers", "loaded", "module",
+			"require", "clock", "date", "difftime", "execute", "exit", "getenv",
+			"remove", "rename", "setlocale", "time", "tmpname", "byte", "char",
+			"dump", "find", "format", "gmatch", "gsub", "len", "lower", "match",
+			"rep", "reverse", "sub", "upper", "pack", "packsize", "unpack", "concat",
+			"maxn", "insert", "move", "sort", "offset", "codepoint", "codes",
+			"charpattern", "coroutine", "table", "io", "os", "utf8", "bit32",
+			"math", "debug", "package"
+		};
+		for (auto& k : identifiers)
+		{
+			Identifier id;
+			id.mDeclaration = "Built-in function";
+			langDef.mIdentifiers.insert(std::make_pair(std::string(k), id));
+		}
+
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("L?\\\"(\\\\.|[^\\\"])*\\\"", PaletteIndex::String));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("\\\'[^\\\']*\\\'", PaletteIndex::String));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("0[xX][0-9a-fA-F]+[uU]?[lL]?[lL]?", PaletteIndex::Number));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?[fF]?", PaletteIndex::Number));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("[+-]?[0-9]+[Uu]?[lL]?[lL]?", PaletteIndex::Number));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("[a-zA-Z_][a-zA-Z0-9_]*", PaletteIndex::Identifier));
+		langDef.mTokenRegexStrings.push_back(std::make_pair<std::string, PaletteIndex>("[\\[\\]\\{\\}\\!\\%\\^\\&\\*\\(\\)\\-\\+\\=\\~\\|\\<\\>\\?\\/\\;\\,\\.]", PaletteIndex::Punctuation));
+
+		langDef.mCommentStart = "--[[";
+		langDef.mCommentEnd = "]]";
+		langDef.mSingleLineComment = "--";
+
+		langDef.mCaseSensitive = true;
+		langDef.mAutoIndentation = false;
+		langDef.mName = "Lua";
+		};
+
+	// ---------------- 中文版本初始化 ----------------
+	static LanguageDefinition langDefCN;
+	static bool initedCN = false;
+	if (UseChinese && !initedCN)
+	{
+		InitCommon(langDefCN);
+		struct ApiDoc { const char* name; const char* decl; };
+		static const ApiDoc customApisCN[] = {
+			{ "RenderMessageBox",
+				u8"RenderMessageBox(msg: string, title: string, type: int) -> int\n"
+				u8"显示一个消息框，阻塞直到用户点击按钮。\n"
+				u8"返回值：0 = 用户点击取消，1 = 用户点击确定\n"
+				u8"参数：\n"
+				u8"  msg   消息框中显示的消息内容\n"
+				u8"  title 消息框标题\n"
+				u8"  type  消息框类型（0 = 仅确定按钮，1 = 确定 + 取消按钮）" },
+			{ "RenderPopTip",
+				u8"RenderPopTip(msg: string, timeout: number, type: int) -> nil\n"
+				u8"显示一个弹出提示，不会阻塞运行。\n"
+				u8"参数：\n"
+				u8"  msg     提示文本\n"
+				u8"  timeout 持续时间（秒，小数）\n"
+				u8"  type    类型（1 = 消息，2 = 警告，3 = 错误）" },
+			{ "GetTickCount",
+				u8"GetTickCount() -> int\n"
+				u8"返回从开机到当前的 Tick 计数（毫秒），非真实时间。\n"
+				u8"参数：无" },
+			{ "RandomInt",
+				u8"RandomInt(min: int, max: int) -> int\n"
+				u8"返回 [min, max] 区间内的随机整数。\n"
+				u8"参数：\n"
+				u8"  min 最小值\n"
+				u8"  max 最大值" },
+			{ "RandomBool",
+				u8"RandomBool(rate: number) -> bool\n"
+				u8"按概率返回 true / false。\n"
+				u8"参数：\n"
+				u8"  rate 触发概率，范围 0~1" },
+			{ "GetVersion",
+				u8"GetVersion() -> int\n"
+				u8"返回 GC 连点器的版本号（仅返回 x.y 中的 y）。\n"
+				u8"参数：无" },
+			{ "SetClickerSettings",
+				u8"SetClickerSettings(app: string, key: string, value: any) -> nil\n"
+				u8"写入 GC 配置文件 settings.ini 中的指定项。\n"
+				u8"参数：\n"
+				u8"  app   分组名（INI 节名）\n"
+				u8"  key   配置项名\n"
+				u8"  value 要设置的值（string / int / bool）" },
+			{ "GetClickerSettings",
+				u8"GetClickerSettings(app: string, key: string, default: any) -> string|int|bool\n"
+				u8"读取 GC 配置文件 settings.ini 中的指定项。\n"
+				u8"参数：\n"
+				u8"  app     分组名\n"
+				u8"  key     配置项名\n"
+				u8"  default 项不存在时返回的默认值" },
+			{ "PrintLog",
+				u8"PrintLog(msg: string, level: int) -> nil\n"
+				u8"打印日志。建议格式：[脚本名]内容\n"
+				u8"参数：\n"
+				u8"  msg   日志消息\n"
+				u8"  level 日志级别（1 = 普通，2 = 警告，3 = 错误）" },
+			{ "GetKeyDown",
+				u8"GetKeyDown(key: int, human?: bool, mode?: int) -> bool\n"
+				u8"检查指定按键是否处于按下状态。\n"
+				u8"参数：\n"
+				u8"  key   按键代码（可用 KEY.VK_SPACE 等）\n"
+				u8"  human 可选，仅获取人类点击，过滤模拟按键\n"
+				u8"  mode  可选，获取方式（GK.HOOK=1 / GK.BOTH=3）\n"
+				u8"注意：使用 human=true 时强制使用全局钩子。" },
+			{ "GetKeyClick",
+				u8"GetKeyClick(key: int, human?: bool, mode?: int) -> bool\n"
+				u8"检查指定按键是否被点击（按下并松开的瞬间）。\n"
+				u8"参数同 GetKeyDown。" },
+			{ "GetKeyUp",
+				u8"GetKeyUp(key: int, human?: bool, mode?: int) -> bool\n"
+				u8"检查指定按键是否被释放。\n"
+				u8"参数同 GetKeyDown。" },
+			{ "SetKeyDown",
+				u8"SetKeyDown(key: int, mode?: int) -> nil\n"
+				u8"模拟按下指定按键。\n"
+				u8"参数：\n"
+				u8"  key  按键代码\n"
+				u8"  mode 点击方式（SC.MOUSE_EVENT=0 / SC.SEND_INPUT=1 / SC.POST_MESSAGE=2）\n"
+				u8"        基岩版请使用 SC.SEND_INPUT" },
+			{ "SetKeyUp",
+				u8"SetKeyUp(key: int, mode?: int) -> nil\n"
+				u8"模拟释放指定按键。参数同 SetKeyDown。" },
+			{ "SetKeyClick",
+				u8"SetKeyClick(key: int, mode?: int, sleep?: int) -> nil\n"
+				u8"模拟点击指定按键（按下 + 释放）。\n"
+				u8"参数：\n"
+				u8"  key   按键代码\n"
+				u8"  mode  点击方式，默认取 config.SimulateClickMode\n"
+				u8"  sleep 按下与释放之间的间隔（毫秒），默认 60" },
+			{ "GetMousePos",
+				u8"GetMousePos() -> int, int\n"
+				u8"返回鼠标当前的 X、Y 坐标（像素）。\n"
+				u8"参数：无\n"
+				u8"示例：local x, y = GetMousePos()" },
+			{ "SetMousePos",
+				u8"SetMousePos(x: int, y: int) -> nil\n"
+				u8"设置鼠标位置。-1 表示不修改该方向的坐标。\n"
+				u8"参数：\n"
+				u8"  x X 坐标（-1 = 保持原值）\n"
+				u8"  y Y 坐标（-1 = 保持原值）" },
+			{ "GetCpsRight",
+				u8"GetCpsRight() -> int\n"
+				u8"返回右键当前 CPS。参数：无" },
+			{ "GetCpsLeft",
+				u8"GetCpsLeft() -> int\n"
+				u8"返回左键当前 CPS。参数：无" },
+			{ "GetHumanCpsRight",
+				u8"GetHumanCpsRight() -> int\n"
+				u8"返回人类实际右键 CPS（连点器的点击不计入）。参数：无" },
+			{ "GetHumanCpsLeft",
+				u8"GetHumanCpsLeft() -> int\n"
+				u8"返回人类实际左键 CPS（连点器的点击不计入）。参数：无" },
+			{ "Sleep",
+				u8"Sleep(ms: int) -> nil\n"
+				u8"暂停执行指定毫秒数，误差约 ±3ms（需实时判断脚本退出）。\n"
+				u8"参数：\n"
+				u8"  ms 暂停时间（毫秒）" },
+			{ "GetItemBarPos",
+				u8"GetItemBarPos() -> int\n"
+				u8"返回物品栏当前位置（0~8，第 N 格返回 N-1）。参数：无" },
+			{ "SetItemBarPos",
+				u8"SetItemBarPos(pos: int, mode?: int, sleep?: int) -> nil\n"
+				u8"切换物品栏位置。\n"
+				u8"参数：\n"
+				u8"  pos   位置（0~8）\n"
+				u8"  mode  点击方式，默认 config.SimulateClickMode\n"
+				u8"  sleep 点击间隔（毫秒），默认 60" },
+			{ "SetIniFile",
+				u8"SetIniFile(app: string, key: string, value: any, file: string) -> nil\n"
+				u8"写入脚本目录下指定 INI 文件的值。\n"
+				u8"参数：\n"
+				u8"  app   节名\n"
+				u8"  key   键名\n"
+				u8"  value 值（string / int / bool）\n"
+				u8"  file  文件名（位于脚本目录，禁止使用 ../）" },
+			{ "GetIniFile",
+				u8"GetIniFile(app: string, key: string, default: any, file: string) -> string|int|bool\n"
+				u8"读取脚本目录下指定 INI 文件的值。\n"
+				u8"参数：\n"
+				u8"  app     节名\n"
+				u8"  key     键名\n"
+				u8"  default 未找到时的默认值（类型决定返回类型）\n"
+				u8"  file    文件名（位于脚本目录，禁止使用 ../）" },
+			{ "SimulatedInputText",
+				u8"SimulatedInputText(text: string) -> bool\n"
+				u8"通过模拟键盘输入文本（自动 GBK→UTF-16）。\n"
+				u8"返回值：成功返回 true，失败返回 false\n"
+				u8"参数：\n"
+				u8"  text 要输入的文本" },
+			{ "ConnectNamedPipe",
+				u8"ConnectNamedPipe(name: string) -> int\n"
+				u8"连接命名管道。\n"
+				u8"返回值：成功返回管道 ID，失败返回 -1\n"
+				u8"参数：\n"
+				u8"  name 管道名称（如 \\\\.\\pipe\\xxx）\n"
+				u8"注意：返回的是 ID，非系统句柄。" },
+			{ "ReadNamedPipe",
+				u8"ReadNamedPipe(id: int) -> string\n"
+				u8"读取命名管道消息。\n"
+				u8"返回值：成功返回字符串，失败返回空字符串\n"
+				u8"参数：\n"
+				u8"  id ConnectNamedPipe 返回的管道 ID" },
+			{ "WriteNamedPipe",
+				u8"WriteNamedPipe(id: int, msg: string) -> int\n"
+				u8"向命名管道写入消息（自动转 UTF-8）。\n"
+				u8"返回值：成功返回 0，失败返回 -1\n"
+				u8"参数：\n"
+				u8"  id  管道 ID\n"
+				u8"  msg 消息内容" },
+			{ "CloseNamedPipe",
+				u8"CloseNamedPipe(id: int) -> int\n"
+				u8"关闭命名管道。\n"
+				u8"返回值：成功返回 1，失败返回 -1\n"
+				u8"参数：\n"
+				u8"  id 管道 ID" },
+			{ "GetScreenSize",
+				u8"GetScreenSize() -> int, int\n"
+				u8"返回屏幕的宽度和高度（像素）。\n"
+				u8"参数：无\n"
+				u8"示例：local w, h = GetScreenSize()" },
+			{ "GetClipboardText",
+				u8"GetClipboardText() -> string\n"
+				u8"获取剪贴板中的文字，非文字内容返回空字符串。\n"
+				u8"参数：无" },
+			{ "SetClipboardText",
+				u8"SetClipboardText(text: string) -> bool\n"
+				u8"设置剪贴板文字（自动转 UTF-8）。\n"
+				u8"返回值：成功 true，失败 false\n"
+				u8"参数：\n"
+				u8"  text 要写入的文本" },
+			{ "IsScriptKeyDown",
+				u8"IsScriptKeyDown() -> bool\n"
+				u8"脚本启动按键（GC 已安装列表中的按键）是否处于按下状态。\n"
+				u8"参数：无" },
+			{ "IsScriptKeyClick",
+				u8"IsScriptKeyClick() -> bool\n"
+				u8"脚本启动按键是否被点击（读取后自动复位为 false）。\n"
+				u8"参数：无" },
+			{ "IsScriptKeyUp",
+				u8"IsScriptKeyUp() -> bool\n"
+				u8"脚本启动按键是否被释放（读取后自动复位为 false）。\n"
+				u8"参数：无" },
+			{ "MessageBeep",
+				u8"MessageBeep(type: int) -> nil\n"
+				u8"播放系统提示音。\n"
+				u8"参数：\n"
+				u8"  type 音效类型（1 = 提示音，2 = 警告音，3 = 错误音）" },
+			{ "SetScriptLoopDelay",
+				u8"SetScriptLoopDelay(delay?: int) -> nil\n"
+				u8"设置脚本主函数（main）的轮询延迟。\n"
+				u8"参数：\n"
+				u8"  delay 延迟毫秒数，不传则默认 5ms" },
+			{ "IsOpenGui",
+				u8"IsOpenGui() -> bool\n"
+				u8"玩家是否打开了游戏内 GUI（箱子、商店等）。\n"
+				u8"参数：无" },
+			{ "IsPlayerMoving",
+				u8"IsPlayerMoving() -> bool\n"
+				u8"玩家是否在移动（跳跃算移动，按 Shift 不算）。\n"
+				u8"参数：无" },
+			{ "PlayEnableSound",
+				u8"PlayEnableSound() -> nil\n"
+				u8"播放启用脚本时的音效。参数：无" },
+			{ "PlayDisableSound",
+				u8"PlayDisableSound() -> nil\n"
+				u8"播放禁用脚本时的音效。参数：无" },
+			{ "IsCloseUI",
+				u8"IsCloseUI() -> nil\n"
+				u8"【已弃用】在新版本中调用会触发错误。" },
+			{ "Button",
+				u8"Button(label: string, w?: int, h?: int) -> bool\n"
+				u8"创建一个按钮。\n"
+				u8"返回值：用户点击时返回 true\n"
+				u8"参数：\n"
+				u8"  label 按钮文本（#### 后的文字会隐藏，标签不可重复）\n"
+				u8"  w     宽度（可省略，需与 h 同时省略/同时提供）\n"
+				u8"  h     高度（可省略）" },
+			{ "Checkbox",
+				u8"Checkbox(label: string, checked: bool) -> bool\n"
+				u8"创建一个复选框。\n"
+				u8"返回值：更新后的勾选状态\n"
+				u8"参数：\n"
+				u8"  label   文本标签（不可重复）\n"
+				u8"  checked 初始状态（true = 选中）" },
+			{ "Text",
+				u8"Text(label: string) -> nil\n"
+				u8"显示一行文本。\n"
+				u8"参数：\n"
+				u8"  label 要显示的文本（可与其他控件重复）" },
+			{ "InputText",
+				u8"InputText(label: string, text: string) -> string\n"
+				u8"创建一个文本输入框。\n"
+				u8"返回值：更新后的文本\n"
+				u8"参数：\n"
+				u8"  label 标签（不可重复）\n"
+				u8"  text  初始文本（必须为变量，便于回写）" },
+			{ "SliderInt",
+				u8"SliderInt(label: string, v: int, min: int, max: int, fmt: string) -> int\n"
+				u8"创建一个整数滑块。\n"
+				u8"返回值：更新后的值\n"
+				u8"参数：\n"
+				u8"  label 标签（不可重复）\n"
+				u8"  v     当前值（必须为变量）\n"
+				u8"  min   最小值\n"
+				u8"  max   最大值\n"
+				u8"  fmt   格式字符串，如 \"%d\"" },
+			{ "SliderFloat",
+				u8"SliderFloat(label: string, v: number, min: number, max: number, fmt: string) -> number\n"
+				u8"创建一个浮点数滑块。\n"
+				u8"返回值：更新后的值\n"
+				u8"参数：\n"
+				u8"  label 标签（不可重复）\n"
+				u8"  v     当前值（必须为变量）\n"
+				u8"  min   最小值\n"
+				u8"  max   最大值\n"
+				u8"  fmt   格式字符串，如 \"%.2f\"" },
+			{ "SameLine",
+				u8"SameLine() -> nil\n"
+				u8"让下一个控件与上一个控件在同一行显示。参数：无" },
+			{ "InputKey",
+				u8"InputKey(label: string, key: int) -> int\n"
+				u8"创建一个按键输入框。\n"
+				u8"返回值：更新后的按键 ASCII 码\n"
+				u8"参数：\n"
+				u8"  label 标签\n"
+				u8"  key   初始按键值（ASCII 码）" },
+			{ "MessageBox",
+				u8"MessageBox(msg: string, title: string, type: int) -> int\n"
+				u8"在 render 中显示消息框（非阻塞）。\n"
+				u8"返回值：0 = 取消，1 = 确定，-1 = 尚未点击\n"
+				u8"参数：\n"
+				u8"  msg   消息内容\n"
+				u8"  title 标题\n"
+				u8"  type  类型（0 = 仅确定，1 = 确定 + 取消）" },
+			{ "AttachTooltip",
+				u8"AttachTooltip(msg: string, delay: int) -> nil\n"
+				u8"为上一个控件附加悬停帮助文本（3.28+ 可用）。\n"
+				u8"参数：\n"
+				u8"  msg   帮助文本\n"
+				u8"  delay 延迟显示毫秒数（0 = 立即显示）" },
+			{ "PopTip",
+				u8"PopTip(msg: string, timeout: int, type: int) -> bool\n"
+				u8"显示弹出提示，时间到后返回 false。\n"
+				u8"返回值：未到时间返回 true，到时间返回 false\n"
+				u8"参数：\n"
+				u8"  msg     提示文本\n"
+				u8"  timeout 持续时间（毫秒）\n"
+				u8"  type    类型（1 = 消息，2 = 警告，3 = 错误）" },
+			{ "RadioButton",
+				u8"RadioButton(label: string, id: int, current: int) -> int\n"
+				u8"创建一个单选按钮（3.28+ 可用）。\n"
+				u8"返回值：当前被选中的 ID\n"
+				u8"参数：\n"
+				u8"  label   标签（不可重复）\n"
+				u8"  id      本按钮的 ID\n"
+				u8"  current 当前被选中的 ID" },
+			{ "SetCursorPos",
+				u8"SetCursorPos(x: int, y: int) -> nil\n"
+				u8"设置下一个控件的 UI 光标位置（非鼠标）。\n"
+				u8"参数：\n"
+				u8"  x X 坐标（-1 = 保持原值）\n"
+				u8"  y Y 坐标（-1 = 保持原值）" },
+			{ "GetCursorPos",
+				u8"GetCursorPos() -> int, int\n"
+				u8"返回当前 UI 光标的 X、Y 坐标。\n"
+				u8"参数：无\n"
+				u8"示例：local x, y = GetCursorPos()" },
+			{ "SetNextItemWidth",
+				u8"SetNextItemWidth(w: int) -> nil\n"
+				u8"设置下一个控件的宽度。\n"
+				u8"参数：\n"
+				u8"  w 宽度（像素）" },
+			{ "SetCurentColor",
+				u8"SetCurentColor(r: int, g: int, b: int, a: int) -> nil\n"
+				u8"设置当前绘制颜色（影响后续 Draw 系列函数）。\n"
+				u8"参数：\n"
+				u8"  r 红色分量（0-255）\n"
+				u8"  g 绿色分量（0-255）\n"
+				u8"  b 蓝色分量（0-255）\n"
+				u8"  a 透明度（0-255）" },
+			{ "SetDrawOverAll",
+				u8"SetDrawOverAll(over: bool) -> nil\n"
+				u8"设置后续绘制是否覆盖所有控件（绘制到最顶层）。\n"
+				u8"参数：\n"
+				u8"  over true = 最上层，false = 自动层级" },
+			{ "DrawLine",
+				u8"DrawLine(x1: int, y1: int, x2: int, y2: int, thickness: number) -> nil\n"
+				u8"绘制一条线段。\n"
+				u8"参数：\n"
+				u8"  x1, y1 起点\n"
+				u8"  x2, y2 终点\n"
+				u8"  thickness 线宽" },
+			{ "DrawRect",
+				u8"DrawRect(x1: int, y1: int, x2: int, y2: int, rounding: number) -> nil\n"
+				u8"绘制矩形边框。\n"
+				u8"参数：\n"
+				u8"  x1, y1 左上角\n"
+				u8"  x2, y2 右下角\n"
+				u8"  rounding 圆角半径" },
+			{ "DrawRectFilled",
+				u8"DrawRectFilled(x1: int, y1: int, x2: int, y2: int, rounding: number) -> nil\n"
+				u8"绘制填充矩形。参数同 DrawRect。" },
+			{ "DrawCircle",
+				u8"DrawCircle(x: int, y: int, radius: int, thickness: number) -> nil\n"
+				u8"绘制圆形边框。\n"
+				u8"参数：\n"
+				u8"  x, y      圆心\n"
+				u8"  radius    半径\n"
+				u8"  thickness 线宽" },
+			{ "DrawCircleFilled",
+				u8"DrawCircleFilled(x: int, y: int, radius: int) -> nil\n"
+				u8"绘制填充圆形。\n"
+				u8"参数：\n"
+				u8"  x, y   圆心\n"
+				u8"  radius 半径" },
+			{ "DrawText",
+				u8"DrawText(x: int, y: int, text: string) -> nil\n"
+				u8"在指定位置绘制文本（使用 SetCurentColor 设置的颜色）。\n"
+				u8"参数：\n"
+				u8"  x, y  文本左上角\n"
+				u8"  text  要绘制的文本" },
+			{ "DrawImage",
+				u8"DrawImage(x: int, y: int, w: int, h: int, file: string) -> nil\n"
+				u8"绘制图片（仅可读取脚本自身目录下的文件）。\n"
+				u8"参数：\n"
+				u8"  x, y 图片左上角\n"
+				u8"  w, h 宽高\n"
+				u8"  file 文件名（如 \"icon.bmp\"），位于脚本解压目录" },
+			{ "DrawSpiltLine",
+				u8"DrawSpiltLine() -> nil\n"
+				u8"绘制一条分隔线。参数：无" }
+		};
+
+		for (const auto& api : customApisCN)
+		{
+			TextEditor::Identifier id;
+			id.mDeclaration = api.decl;
+			langDefCN.mIdentifiers.insert(std::make_pair(std::string(api.name), id));
+		}
+		initedCN = true;
+	}
+	if (UseChinese) return langDefCN;
+
+	// ---------------- 英文版本初始化 ----------------
+	static LanguageDefinition langDefEN;
+	static bool initedEN = false;
+	if (!UseChinese && !initedEN)
+	{
+		InitCommon(langDefEN);
+		struct ApiDoc { const char* name; const char* decl; };
+		static const ApiDoc customApisEN[] = {
+			{ "RenderMessageBox",
+				"RenderMessageBox(msg: string, title: string, type: int) -> int\n"
+				"Shows a message box, blocks until user clicks a button.\n"
+				"Return: 0 = Cancel, 1 = OK\n"
+				"Params:\n"
+				"  msg   Message content\n"
+				"  title Title\n"
+				"  type  Type (0 = OK only, 1 = OK + Cancel)" },
+			{ "RenderPopTip",
+				"RenderPopTip(msg: string, timeout: number, type: int) -> nil\n"
+				"Shows a pop-up tip, non-blocking.\n"
+				"Params:\n"
+				"  msg     Tip text\n"
+				"  timeout Duration (seconds, float)\n"
+				"  type    Type (1 = Info, 2 = Warning, 3 = Error)" },
+			{ "GetTickCount",
+				"GetTickCount() -> int\n"
+				"Returns tick count since boot (ms), not real time.\n"
+				"Params: None" },
+			{ "RandomInt",
+				"RandomInt(min: int, max: int) -> int\n"
+				"Returns a random integer in [min, max].\n"
+				"Params:\n"
+				"  min Minimum\n"
+				"  max Maximum" },
+			{ "RandomBool",
+				"RandomBool(rate: number) -> bool\n"
+				"Returns true/false based on probability.\n"
+				"Params:\n"
+				"  rate Probability (0~1)" },
+			{ "GetVersion",
+				"GetVersion() -> int\n"
+				"Returns GC version (only y in x.y).\n"
+				"Params: None" },
+			{ "SetClickerSettings",
+				"SetClickerSettings(app: string, key: string, value: any) -> nil\n"
+				"Writes to GC settings.ini.\n"
+				"Params:\n"
+				"  app   Section name\n"
+				"  key   Key name\n"
+				"  value Value (string / int / bool)" },
+			{ "GetClickerSettings",
+				"GetClickerSettings(app: string, key: string, default: any) -> string|int|bool\n"
+				"Reads from GC settings.ini.\n"
+				"Params:\n"
+				"  app     Section name\n"
+				"  key     Key name\n"
+				"  default Default value if not found" },
+			{ "PrintLog",
+				"PrintLog(msg: string, level: int) -> nil\n"
+				"Prints log. Format: [ScriptName]Content\n"
+				"Params:\n"
+				"  msg   Log message\n"
+				"  level Level (1 = Info, 2 = Warning, 3 = Error)" },
+			{ "GetKeyDown",
+				"GetKeyDown(key: int, human?: bool, mode?: int) -> bool\n"
+				"Checks if a key is currently down.\n"
+				"Params:\n"
+				"  key   Key code (e.g., KEY.VK_SPACE)\n"
+				"  human Optional, only human clicks, filter simulated\n"
+				"  mode  Optional, mode (GK.HOOK=1 / GK.BOTH=3)\n"
+				"Note: human=true forces global hook." },
+			{ "GetKeyClick",
+				"GetKeyClick(key: int, human?: bool, mode?: int) -> bool\n"
+				"Checks if a key was clicked (pressed and released).\n"
+				"Params: Same as GetKeyDown." },
+			{ "GetKeyUp",
+				"GetKeyUp(key: int, human?: bool, mode?: int) -> bool\n"
+				"Checks if a key was released.\n"
+				"Params: Same as GetKeyDown." },
+			{ "SetKeyDown",
+				"SetKeyDown(key: int, mode?: int) -> nil\n"
+				"Simulates key down.\n"
+				"Params:\n"
+				"  key  Key code\n"
+				"  mode Click mode (SC.MOUSE_EVENT=0 / SC.SEND_INPUT=1 / SC.POST_MESSAGE=2)\n"
+				"        Use SC.SEND_INPUT for Bedrock" },
+			{ "SetKeyUp",
+				"SetKeyUp(key: int, mode?: int) -> nil\n"
+				"Simulates key up. Params: Same as SetKeyDown." },
+			{ "SetKeyClick",
+				"SetKeyClick(key: int, mode?: int, sleep?: int) -> nil\n"
+				"Simulates key click (down + up).\n"
+				"Params:\n"
+				"  key   Key code\n"
+				"  mode  Click mode, default config.SimulateClickMode\n"
+				"  sleep Interval between down/up (ms), default 60" },
+			{ "GetMousePos",
+				"GetMousePos() -> int, int\n"
+				"Returns mouse X, Y (pixels).\n"
+				"Params: None\n"
+				"Example: local x, y = GetMousePos()" },
+			{ "SetMousePos",
+				"SetMousePos(x: int, y: int) -> nil\n"
+				"Sets mouse pos. -1 means keep original.\n"
+				"Params:\n"
+				"  x X (-1 = keep)\n"
+				"  y Y (-1 = keep)" },
+			{ "GetCpsRight",
+				"GetCpsRight() -> int\n"
+				"Returns current right CPS. Params: None" },
+			{ "GetCpsLeft",
+				"GetCpsLeft() -> int\n"
+				"Returns current left CPS. Params: None" },
+			{ "GetHumanCpsRight",
+				"GetHumanCpsRight() -> int\n"
+				"Returns actual human right CPS. Params: None" },
+			{ "GetHumanCpsLeft",
+				"GetHumanCpsLeft() -> int\n"
+				"Returns actual human left CPS. Params: None" },
+			{ "Sleep",
+				"Sleep(ms: int) -> nil\n"
+				"Pauses execution, ~±3ms error.\n"
+				"Params:\n"
+				"  ms Pause time (ms)" },
+			{ "GetItemBarPos",
+				"GetItemBarPos() -> int\n"
+				"Returns current item bar pos (0~8, Nth returns N-1). Params: None" },
+			{ "SetItemBarPos",
+				"SetItemBarPos(pos: int, mode?: int, sleep?: int) -> nil\n"
+				"Switches item bar pos.\n"
+				"Params:\n"
+				"  pos   Position (0~8)\n"
+				"  mode  Click mode, default config.SimulateClickMode\n"
+				"  sleep Interval (ms), default 60" },
+			{ "SetIniFile",
+				"SetIniFile(app: string, key: string, value: any, file: string) -> nil\n"
+				"Writes to an INI file in script dir.\n"
+				"Params:\n"
+				"  app   Section\n"
+				"  key   Key\n"
+				"  value Value\n"
+				"  file  Filename (no ../ allowed)" },
+			{ "GetIniFile",
+				"GetIniFile(app: string, key: string, default: any, file: string) -> string|int|bool\n"
+				"Reads from an INI file in script dir.\n"
+				"Params:\n"
+				"  app     Section\n"
+				"  key     Key\n"
+				"  default Default value (type determines return type)\n"
+				"  file    Filename (no ../ allowed)" },
+			{ "SimulatedInputText",
+				"SimulatedInputText(text: string) -> bool\n"
+				"Simulates typing text (auto GBK->UTF-16).\n"
+				"Return: true on success, false on failure\n"
+				"Params:\n"
+				"  text Text to input" },
+			{ "ConnectNamedPipe",
+				"ConnectNamedPipe(name: string) -> int\n"
+				"Connects to a named pipe.\n"
+				"Return: Pipe ID on success, -1 on failure\n"
+				"Params:\n"
+				"  name Pipe name (e.g., \\\\.\\pipe\\xxx)\n"
+				"Note: Returns ID, not system handle." },
+			{ "ReadNamedPipe",
+				"ReadNamedPipe(id: int) -> string\n"
+				"Reads from named pipe.\n"
+				"Return: String on success, empty on failure\n"
+				"Params:\n"
+				"  id Pipe ID" },
+			{ "WriteNamedPipe",
+				"WriteNamedPipe(id: int, msg: string) -> int\n"
+				"Writes to named pipe (auto UTF-8).\n"
+				"Return: 0 on success, -1 on failure\n"
+				"Params:\n"
+				"  id  Pipe ID\n"
+				"  msg Message" },
+			{ "CloseNamedPipe",
+				"CloseNamedPipe(id: int) -> int\n"
+				"Closes named pipe.\n"
+				"Return: 1 on success, -1 on failure\n"
+				"Params:\n"
+				"  id Pipe ID" },
+			{ "GetScreenSize",
+				"GetScreenSize() -> int, int\n"
+				"Returns screen width, height (pixels).\n"
+				"Params: None\n"
+				"Example: local w, h = GetScreenSize()" },
+			{ "GetClipboardText",
+				"GetClipboardText() -> string\n"
+				"Gets clipboard text, empty if not text.\n"
+				"Params: None" },
+			{ "SetClipboardText",
+				"SetClipboardText(text: string) -> bool\n"
+				"Sets clipboard text (auto UTF-8).\n"
+				"Return: true on success, false on failure\n"
+				"Params:\n"
+				"  text Text" },
+			{ "IsScriptKeyDown",
+				"IsScriptKeyDown() -> bool\n"
+				"Is script hotkey down?\n"
+				"Params: None" },
+			{ "IsScriptKeyClick",
+				"IsScriptKeyClick() -> bool\n"
+				"Was script hotkey clicked? (Auto resets to false)\n"
+				"Params: None" },
+			{ "IsScriptKeyUp",
+				"IsScriptKeyUp() -> bool\n"
+				"Was script hotkey released? (Auto resets to false)\n"
+				"Params: None" },
+			{ "MessageBeep",
+				"MessageBeep(type: int) -> nil\n"
+				"Plays system sound.\n"
+				"Params:\n"
+				"  type Type (1 = Info, 2 = Warning, 3 = Error)" },
+			{ "SetScriptLoopDelay",
+				"SetScriptLoopDelay(delay?: int) -> nil\n"
+				"Sets main loop delay.\n"
+				"Params:\n"
+				"  delay Delay in ms, default 5ms" },
+			{ "IsOpenGui",
+				"IsOpenGui() -> bool\n"
+				"Is in-game GUI open (chest, shop, etc.)?\n"
+				"Params: None" },
+			{ "IsPlayerMoving",
+				"IsPlayerMoving() -> bool\n"
+				"Is player moving? (Jumping counts, Shift doesn't)\n"
+				"Params: None" },
+			{ "PlayEnableSound",
+				"PlayEnableSound() -> nil\n"
+				"Plays enable sound. Params: None" },
+			{ "PlayDisableSound",
+				"PlayDisableSound() -> nil\n"
+				"Plays disable sound. Params: None" },
+			{ "IsCloseUI",
+				"IsCloseUI() -> nil\n"
+				"[Deprecated] Triggers error in new versions." },
+			{ "Button",
+				"Button(label: string, w?: int, h?: int) -> bool\n"
+				"Creates a button.\n"
+				"Return: true if clicked\n"
+				"Params:\n"
+				"  label Text (hidden after ####, must be unique)\n"
+				"  w     Width (optional)\n"
+				"  h     Height (optional)" },
+			{ "Checkbox",
+				"Checkbox(label: string, checked: bool) -> bool\n"
+				"Creates a checkbox.\n"
+				"Return: Updated state\n"
+				"Params:\n"
+				"  label   Label (unique)\n"
+				"  checked Initial state" },
+			{ "Text",
+				"Text(label: string) -> nil\n"
+				"Displays text.\n"
+				"Params:\n"
+				"  label Text" },
+			{ "InputText",
+				"InputText(label: string, text: string) -> string\n"
+				"Creates text input.\n"
+				"Return: Updated text\n"
+				"Params:\n"
+				"  label Label (unique)\n"
+				"  text  Initial text (must be variable)" },
+			{ "SliderInt",
+				"SliderInt(label: string, v: int, min: int, max: int, fmt: string) -> int\n"
+				"Creates integer slider.\n"
+				"Return: Updated value\n"
+				"Params:\n"
+				"  label Label (unique)\n"
+				"  v     Current value (variable)\n"
+				"  min   Min\n"
+				"  max   Max\n"
+				"  fmt   Format string, e.g., \"%d\"" },
+			{ "SliderFloat",
+				"SliderFloat(label: string, v: number, min: number, max: number, fmt: string) -> number\n"
+				"Creates float slider.\n"
+				"Return: Updated value\n"
+				"Params:\n"
+				"  label Label (unique)\n"
+				"  v     Current value (variable)\n"
+				"  min   Min\n"
+				"  max   Max\n"
+				"  fmt   Format string, e.g., \"%.2f\"" },
+			{ "SameLine",
+				"SameLine() -> nil\n"
+				"Next control on same line. Params: None" },
+			{ "InputKey",
+				"InputKey(label: string, key: int) -> int\n"
+				"Creates key input.\n"
+				"Return: Updated key ASCII\n"
+				"Params:\n"
+				"  label Label\n"
+				"  key   Initial key (ASCII)" },
+			{ "MessageBox",
+				"MessageBox(msg: string, title: string, type: int) -> int\n"
+				"Non-blocking message box in render.\n"
+				"Return: 0 = Cancel, 1 = OK, -1 = Not clicked\n"
+				"Params:\n"
+				"  msg   Message\n"
+				"  title Title\n"
+				"  type  Type (0 = OK, 1 = OK + Cancel)" },
+			{ "AttachTooltip",
+				"AttachTooltip(msg: string, delay: int) -> nil\n"
+				"Attaches tooltip to previous control (3.28+).\n"
+				"Params:\n"
+				"  msg   Text\n"
+				"  delay Delay in ms (0 = instant)" },
+			{ "PopTip",
+				"PopTip(msg: string, timeout: int, type: int) -> bool\n"
+				"Shows pop-up tip.\n"
+				"Return: true if not timed out, false otherwise\n"
+				"Params:\n"
+				"  msg     Text\n"
+				"  timeout Duration (ms)\n"
+				"  type    Type (1 = Info, 2 = Warning, 3 = Error)" },
+			{ "RadioButton",
+				"RadioButton(label: string, id: int, current: int) -> int\n"
+				"Creates radio button (3.28+).\n"
+				"Return: Currently selected ID\n"
+				"Params:\n"
+				"  label   Label (unique)\n"
+				"  id      Button ID\n"
+				"  current Selected ID" },
+			{ "SetCursorPos",
+				"SetCursorPos(x: int, y: int) -> nil\n"
+				"Sets UI cursor pos (not mouse).\n"
+				"Params:\n"
+				"  x X (-1 = keep)\n"
+				"  y Y (-1 = keep)" },
+			{ "GetCursorPos",
+				"GetCursorPos() -> int, int\n"
+				"Returns UI cursor X, Y.\n"
+				"Params: None\n"
+				"Example: local x, y = GetCursorPos()" },
+			{ "SetNextItemWidth",
+				"SetNextItemWidth(w: int) -> nil\n"
+				"Sets next control width.\n"
+				"Params:\n"
+				"  w Width (pixels)" },
+			{ "SetCurentColor",
+				"SetCurentColor(r: int, g: int, b: int, a: int) -> nil\n"
+				"Sets draw color for Draw functions.\n"
+				"Params:\n"
+				"  r Red (0-255)\n"
+				"  g Green (0-255)\n"
+				"  b Blue (0-255)\n"
+				"  a Alpha (0-255)" },
+			{ "SetDrawOverAll",
+				"SetDrawOverAll(over: bool) -> nil\n"
+				"Sets if draws are on top of all controls.\n"
+				"Params:\n"
+				"  over true = top, false = auto layer" },
+			{ "DrawLine",
+				"DrawLine(x1: int, y1: int, x2: int, y2: int, thickness: number) -> nil\n"
+				"Draws a line.\n"
+				"Params:\n"
+				"  x1, y1 Start\n"
+				"  x2, y2 End\n"
+				"  thickness Line width" },
+			{ "DrawRect",
+				"DrawRect(x1: int, y1: int, x2: int, y2: int, rounding: number) -> nil\n"
+				"Draws rectangle border.\n"
+				"Params:\n"
+				"  x1, y1 Top-left\n"
+				"  x2, y2 Bottom-right\n"
+				"  rounding Corner radius" },
+			{ "DrawRectFilled",
+				"DrawRectFilled(x1: int, y1: int, x2: int, y2: int, rounding: number) -> nil\n"
+				"Draws filled rectangle. Params: Same as DrawRect." },
+			{ "DrawCircle",
+				"DrawCircle(x: int, y: int, radius: int, thickness: number) -> nil\n"
+				"Draws circle border.\n"
+				"Params:\n"
+				"  x, y      Center\n"
+				"  radius    Radius\n"
+				"  thickness Line width" },
+			{ "DrawCircleFilled",
+				"DrawCircleFilled(x: int, y: int, radius: int) -> nil\n"
+				"Draws filled circle.\n"
+				"Params:\n"
+				"  x, y   Center\n"
+				"  radius Radius" },
+			{ "DrawText",
+				"DrawText(x: int, y: int, text: string) -> nil\n"
+				"Draws text at pos (uses SetCurentColor).\n"
+				"Params:\n"
+				"  x, y Top-left\n"
+				"  text Text" },
+			{ "DrawImage",
+				"DrawImage(x: int, y: int, w: int, h: int, file: string) -> nil\n"
+				"Draws image (only files in script dir).\n"
+				"Params:\n"
+				"  x, y Top-left\n"
+				"  w, h Size\n"
+				"  file Filename (e.g., \"icon.bmp\")" },
+			{ "DrawSpiltLine",
+				"DrawSpiltLine() -> nil\n"
+				"Draws a split line. Params: None" }
+		};
+
+		for (const auto& api : customApisEN)
+		{
+			TextEditor::Identifier id;
+			id.mDeclaration = api.decl;
+			langDefEN.mIdentifiers.insert(std::make_pair(std::string(api.name), id));
+		}
+		initedEN = true;
+	}
+	return langDefEN;
+}
+

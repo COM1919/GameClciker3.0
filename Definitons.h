@@ -240,8 +240,8 @@ public:
     bool UseLClickTime = false;             //开关左键连点间隔
     bool UseRClickTime = false;             //开关右键连点间隔
     bool UseGUIDetection = false;           //开关GUI检测
-    bool UseLPressInterval = true;          //开关左键仿人类点击
-    bool UseRPressInterval = true;          //开关右键仿人类点击
+    bool UseLClickPressTime = true;         //开关左键仿人类点击
+    bool UseRClickPressTime = true;         //开关右键仿人类点击
     bool UseRAutoPressDuration = true;      //开关自动设置右键按下时长
     bool UseLAutoPressDuration = true;      //开关自动设置左键按下时长
     bool UseStartWithWindows = false;       //开关开机启动
@@ -389,8 +389,8 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.43";          //版本号
-string title = "GAMECLICKER 3.43";      //标题名字
+const string version = "3.44";          //版本号
+string title = "GAMECLICKER 3.44";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
 const int AgreementVersion = 1;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
@@ -398,7 +398,7 @@ bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里
 const int RenderFps = 60;               //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
-#define GC_NO_HOOK                      //是否禁用HOOK
+//#define GC_NO_HOOK                      //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -420,6 +420,7 @@ const int RenderFps = 60;               //渲染帧率
 #undef GC_SERVER_DEBUG
 #undef GC_MORE_DEBUG_INFO
 #undef GC_NO_HOOK
+#undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
 //=============================待更改项==========================================================
@@ -467,34 +468,37 @@ const string Tmp_Ad =             WorkPath + "\\GameClicker\\Temp\\AdImage.dat";
 const string Tmp_MCServer =       WorkPath + "\\GameClicker\\Temp\\mcserver%d.json";
 const string Tmp_KeySounds =      WorkPath + "\\GameClicker\\Temp\\KeySounds.zip";
 
-const string BmpPath =            "res\\pics";
-const string Bmp_Itembar =        "res\\pics\\item.bmp";
-const string Bmp_Background =     WorkPath + "\\GameClicker\\bg.gcbg";
-const string Bmp_HotBar =         "res\\pics\\hotbar.bmp";
-const string Bmp_GCLogo =         "res\\pics\\Logo.bmp";
-const string Bmp_About =          "res\\pics\\ico\\About.bmp";
-const string Bmp_Setting =        "res\\pics\\ico\\Setting.bmp";
-const string Bmp_Home =           "res\\pics\\ico\\Home.bmp";
-const string Bmp_Script =         "res\\pics\\ico\\Script.bmp";
-const string Bmp_Info =           "res\\pics\\ico\\Info.bmp";
-const string Bmp_Delete =         "res\\pics\\ico\\Delete.bmp";
-const string Bmp_Add =            "res\\pics\\ico\\Add.bmp";
-const string Bmp_Other =          "res\\pics\\ico\\Other.bmp";
-const string Bmp_Refresh =        "res\\pics\\ico\\Refresh.bmp";
-const string Bmp_FunSetting =     "res\\pics\\ico\\FunSetting.bmp";
-const string Bmp_GCIcon =         "res\\pics\\ico\\GCIcon.bmp";
-const string Bmp_ClearCache =     "res\\pics\\ico\\ClearCache.bmp";
-const string Bmp_TipInfo =        "res\\pics\\ico\\TipInfo.bmp";
-const string Bmp_TipError =       "res\\pics\\ico\\TipError.bmp";
-const string Bmp_TipWarning =     "res\\pics\\ico\\TipWarning.bmp";
-const string Bmp_Empyt =          "res\\pics\\ico\\Empyt.bmp";
-const string Bmp_Book =           "res\\pics\\ico\\Book.bmp";
-const string Bmp_Download =       "res\\pics\\ico\\Download.bmp";
-const string Bmp_GCTitle =        "res\\pics\\GCTitle.bmp";
+const string PicsPath =           "res\\pics";
+const string Pics_Itembar =       "res\\pics\\item.png";
+const string Pics_Background =    WorkPath + "\\GameClicker\\bg.gcbg";
+const string Pics_HotBar =        "res\\pics\\hotbar.png";
+const string Pics_GCLogo =        "res\\pics\\Logo.png";
+const string Pics_About =         "res\\pics\\ico\\About.png";
+const string Pics_Setting =       "res\\pics\\ico\\Setting.png";
+const string Pics_Home =          "res\\pics\\ico\\Home.png";
+const string Pics_Script =        "res\\pics\\ico\\Script.png";
+const string Pics_Info =          "res\\pics\\ico\\Info.png";
+const string Pics_Delete =        "res\\pics\\ico\\Delete.png";
+const string Pics_Add =           "res\\pics\\ico\\Add.png";
+const string Pics_Other =         "res\\pics\\ico\\Other.png";
+const string Pics_Refresh =       "res\\pics\\ico\\Refresh.png";
+const string Pics_FunSetting =    "res\\pics\\ico\\FunSetting.png";
+const string Pics_GCIcon =        "res\\pics\\ico\\GCIcon.png";
+const string Pics_ClearCache =    "res\\pics\\ico\\ClearCache.png";
+const string Pics_TipInfo =       "res\\pics\\ico\\TipInfo.png";
+const string Pics_TipError =      "res\\pics\\ico\\TipError.png";
+const string Pics_TipWarning =    "res\\pics\\ico\\TipWarning.png";
+const string Pics_Empyt =         "res\\pics\\ico\\Empyt.png";
+const string Pics_Book =          "res\\pics\\ico\\Book.png";
+const string Pics_Download =      "res\\pics\\ico\\Download.png";
+const string Pics_Run =           "res\\pics\\ico\\run.png";
+const string Pics_Stop =          "res\\pics\\ico\\stop.png";
+const string Pics_GCTitle =       "res\\pics\\GCTitle.png";
 
 const string StartupMov =         "res\\startup.webp";
 
 const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
+const string ScriptTestFile =     WorkPath + "\\GameClicker\\Script\\test.lua";
 const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
 const string ScriptIconTemp =     WorkPath + "\\GameClicker\\Script\\shop\\icons";
 const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";

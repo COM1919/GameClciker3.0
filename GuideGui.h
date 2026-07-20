@@ -94,7 +94,7 @@ int RenderGuide(ImGuiIO& io)
             }
             case 2:
             {
-                static const Texture2D image_texture = LoadTextureFromFile(Bmp_GCLogo);
+                static const Texture2D image_texture = LoadTextureFromFile(Pics_GCLogo);
 
                 const static float posx = (600 - 198) / 2.0f;
                 const static float target = (400 - 73) / 2.8f;

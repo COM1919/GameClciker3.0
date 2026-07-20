@@ -27,8 +27,8 @@ void RenderTip(string msg, float timeout, UINT type);
 void FindFilesWithExtension(const string& directory, const string& extension, vector<string>& files);
 bool IsContainsString(const string& str, const vector<string>& vec);
 string GetOpenFileName();
-string StringToUTF8(const string& str);
-string UTF8ToString(const string& str);
+string StringToUTF8(const string& str, bool NoCach = false);
+string UTF8ToString(const string& str, bool NoCach = false);
 bool CreateDirRecursive(const string& path);
 bool CheckScriptPermission(const string& filename, vector<string>& BeUsedFuncs);
 int GetMemUsageRate(int sleep);
@@ -1572,25 +1572,31 @@ bool is_utf8(const string& str)
 	return true;
 }
 
-string StringToUTF8(const string& str)
+string StringToUTF8(const string& str, bool NoCach)
 {
 	if (str.empty())
 		return "";
 
 	static map<string, string> cache;
 	static mutex cache_mutex;
-	if (str.size() > 16)
+	if (!NoCach)
 	{
-		lock_guard<mutex> lock(cache_mutex);
-		auto it = cache.find(str);
-		if (it != cache.end())
-			return it->second;
+		if (str.size() > 16)
+		{
+			lock_guard<mutex> lock(cache_mutex);
+			auto it = cache.find(str);
+			if (it != cache.end())
+				return it->second;
+		}
 	}
 
 	if (is_utf8(str))
 	{
-		lock_guard<mutex> lock(cache_mutex);
-		cache[str] = str;
+		if (!NoCach)
+		{
+			lock_guard<mutex> lock(cache_mutex);
+			cache[str] = str;
+		}
 		return str;
 	}
 
@@ -1618,8 +1624,11 @@ string StringToUTF8(const string& str)
 		if (!utf8.empty() && utf8[utf8.length() - 1] == '\0')
 			utf8.resize(utf8.length() - 1);
 
-		lock_guard<mutex> lock(cache_mutex);
-		cache[str] = utf8;
+		if (!NoCach)
+		{
+			lock_guard<mutex> lock(cache_mutex);
+			cache[str] = utf8;
+		}
 		return utf8;
 	}
 	catch(...)
@@ -1627,19 +1636,21 @@ string StringToUTF8(const string& str)
 	return str;
 }
 
-string UTF8ToString(const string& utf8_str)
+string UTF8ToString(const string& utf8_str, bool NoCach)
 {
 	if (utf8_str.empty())
 		return "";
-
 	static map<string, string> cache;
 	static mutex cache_mutex;
-	if (utf8_str.size() > 16)
+	if (!NoCach)
 	{
-		lock_guard<mutex> lock(cache_mutex);
-		auto it = cache.find(utf8_str);
-		if (it != cache.end())
-			return it->second;
+		if (utf8_str.size() > 16)
+		{
+			lock_guard<mutex> lock(cache_mutex);
+			auto it = cache.find(utf8_str);
+			if (it != cache.end())
+				return it->second;
+		}
 	}
 
 	try
@@ -1666,8 +1677,11 @@ string UTF8ToString(const string& utf8_str)
 		if (!acp.empty() && acp[acp.length() - 1] == '\0')
 			acp.resize(acp.length() - 1);
 
-		lock_guard<mutex> lock(cache_mutex);
-		cache[utf8_str] = acp;
+		if (!NoCach)
+		{
+			lock_guard<mutex> lock(cache_mutex);
+			cache[utf8_str] = acp;
+		}
 		return acp;
 	}
 	catch(...)

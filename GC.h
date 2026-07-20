@@ -111,7 +111,7 @@ void BeginCard(const char* label, ImVec2 size, ImGuiChildFlags ChildFlags, ImGui
     }
     float speed = 0.1f * (1.0f - GetIO().DeltaTime);
     
-    bool IsHovered = IsWindowHovered();
+    bool IsHovered = IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
     it_anim->second.t = ImLerp(it_anim->second.t, IsHovered ? GuiColor[ImGuiCol_CheckMark] : GuiColor[ImGuiCol_Text], speed);
     it_anim->second.b = ImLerp(it_anim->second.b, IsHovered ? GuiColor[ImGuiCol_CheckMark] : ImVec4(0, 0, 0, 200), speed);
     EndCardColor = it_anim->second.b;
@@ -577,7 +577,7 @@ void NoticeFlag(const char* msg, UINT type)
 {
     BeginTooltip();
     {
-        const Texture2D texture = LoadTextureFromFile((type == NF_WARNING) ? Bmp_TipWarning : ((type == NF_INFO) ? Bmp_TipInfo : Bmp_TipError));
+        const Texture2D texture = LoadTextureFromFile((type == NF_WARNING) ? Pics_TipWarning : ((type == NF_INFO) ? Pics_TipInfo : Pics_TipError));
         Image((ImTextureID)texture, ImVec2(24, 24));
         SameLine();
         Text(msg);
@@ -631,7 +631,7 @@ void AttachTooltip(const char* desc, float delay, float maxwidth)
             tooltip_shownid = id;
             tooltip_lastactive = time;
             BeginTooltip();
-            static const Texture2D texture = LoadTextureFromFile(Bmp_TipInfo);
+            static const Texture2D texture = LoadTextureFromFile(Pics_TipInfo);
             Image((ImTextureID)texture, ImVec2(24, 24));
             SameLine();
 ;           Text(desc);
@@ -867,18 +867,18 @@ bool PopTip(string msg, float timeout, UINT type)
     default:
     case PT_INFO:
         title = u8"信息";
-        TextureFileName = Bmp_TipInfo;
+        TextureFileName = Pics_TipInfo;
         break;
     case PT_WARNING:
         title = u8"警告";
-        TextureFileName = Bmp_TipWarning;
+        TextureFileName = Pics_TipWarning;
         break;
     case PT_ERROR:
         title = u8"错误";
-        TextureFileName = Bmp_TipError;
+        TextureFileName = Pics_TipError;
         break;
     }
-    image = LoadTextureFromFile(Bmp_TipInfo);
+    image = LoadTextureFromFile(Pics_TipInfo);
 
     ImDrawList* draw_list = GetForegroundDrawList();
 
@@ -924,8 +924,10 @@ bool PopTip(string msg, float timeout, UINT type)
 void InitializationGui(ImGuiIO& imio)
 {
     imio = GetIO();
-    imio.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    imio.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    // 显式关闭键盘导航（这会禁用 Tab 切换按钮、方向键移动焦点等）
+    imio.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+    // 显式关闭手柄导航
+    imio.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
     //imio.ConfigFlags |= ImGuiConfigFlags_DpiEnableScaleFonts; //实验性功能
 
     typedef UINT(WINAPI* GetDpiForSystemFunc)();

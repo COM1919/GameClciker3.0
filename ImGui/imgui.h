@@ -3833,6 +3833,7 @@ enum ImFontFlags_
     ImFontFlags_LockBakedSizes          = 1 << 3,   // [Internal] Disable loading new baked sizes, disable garbage collecting current ones. e.g. if you want to lock a font to a single size. Important: if you use this to preload given sizes, consider the possibility of multiple font density used on Retina display.
 };
 
+extern bool IsEnableColorText;
 // Font runtime data and rendering
 // - ImFontAtlas automatically loads a default embedded font for you if you didn't load one manually.
 // - Since 1.92.0 a font may be rendered as any size! Therefore a font doesn't have one specific size.

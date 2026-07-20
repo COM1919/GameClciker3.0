@@ -844,10 +844,8 @@ namespace ScriptAPI
         if (lua_gettop(L) != 2)
             luaL_error(L, "Checkbox的参数不足或太多");
         string label = StringToUTF8(luaL_checkstring(L, 1));
-        bool checked = lua_isboolean(L, 2);
+        bool checked = lua_toboolean(L, 2);
         ImGui::Checkbox(label.c_str(), &checked);
-        if (!checked)
-            cout << "asd" << endl;
         lua_pushboolean(L, checked);
         return 1;
     }

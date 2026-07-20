@@ -842,7 +842,7 @@ bool ImGui::ButtonImageEx(ImTextureID user_texture_id, const char* label, const 
 
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
-    const ImVec2 image_size(32, 32);
+    const ImVec2 image_size(24, 24);
     const ImGuiID id = window->GetID(label);
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
 

@@ -5648,10 +5648,13 @@ ImVec2 ImFontCalcTextSizeEx(ImFont* font, float size, float max_width, float wra
         else
             s += ImTextCharFromUtf8(&c, s, text_end);
 
-        if (s + 1 < text_end && c == '&')
+        if (IsEnableColorText) // 呃呃呃
         {
-            s += 1;
-            continue;
+            if (s + 1 < text_end && c == '&')
+            {
+                s += 1;
+                continue;
+            }
         }
 
         if (c == '\n')
@@ -5761,6 +5764,7 @@ static const ImU32 RenderText_ColorCodes[16] = {
     IM_COL32(0xFF, 0xFF, 0x55, 0xFF), // 黄色
     IM_COL32(0xFF, 0xFF, 0xFF, 0xFF)  // 白色
 };
+
 // Note: as with every ImDrawList drawing function, this expects that the font atlas texture is bound.
 // DO NOT CALL DIRECTLY THIS WILL CHANGE WILDLY IN 2026. Use ImDrawList::AddText().
 void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, ImDrawTextFlags flags)
@@ -5841,40 +5845,43 @@ begin:
 
     while (s < text_end)
     {
-        // 检查颜色代码
-        if (s + 1 < text_end && *s == '&')
+        if (IsEnableColorText)
         {
-            const unsigned char code = *(s + 1);
-            // 因为“&”的值小于“0”，所以用户使用“&&”就可以直接显示“&”字符
-            if (code >= '0' && code <= 'f') // 粗略判断是否是合法的颜色代码，如：中文字符
+            // 检查颜色代码
+            if (s + 1 < text_end && *s == '&')
             {
-                if (code == 'r' || code == 'R')
+                const unsigned char code = *(s + 1);
+                // 因为“&”的值小于“0”，所以用户使用“&&”就可以直接显示“&”字符
+                if (code >= '0' && code <= 'f') // 粗略判断是否是合法的颜色代码，如：中文字符
                 {
-                    // 重置为默认颜色
-                    current_col = col;
+                    if (code == 'r' || code == 'R')
+                    {
+                        // 重置为默认颜色
+                        current_col = col;
+                        s += 2;
+                        continue;
+                    }
+                    unsigned short index;
+                    if (code >= '0' && code <= '9')
+                        index = code - '0';
+                    else if (code >= 'a' && code <= 'f')
+                        index = code - 'a' + 10; // 加10是跳过数字的索引
+                    else
+                        index = code - 'A' + 10;
+
+                    if (index >= 16 || index < 0)
+                        index = 15;
+
+                    // 应用当前颜色的alpha值到颜色代码
+                    current_col = (RenderText_ColorCodes[index] & ~IM_COL32_A_MASK) | alpha;
                     s += 2;
                     continue;
                 }
-                unsigned short index;
-                if (code >= '0' && code <= '9')
-                    index = code - '0';
-                else if (code >= 'a' && code <= 'f')
-                    index = code - 'a' + 10; // 加10是跳过数字的索引
                 else
-                    index = code - 'A' + 10;
-
-                if (index >= 16 || index < 0)
-                    index = 15;
-
-                // 应用当前颜色的alpha值到颜色代码
-                current_col = (RenderText_ColorCodes[index] & ~IM_COL32_A_MASK) | alpha;
-                s += 2;
-                continue;
-            }
-            else
-            { // 隐去开头的“&”符号，只保留颜色代码
-                s += 1;
-                continue;
+                { // 隐去开头的“&”符号，只保留颜色代码
+                    s += 1;
+                    continue;
+                }
             }
         }
 
