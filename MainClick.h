@@ -157,41 +157,63 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			if (config.UseOverheatProtec)
 			{
 				static ULONGLONG OverTime = GetTickCount64() + 100;
-				static bool IsTrigger = false;
+				static bool IsPlayedSound = false;
 				if (GetTickCount64() >= OverTime)
 				{
 					if (IsClickering.right || IsClickering.left)
 					{
-						if (OverheatProtecTimer >= config.OverheatTime)
+						if (Overheat::Timer <= 0)
+							Overheat::CooldownTimer = 0;
+						if (Overheat::Timer >= config.OverheatTime)
 						{
 							EnableFlags.right.push_back(false);
 							EnableFlags.left.push_back(false);
-							IsTrigger = true;
 							{
-								static ULONGLONG LastTime = 0;
-								if (LastTime + 800 <= GetTickCount64() && config.UseOHPPlaySound)
+								switch (config.OverheatSoundType)
 								{
-									MessageBeep(MB_ICONWARNING);
-									LastTime = GetTickCount64();
+								case WARNING_NONE:
+									break;
+								default:
+								case WARNING_SOUND:
+								{
+									if (!IsPlayedSound)
+									{
+										PlaySound(Sound_Warning.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+										IsPlayedSound = true;
+									}
+									break;
+								}
+								case WARNING_SYSTEM:
+								{
+									static ULONGLONG LastTime = 0;
+									if (LastTime + 800 <= GetTickCount64())
+									{
+										MessageBeep(MB_ICONWARNING);
+										LastTime = GetTickCount64();
+									}
+									break;
+								}
 								}
 							}
 						}
 						else
-							OverheatProtecTimer += 0.1f;
+							Overheat::Timer += 0.15f;
 					}
 					else
 					{
-						if (config.UseOHPResetTimerOnStop)
-							OverheatProtecTimer = 0;
-						else if (OverheatProtecTimer >= 0)
-							OverheatProtecTimer -= config.OHPTimerTimeLossSpeed;
-						if (OverheatProtecTimer < 0)
-							OverheatProtecTimer = 0;
-					}
-					if (OverheatProtecTimer == 0)
-					{
-						EnableFlags.right.push_back(true);
-						EnableFlags.left.push_back(true);
+						if (Overheat::Timer >= 0)
+							Overheat::Timer = 0;
+						if (Overheat::CooldownTimer <= config.OverheatCooldownTime)
+							Overheat::CooldownTimer += 0.15f;
+						if (Overheat::CooldownTimer >= config.OverheatCooldownTime)
+						{
+							Overheat::Timer = 0;
+							Overheat::CooldownTimer = 0;
+							EnableFlags.right.push_back(true);
+							EnableFlags.left.push_back(true);
+							IsPlayedSound = false;
+							PlaySound(NULL, NULL, 0);
+						}
 					}
 					OverTime = GetTickCount64() + 100;
 				}
@@ -945,7 +967,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						IsClickering.left = true;
 						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
-						if (config.UseItemWithClicker)
+						if (config.UseBreakBlocksWithClicker)
 						{
 							SetKeyDown(Click::Left, config.SimulateClickMode);
 							IsDownMouse = true;

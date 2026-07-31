@@ -109,7 +109,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions);_HAS_STD_BYTE=0</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>.\GLEW\include;.\zlib\include;.\OpenAL\include;.\LuaJIT\include;.\libwebp\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -121,6 +121,8 @@
       <OpenMPSupport>
       </OpenMPSupport>
       <ExceptionHandling>Async</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>framework.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -140,7 +142,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);_HAS_STD_BYTE=0</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>.\GLEW\include;.\zlib\include;.\OpenAL\include;.\LuaJIT\include;.\libwebp\include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -158,6 +160,8 @@
       <OpenMPSupport>
       </OpenMPSupport>
       <ExceptionHandling>Async</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>framework.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -185,6 +189,16 @@
     <ClInclude Include="ConfigParser.h" />
     <ClInclude Include="Definitons.h" />
     <ClInclude Include="GetInfo.h" />
+    <ClInclude Include="ImGui\Icons\fa.h" />
+    <ClInclude Include="ImGui\Icons\IconsFontAwesome6.h" />
+    <ClInclude Include="ImGui\ImGuiMD\imgui_md.h" />
+    <ClInclude Include="ImGui\ImGuiMD\md4c.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_offset_rect.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_math.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_palette.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_presets.h" />
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_renderer.h" />
     <ClInclude Include="ImGui\imgui_range_slider.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
     </ClInclude>
@@ -253,16 +267,34 @@
     <ClInclude Include="Tray.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ALFamework\aldlist.cpp" />
-    <ClCompile Include="ALFamework\CWaves.cpp" />
-    <ClCompile Include="ALFamework\Famewrok.cpp" />
-    <ClCompile Include="ALFamework\LoadOAL.cpp" />
+    <ClCompile Include="ALFamework\aldlist.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ALFamework\CWaves.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ALFamework\Famewrok.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ALFamework\LoadOAL.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="BanSystem.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="GC.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
+    <ClCompile Include="ImGui\ImGuiMD\imgui_md.cpp" />
+    <ClCompile Include="ImGui\ImGuiMD\md4c.c" />
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle.cpp" />
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_palette.cpp" />
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_presets.cpp" />
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_renderer.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
     <ClCompile Include="ImGui\imgui_impl_dx11.cpp" />
     <ClCompile Include="ImGui\imgui_impl_win32.cpp" />

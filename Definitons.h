@@ -78,6 +78,10 @@
 #define CP_RC         1       //右键连点优先
 #define CP_LC         2       //左键连点优先
 
+#define WARNING_NONE    0     //无警告音效
+#define WARNING_SYSTEM  1     //系统默认警告音效
+#define WARNING_SOUND   2     //自定义警告音效
+
 typedef ID3D11ShaderResourceView* Texture2D;
 
 typedef struct IntRange
@@ -211,8 +215,9 @@ public:
     int HideClickerKey = 0;                 //隐藏连点器快捷键
     vector<int> RCPSChangeTrendList;        //右键CPS变化趋势列表
     vector<int> LCPSChangeTrendList;        //左键CPS变化趋势列表
-    float OverheatTime = 5;                 //过热时长
-    float OHPTimerTimeLossSpeed = 0.1f;     //过热时长减少速度
+    float OverheatTime = 5.0f;              //过热时长
+    float OverheatCooldownTime = 3.0f;      //过热保护的冷却时长
+	int OverheatSoundType = WARNING_SYSTEM; //过热计时器的时间流逝速度
     int SimulateClickMode = SC_MOUSE_EVENT; //模拟点击模式
     int ReadKeyStateMode = GK_BOTH;         //获取按键状态模式
     int ClickerPriorityMode = CP_NONE;      //左右键连点的优先级模式
@@ -221,8 +226,8 @@ public:
 
     //--------------------鼠标声音设置------------------------------
 
-    bool UseMouseSound = true;              //开关鼠标点击声音
-    bool UseKeybdSound = true;              //开关键盘点击声音
+    bool UseMouseSound = false;             //开关鼠标点击声音
+    bool UseKeybdSound = false;             //开关键盘点击声音
     int MouseSoundVolume = 100;             //鼠标点击声音音量
     int KeybdSoundVolume = 100;             //键盘点击声音音量
     int NoiseVolume = 90;                   //噪音音量
@@ -253,7 +258,7 @@ public:
     bool UseLOnlyMoveClicker = false;       //开关仅移动时左键连点
     bool UseDisableMoveOnStopMove = false;  //开关连点停止移动时禁用连点
     bool UseMouseShake = false;             //开关鼠标抖动
-    bool UseMouseShakeRawInput = true;      //开关是否鼠标移动时使用原始输入
+    bool UseMouseShakeRawInput = false;     //开关是否鼠标移动时使用原始输入
     bool UseMSPreventViewSliding = true;    //开关防止视角滑动
     bool UseMSSmoothSpeed = true;           //开关平滑速度
     bool UseItembarUseMemSearch = true;     //开关物品栏开关使用内存搜索
@@ -268,8 +273,6 @@ public:
     bool UseAutoResetOnDisable = true;      //开关鼠标模式时禁用连点是否重置鼠标按下状态(是否自动松开)
     bool AllowSetLClicker = true;           //开关允许控制左键开关
     bool AllowSetRClicker = true;           //开关允许控制右键开关
-    bool UseConciseMode = false;            //开关精简模式
-    bool UseMinimalistMode = false;         //开关极简模式
     bool UseEnableGameGui = false;          //开关开启游戏视觉效果
     bool UseROnlyJumpClicker = false;       //开关跳跃时启用右键连点
     bool UseLOnlyJumpClicker = false;       //开关跳跃时启用左键连点
@@ -285,8 +288,6 @@ public:
     bool UseRCPSChangeTrend = false;        //开关右键CPS变化趋势
     bool UseLCPSChangeTrend = false;        //开关左键CPS变化趋势
     bool UseOverheatProtec = false;         //开关过热保护
-    bool UseOHPResetTimerOnStop = false;    //开关过热保护的停止时重置计时器
-    bool UseOHPPlaySound = false;           //开关过热保护时播放提示音
     bool UseBEAdaptation = false;           //是否适配Bedrock Edition
     bool UseInGameOnlyClicker = false;      //仅限游戏中使用连点器
     bool UseItembarSwitch = false;          //物品栏开关
@@ -298,8 +299,8 @@ int BgOffsetX = 0;                      //背景偏移X
 int BgOffsetY = 0;                      //背景偏移Y
 int BgScale = 100;                      //背景缩放百分比
 int BgLightness = 75;                   //背景亮度百分比
-int GuiItemAlpha = 65;                  //控件的透明度百分比（仅有背景图片时才能使用）
-bool BgAutoResize = false;              //自动调整背景大小
+int GuiItemAlpha = 40;                  //控件的透明度百分比（仅有背景图片时才能使用）
+bool BgAutoResize = true;               //自动调整背景大小
 
 static const array<const char*, 8> RandomGenList = {
     (config.UseChinese ? u8"梅森旋转算法"       :  "Mersenne Twister"           ),
@@ -338,8 +339,7 @@ atomic<bool> ThreadExitFlag(false);     //线程退出标志
 const vector<string> ScriptRestrictedFuncs = {
         "SetClipboardText", "GetClipboardText",
         "WriteNamedPipe", "CloseNamedPipe", "ReadNamedPipe", "ConnectNamedPipe",
-        "SimulatedInputText",
-        "SetMousePos", "GetMousePos"
+        "SimulatedInputText", "SetMousePos"
 };
 
 struct ScriptInfo
@@ -389,10 +389,10 @@ vector<AdStruct> AdList;                //广告列表
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.44";          //版本号
-string title = "GAMECLICKER 3.44";      //标题名字
+const string version = "3.47";          //版本号
+string title = "GAMECLICKER 3.47";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
-const int AgreementVersion = 1;         //协议文件版本号
+const int AgreementVersion = 3;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
@@ -409,7 +409,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -461,6 +461,8 @@ const string Sound_Noise =        "sound\\noise.wav";
 const string Sound_MousePath =    "sound\\mouse";
 const string Sound_Enable =       "sound\\func\\enable.wav";
 const string Sound_Disable =      "sound\\func\\disable.wav";
+const string Sound_Warning =      "sound\\func\\warning.wav";
+const string Sound_CfgPath =      WorkPath + "\\GameClicker\\sound";
 const string Sound_KeybdPath =    WorkPath + "\\GameClicker\\sound\\keys";
 
 const string Tmp_TempPath =       WorkPath + "\\GameClicker\\Temp";
@@ -469,9 +471,9 @@ const string Tmp_MCServer =       WorkPath + "\\GameClicker\\Temp\\mcserver%d.js
 const string Tmp_KeySounds =      WorkPath + "\\GameClicker\\Temp\\KeySounds.zip";
 
 const string PicsPath =           "res\\pics";
-const string Pics_Itembar =       "res\\pics\\item.png";
+const string Pics_Selected =      "res\\pics\\selected.png";
+const string Pics_Itembar =       "res\\pics\\itembar.png";
 const string Pics_Background =    WorkPath + "\\GameClicker\\bg.gcbg";
-const string Pics_HotBar =        "res\\pics\\hotbar.png";
 const string Pics_GCLogo =        "res\\pics\\Logo.png";
 const string Pics_About =         "res\\pics\\ico\\About.png";
 const string Pics_Setting =       "res\\pics\\ico\\Setting.png";
@@ -512,9 +514,6 @@ const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
 const string GameGuiLogFile =     WorkPath + "\\GameClicker\\GameGui.log";
 
 const string ExitFlagFile =       WorkPath + "\\GameClicker\\ExitFlag.gcf";
-
-//用户协议 
-const string UserAgreement = config.UseChinese ? AgreementCNString : AgreementENString;
 
 string NoticeStr = config.UseChinese ? 
 u8"\
@@ -614,8 +613,6 @@ bool AbnormalExit            = false;           //上一次程序是否非正常退出
 bool EnterSafeMode           = false;           //是否进入安全模式
 bool IsRestartAL             = false;           //是否重启OpenAL
 bool IsSearchReload          = false;           //内存搜索是否重新加载
-//bool IsMemSearch           = false;           //是否开始内存搜索
-//bool IsMemSearchInit       = false;           //内存搜索是否未初始化
 bool DebugInfo               = false;           //显示调试信息
 bool IsCreateWindowSussce    = false;           //窗口是否创建成功
 bool IsServerClosed          = false;           //服务器是否关闭
@@ -626,7 +623,11 @@ bool IsEnableScript          = true;            //是否启用LUA脚本系统，这个针对L
 bool IsCPSWaveSettingChanged = false;           //是否更改了CPS波形设置
 bool IsScriptUseGitee        = false;           //脚本商场是否使用gitee
 
-float OverheatProtecTimer = 0;                  //过热保护计时器
+namespace Overheat
+{
+    float Timer = 0;                            //过热保护计时器
+    float CooldownTimer = 0;                    //过热保护冷却计时器
+}
 int UseServerOfType = -1;                       //使用的服务器的类型
 int ItemBarPos = 1;                             //物品栏位置
 LRPair<int> CurrentCPS = {};                    //总实际CPS

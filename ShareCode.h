@@ -1339,44 +1339,47 @@ static bool IsZOrderAbove(HWND hTop, HWND hBottom)
 	return false;
 }
 
-bool IsCoveredWindow(HWND hwnd, float rate)
+bool IsCoveredWindow(HWND hwndTarget, float rate)
 {
-	static map<HWND, bool> StateList;
-	HWND TegetHwnd = GetForegroundWindow();
-	if (TegetHwnd == hwnd || !IsWindowVisible(TegetHwnd) || TegetHwnd == hwnd)
+	// 1. 目标窗口必须可见
+	if (!IsWindowVisible(hwndTarget))
 		return false;
-	if (!IsZOrderAbove(TegetHwnd, hwnd))
+
+	// 2. 获取当前前台窗口
+	HWND hwndForeground = GetForegroundWindow();
+	if (hwndForeground == nullptr)
 		return false;
-	RECT SelfRect{};
-	RECT TegetRect{};
-	GetWindowRect(hwnd, &SelfRect);
-	GetWindowRect(TegetHwnd, &TegetRect);
-	POINT TegetSize = {
-		TegetRect.right - TegetRect.left,
-		TegetRect.bottom - TegetRect.top
-	};
-	TegetSize.x -= max(0, TegetRect.right - SelfRect.right);
-	TegetSize.x -= max(0, SelfRect.left - TegetRect.left);
-	TegetSize.y -= max(0, TegetRect.bottom - SelfRect.bottom);
-	TegetSize.y -= max(0, SelfRect.top - TegetRect.top);
 
-	int CoveredSize = TegetSize.x * TegetSize.y;
-	bool IsCovered = (SelfRect.right - SelfRect.left) * (SelfRect.bottom - SelfRect.top) * rate <= CoveredSize;
+	// 3. 如果前台窗口就是目标自身，或不可见，则不视为覆盖
+	if (hwndForeground == hwndTarget || !IsWindowVisible(hwndForeground))
+		return false;
 
-	if (IsCovered == false)
+	// 4. 检查前台窗口是否在Z序上高于目标窗口
+	if (!IsZOrderAbove(hwndForeground, hwndTarget))
+		return false;
+
+	// 5. 获取两个窗口的矩形
+	RECT rectTarget = { 0 };
+	RECT rectForeground = { 0 };
+	if (!GetWindowRect(hwndTarget, &rectTarget) || !GetWindowRect(hwndForeground, &rectForeground))
+		return false;
+
+	// 6. 计算交集矩形（标准矩形交集）
+	RECT rectIntersect = { 0 };
+	if (!IntersectRect(&rectIntersect, &rectTarget, &rectForeground))
 	{
-		StateList.erase(TegetHwnd);
+		// 无交集，覆盖面积为0
 		return false;
 	}
-	else
-		StateList[TegetHwnd] = IsCovered;
 
-	for (const auto& pair : StateList)
-	{
-		if (pair.second != true)
-			return false;
-	}
-	return true;
+	// 7. 计算覆盖面积与目标窗口总面积
+	long long areaIntersect = static_cast<long long>(rectIntersect.right - rectIntersect.left) *
+		(rectIntersect.bottom - rectIntersect.top);
+	long long areaTarget = static_cast<long long>(rectTarget.right - rectTarget.left) *
+		(rectTarget.bottom - rectTarget.top);
+
+	// 8. 判断覆盖比例是否达到阈值
+	return static_cast<float>(areaIntersect) / areaTarget >= rate;
 }
 
 bool UseRunAdmin()

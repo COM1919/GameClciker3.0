@@ -20,13 +20,16 @@ struct GuiData
     UINT                     ResizeWidth = 0;
     UINT                     ResizeHeight = 0;
     ID3D11RenderTargetView*  mainRenderTargetView = nullptr;
+    ID3D11SamplerState*      pPointSampler = nullptr;
+    ID3D11SamplerState*      pLinearSampler = nullptr;
+
 }MainGuiData;
 
 // LoatTexture函数需要的，主线程渲染使用
 ID3D11SamplerState* LT_SamplerState = nullptr;
 
 ImFont* Fonts;
-
+ImGuiToggleFlags ToggleFlags = ImGuiToggleFlags_Animated | ImGuiToggleFlags_Bordered | ImGuiToggleFlags_Shadowed | ImGuiToggleFlags_Green;
 ImVec4 clear_color = (ImVec4)ImColor(14, 14, 14, 255);
 
 int CurrentTab = 1;
@@ -49,6 +52,8 @@ enum Tab
 };
 
 bool CreateDeviceD3D(HWND hWnd);
+void CreateSamplers();
+static void SetSamplerCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd);
 void CleanupDeviceD3D();
 void CreateRenderTarget();
 void CleanupRenderTarget();
@@ -84,11 +89,49 @@ void DrawGlowBorder(ImVec2 min, ImVec2 max, ImU32 color, float thickness = 3.0f)
 void DrawSpiltLine(float lenght, ImVec4 color, float thickness = 1.0f, float SpitlSize = 200);
 void DrawProgressBar(const char* label, float progress, ImVec2 size, ImVec4 Color, ImVec4 bgColor, float thickness = 5.0f);
 //bool ClipCoveredRenderRect(HWND hwnd);
-static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, D3D11_FILTER filterMode, int* w, int* h, const char* id);
-Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled = false, D3D11_FILTER filterMode = D3D11_FILTER_MIN_MAG_MIP_LINEAR, int* w = NULL, int* h = NULL);
-Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled = false, D3D11_FILTER filterMode = D3D11_FILTER_MIN_MAG_MIP_LINEAR, int* w = NULL, int* h = NULL);
+static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, int* w, int* h, const char* id);
+Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
+Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
 void ClearTextureCache();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+struct MarkdownRenderClass : public imgui_md
+{
+    ImFont* get_font() const override
+    {
+        if (m_is_table_header)
+        {
+            SetWindowFontScale(1.4f);
+            return GetIO().Fonts->Fonts[0];
+        }
+
+        switch (m_hlevel)
+        {
+        case 0:
+        {
+            if (m_is_strong)
+                SetWindowFontScale(1.2f);
+            else
+                SetWindowFontScale(1.1f);
+            return GetIO().Fonts->Fonts[0];
+        }
+        case 1:
+        {
+            SetWindowFontScale(1.1f);
+            return GetIO().Fonts->Fonts[0];
+        }
+        default:
+        {
+            return GetIO().Fonts->Fonts[0];
+        }
+        }
+    };
+
+    void open_url() const override
+    {
+        ShellExecute(NULL, "open", m_href.c_str(), NULL, NULL, SW_SHOW);
+    }
+}MarkdownRender;
 
 struct BeginCard_element
 {
@@ -763,10 +806,15 @@ void RenderControl()
     }
 }
 
-struct PopTip_element
+struct PopTipState
 {
-    ImVec2 pos;
-    float alpha;
+    int      seq;        // 创建顺序编号，用于保证高度累加顺序正确
+    int      height;     // 窗口高度
+    bool     alive;      // 是否存活（处于移出态时为 false）
+    int      endtime;    // 计时器
+    ImVec2   pos;        // 当前实时位置
+    float    alpha;      // 当前透明度
+    float    targetY;    // 锁定的目标 Y 坐标（防止移出时被其它提示顶下去）
 };
 
 bool PopTip(string msg, float timeout, UINT type)
@@ -774,18 +822,19 @@ bool PopTip(string msg, float timeout, UINT type)
     ImGuiWindow* window = GetCurrentWindow();
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
-    const ImGuiID id = window->GetID(msg.c_str());
+    const ImGuiID id = window->GetID(msg.c_str()); // 保持原 ID 生成方式，兼容每帧调用
     const ImGuiIO& io = GetIO();
     const int count_end = RenderFps * timeout;
     constexpr unsigned int ImageSize = 32;      // 图标X大小
     constexpr unsigned int MaxTextLength = 48 * 3;  // 最大文本长度
 
-    static map <ImGuiID, int> HightList;
-    static map <ImGuiID, int> endtime;
+    // 统一状态管理容器
+    static std::unordered_map<ImGuiID, PopTipState> g_popTipStates;
+    static int s_nextSeq = 0;        // 全局递增序号，用于保证层叠顺序
 
     // 如果文本过长，就开始分割为多行
     msg = UTF8ToString(msg);
-    const size_t text_length = msg.size();
+    size_t text_length = msg.size();
     if (text_length > MaxTextLength)
     {
         // 处理极端情况，文本太长
@@ -793,70 +842,95 @@ bool PopTip(string msg, float timeout, UINT type)
         {
             msg = msg.substr(0, 256);
             msg.append("...");
+            text_length = msg.size(); // 更新长度
         }
         // 分割为多行
         for (unsigned int index = 0; index < text_length; index += MaxTextLength)
         {
             size_t pos = msg.find("\n", index);
-            // 没找到\n 或者 \n在index的后面时，插入换行
-            if (pos == string::npos || pos > index)
-                msg.insert(index + MaxTextLength, "\n");
+            size_t next_break = index + MaxTextLength;
+            // 没找到\n 或者 \n在当前切割点之后时，插入换行
+            if (pos == string::npos || pos >= next_break)
+            {
+                msg.insert(next_break, "\n");
+                text_length++; // 插入了换行符，长度要 +1，防止越界
+            }
         }
     }
     msg = StringToUTF8(msg);
 
-    ImVec2 msgSize = CalcTextSize(msg.c_str());
-    msgSize.x += ImageSize;
-    ImVec2 windowSize(msgSize.x + 22, style.FramePadding.y * 4 + msgSize.y);
+    ImVec2 MsgSize = CalcTextSize(msg.c_str());
+    MsgSize.x += ImageSize;
+    ImVec2 WindowSize(MsgSize.x + style.FramePadding.x * 2, style.FramePadding.y * 4 + MsgSize.y);
+
+    // 获取或创建状态
+    auto it_state = g_popTipStates.find(id);
+    if (it_state == g_popTipStates.end())
+    {
+        // 新建提示状态
+        PopTipState newState;
+        newState.seq = s_nextSeq++; // 分配单调递增的序号
+        newState.height = (int)WindowSize.y;
+        newState.alive = true;
+        newState.endtime = 0;
+        newState.pos = ImVec2(io.DisplaySize.x + 32.0f, io.DisplaySize.y - WindowSize.y - 10.0f);
+        newState.alpha = 0.0f;
+        newState.targetY = io.DisplaySize.y - WindowSize.y - 10.0f;
+
+        g_popTipStates[id] = newState;
+        it_state = g_popTipStates.find(id);
+    }
+
+    PopTipState& state = it_state->second;
+    state.height = (int)WindowSize.y; // 每帧更新高度，防止窗口尺寸变化
+
+    // 计时逻辑
+    if (state.alive)
+    {
+        if (state.endtime < count_end)
+            state.endtime++;
+        else
+            state.alive = false; // 超时，进入移出态
+    }
+
+    // 核心治本逻辑：收集所有存活的项，并按创建序号(seq)排序，保证累加顺序绝对正确
+    std::vector<std::pair<int, int>> activeTips; // {seq, height}
+    for (const auto& kv : g_popTipStates)
+    {
+        if (kv.second.alive)
+            activeTips.push_back({ kv.second.seq, kv.second.height });
+    }
+    std::sort(activeTips.begin(), activeTips.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+        });
 
     unsigned int LayersHightSum = 0;
-    // 累加每层高度直到等于id
-    for (auto& it : HightList)
+    for (const auto& p : activeTips)
     {
-        if (it.first == id)
-            break;
-        LayersHightSum += it.second;
-    }
-    ImVec2 windowPos(io.DisplaySize.x - windowSize.x - 10, io.DisplaySize.y - windowSize.y - 10 - LayersHightSum);
-
-    auto it_HightList = HightList.find(id);
-    if (it_HightList == HightList.end())
-    {
-        HightList.insert(make_pair(id, windowSize.y));
-        it_HightList = HightList.find(id);
-    }
-    float speed = 0.1f * (1.0f - GetIO().DeltaTime);
-
-    if (endtime[id] == -1)
-        windowPos = ImVec2(io.DisplaySize.x + 20, windowPos.y);
-
-    if (endtime[id] <= count_end && endtime[id] != -1)
-        endtime[id]++;
-    else
-        endtime[id] = -1;
-
-    static map <ImGuiID, PopTip_element> anim;
-    auto it_anim = anim.find(id);
-    if (it_anim == anim.end())
-    {
-        anim.insert({ id, { ImVec2(io.DisplaySize.x + 5, windowPos.y), 0 } });
-        it_anim = anim.find(id);
+        if (p.first == state.seq)
+            break; // 碰到当前项自己，停止累加
+        LayersHightSum += p.second;
     }
 
-    if (endtime[id] != -1)
-    {
-        bool IsFound = false;
-        for (auto& temp : HightList)
-        {
-            if (temp.first == id)
-                IsFound = true;
-        }
-        if (!IsFound)
-            HightList.insert(make_pair(id, windowSize.y));
-    }
-    if (endtime.size() == 0)
-        HightList.clear();
+    // 计算目标位置
+    float TargetX = state.alive ? (io.DisplaySize.x - WindowSize.x - 10.0f) : (io.DisplaySize.x + 20.0f);
 
+    // 只有存活时才更新目标 Y。一旦进入移出态，Y 坐标锁死，让它笔直向右水平飞出
+    if (state.alive)
+    {
+        state.targetY = io.DisplaySize.y - WindowSize.y - 10.0f - LayersHightSum;
+    }
+
+    // 插值速度计算，用 ImClamp 防止 DeltaTime 异常导致插值越界
+    float MoveSpeed = ImClamp(0.20f * (1.0f - io.DeltaTime), 0.0f, 1.0f);
+    float ColorSpeed = ImClamp(0.15f * (1.0f - io.DeltaTime), 0.0f, 1.0f);
+
+    // X 和 Y 分别插值
+    state.pos.x = ImLerp(state.pos.x, TargetX, MoveSpeed);
+    state.pos.y = ImLerp(state.pos.y, state.targetY, MoveSpeed);
+    state.alpha = ImLerp(state.alpha, state.alive ? 1.0f : 0.0f, ColorSpeed);
+
+    // 绘制部分
     ImVec4 color = ColorConvertU32ToFloat4(GetColorU32((ImVec4)ImColor(30, 30, 30)));
     string title;
     Texture2D image = NULL;
@@ -878,44 +952,39 @@ bool PopTip(string msg, float timeout, UINT type)
         TextureFileName = Pics_TipError;
         break;
     }
-    image = LoadTextureFromFile(Pics_TipInfo);
+
+    // 修复：根据 type 类型加载对应的图标，而不是写死 Pics_TipInfo
+    image = LoadTextureFromFile(TextureFileName);
 
     ImDrawList* draw_list = GetForegroundDrawList();
 
-    float MoveSpeed = 0.20f * (1.0f - io.DeltaTime);
-    float ColorSpeed = 0.15f * (1.0f - io.DeltaTime);
-    it_anim->second.pos = ImLerp(it_anim->second.pos, windowPos, MoveSpeed);
-    it_anim->second.alpha = ImLerp(it_anim->second.alpha, (endtime[id] == -1) ? 0.0f : 1.0f, ColorSpeed);
-
     ImVec4 BgColor = ColorConvertU32ToFloat4(GetColorU32(color));
-    BgColor.w = it_anim->second.alpha;
+    BgColor.w = state.alpha;
     // 窗口背景
-    draw_list->AddRectFilled(it_anim->second.pos, ImVec2(
-            it_anim->second.pos.x + windowSize.x,
-            it_anim->second.pos.y + windowSize.y),
-            GetColorU32(BgColor), 6);
+    draw_list->AddRectFilled(state.pos, ImVec2(
+        state.pos.x + WindowSize.x,
+        state.pos.y + WindowSize.y),
+        GetColorU32(BgColor), 6);
 
     ImVec4 TextColor = ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_Text));
-    TextColor.w = it_anim->second.alpha;
+    TextColor.w = state.alpha;
     // 文字消息
     draw_list->AddText(Fonts, 20, ImVec2(
-            it_anim->second.pos.x + style.FramePadding.x * 4 + ImageSize,
-            it_anim->second.pos.y + (windowSize.y - msgSize.y) / 2),
-            GetColorU32(TextColor), msg.c_str());
+        state.pos.x + style.FramePadding.x * 2 + ImageSize,
+        state.pos.y + (WindowSize.y - MsgSize.y) / 2),
+        GetColorU32(TextColor), msg.c_str());
 
-    ImVec2 ImagePos(it_anim->second.pos.x + 10, it_anim->second.pos.y + ((windowSize.y / 2.0f) - (ImageSize / 2.0f)));
+    ImVec2 ImagePos(state.pos.x + style.FramePadding.x,
+        state.pos.y + ((WindowSize.y / 2.0f) - (ImageSize / 2.0f)));
     // 图标
     draw_list->AddImage((ImTextureID)image, ImagePos, ImVec2(ImagePos.x + ImageSize, ImagePos.y + ImageSize));
 
-    if (endtime[id] == -1)
+    // 彻底退出后的清理工作
+    if (!state.alive && state.pos.x > io.DisplaySize.x - 5.0f)
     {
-        HightList.erase(id);
-        if (it_anim->second.pos.x > io.DisplaySize.x - 5)
-        {
-            anim.erase(id);
-            endtime.erase(id);
-            return false;
-        }
+        // 提示已完全飞出屏幕外且透明度为0，清理状态
+        g_popTipStates.erase(id);
+        return false;
     }
 
     return true;
@@ -929,6 +998,10 @@ void InitializationGui(ImGuiIO& imio)
     // 显式关闭手柄导航
     imio.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
     //imio.ConfigFlags |= ImGuiConfigFlags_DpiEnableScaleFonts; //实验性功能
+    ImGuiStyle& style = GetStyle(); // 开启抗锯齿
+    style.AntiAliasedLines = true; // 注意：在 ImGuiStyle 里，不是 ImGuiIO
+    style.AntiAliasedFill = true;
+    style.AntiAliasedLinesUseTex = true;
 
     typedef UINT(WINAPI* GetDpiForSystemFunc)();
 
@@ -963,22 +1036,40 @@ void InitializationGui(ImGuiIO& imio)
     imio.IniFilename = nullptr;
 
     PrintLog("[Render] 创建字体", PL_INFO);
-    ImFontConfig font_config;
-    //ImFontConfig icons_config;
 
-    font_config.FontDataOwnedByAtlas = true;
-    font_config.FontDataOwnedByAtlas = true;
-    font_config.PixelSnapH = true; // 强制像素对齐，避免模糊
-    font_config.OversampleH = 1;   // 水平抗锯齿采样（默认3，可调）
-    font_config.OversampleV = 1;   // 垂直抗锯齿采样（默认3，可调）
-    font_config.SizePixels = (20 * SystemScale) / 1.2; // 降低分辨率
+    ImFontConfig FontConfig;
+    FontConfig.SizePixels = 18.0f * SystemScale;
+    FontConfig.PixelSnapH = true;
+    FontConfig.OversampleH = 1;
+    FontConfig.OversampleV = 1;
+    Fonts = imio.Fonts->AddFontFromFileTTF(
+        FontFile.c_str(),
+        18.0f * SystemScale,
+        &FontConfig,
+        imio.Fonts->GetGlyphRangesChineseFull()  // 中文范围
+    );
 
-    //icons_config.MergeMode = true;
+    // 合并 Font Awesome 图标字体
+    ImFontConfig IconConfig;
+    IconConfig.MergeMode = true;
+    IconConfig.PixelSnapH = true;
+    IconConfig.OversampleH = 1;
+    IconConfig.OversampleV = 1;
+    IconConfig.GlyphOffset.y = 1.0f; // 正数向下移动
+    IconConfig.GlyphOffset.x = -1.0f; // 正数向右偏移
 
-    Fonts = imio.Fonts->AddFontFromFileTTF(FontFile.c_str(), 18 * SystemScale, &font_config, imio.Fonts->GetGlyphRangesChineseFull());
-    //static const ImWchar icons_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-    //imio.Fonts->AddFontFromMemoryCompressedTTF(FA_compressed_data, FA_compressed_size, 16.0f, &icons_config, icons_ranges);
-    
+    static const ImWchar IconsRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+    ImFont* IconFont = imio.Fonts->AddFontFromMemoryCompressedTTF(
+        (void*)FA_compressed_data,
+        FA_compressed_size,
+        16.0f * SystemScale,
+        &IconConfig,
+        IconsRanges
+    );
+
+    if (!IconFont)
+		PrintLog("[Render] 无法加载图标字体", PL_ERROR);
+
     imio.Fonts->Build();
 }
 
@@ -1033,15 +1124,15 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     const ImGuiIO& io = GetIO();
     const ImGuiID id = window->GetID(message);
 
-    ImVec2 textSize = CalcTextSize(message);
-    ImVec2 titleSize = CalcTextSize(title);
-    ImVec2 buttonSize(125, 30);
+    ImVec2 TextSize = CalcTextSize(message);
+    ImVec2 TitleSize = CalcTextSize(title);
+    ImVec2 ButtonSize(125, 30);
 
-    float PosX = textSize.x + 26 * 2;
+    float PosX = TextSize.x + 26 * 2;
     int VectorSize = button.size();
     int ButtonPosX  = (26 + 125) * VectorSize;
     // 计算窗口大小
-    ImVec2 WindowSize((PosX < ButtonPosX) ? ButtonPosX + 26 : PosX, textSize.y + titleSize.y + 30 * 3 + 70);
+    ImVec2 WindowSize((PosX < ButtonPosX) ? ButtonPosX + 26 : PosX, TextSize.y + TitleSize.y + 30 * 3 + 70);
 
     static map<ImGuiID, int> RetValueList;
     static map<ImGuiID, MessageBox_element> anim;
@@ -1065,6 +1156,7 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     const ImVec2 RenderPos((io.DisplaySize.x - it_anim->second.size.x) / 2, (io.DisplaySize.y - it_anim->second.size.y) / 2);
     const ImVec2 RenderSize = it_anim->second.size;
 
+    /*
     // 背景阴影渲染
     {
         ImDrawList* draw_list = GetForegroundDrawList();
@@ -1079,25 +1171,27 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
         draw_list->AddRectFilled(ImVec2(0, WindowRect.Min.y), ImVec2(WindowRect.Min.x, WindowRect.Max.y), BgColor);
         // 弹窗右边
         draw_list->AddRectFilled(ImVec2(WindowRect.Max.x, WindowRect.Min.y), ImVec2(io.DisplaySize.x, WindowRect.Max.y), BgColor);
-    }
+    }*/
 
     const float alpha = it_anim->second.alpha / 255.0f;
     PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, 0)); // 这里不需要，使用下面的弹窗的背景
     PushStyleColor(ImGuiCol_Border, GetColorU32(ImGuiCol_Border, 0));
+    PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0f, 0.0f, 0.0f, alpha * 0.5f));
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
 
-    SetNextWindowFocus();
-    Begin("##messagebox", NULL,
-        ImGuiWindowFlags_NoResize          | ImGuiWindowFlags_NoMove            |
-        ImGuiWindowFlags_NoScrollbar       | ImGuiWindowFlags_NoScrollWithMouse |
-        ImGuiWindowFlags_NoCollapse        | ImGuiWindowFlags_NoTitleBar        |
-        ImGuiWindowFlags_NoSavedSettings);
+    static bool IsOpen = true;
+    if (IsOpen)
+    {
+        OpenPopup("##messagebox");
+        IsOpen = false;
+    }
+    if (BeginPopupModal("##messagebox", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollWithMouse))
     {
         SetWindowPos(RenderPos);
         SetWindowSize(RenderSize);
 
-        PopStyleColor(2);
+        PopStyleColor(3);
         PopStyleVar(2);
 
         // 弹窗的背景对比渲染，上下一个黑一个亮，弹窗的阴影
@@ -1122,16 +1216,29 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
             bool HasButtons = VectorSize > 1; //是否有多个按钮
             bool IsRet = false;
 
+            int ButtonIndex = 0; // 引入按钮索引
+
+            // --- 新增：计算靠右对齐的参数 ---
+            const float RightMargin = 20.0f;     // 距离右边框的边距
+            const float ButtonSpacing = 6.0f;    // 按钮之间的间距
+            // 计算所有按钮的总宽度
+            const float TotalButtonsWidth = VectorSize * ButtonSize.x + (VectorSize - 1) * ButtonSpacing;
+            // 计算第一个按钮的起始 X 坐标
+            const float StartX = it_anim->second.size.x - RightMargin - TotalButtonsWidth;
+
             for (const auto& pair : button)
             {
-                string st = pair.first;
-                bool UseColor = colors[st].x != 0 && colors[st].y != 0;
+                string name = pair.first;
+                bool UseColor = colors.find(name) != colors.end();
 
                 if (UseColor)
-                    PushStyleColor(ImGuiCol_Button, colors[st]);
+                    PushStyleColor(ImGuiCol_Button, colors[name]);
 
-                SetCursorPos(ImVec2(it_anim->second.size.x - ButtonPosX, it_anim->second.size.y - (buttonSize.y * 1.5)));
-                if (Button(st.c_str(), buttonSize))
+                // 根据索引和间距，依次向右排列
+                const float CurrentX = StartX + ButtonIndex * (ButtonSize.x + ButtonSpacing);
+                SetCursorPos(ImVec2(CurrentX, it_anim->second.size.y - (ButtonSize.y * 1.5)));
+
+                if (Button(name.c_str(), ButtonSize))
                 {
                     IsRet = true;
                     RetValueList[id] = pair.second;
@@ -1140,20 +1247,23 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
                 if (UseColor)
                     PopStyleColor();
 
-                if (HasButtons)
-                    SameLine();
+                ButtonIndex++; // 索引递增
             }
         }
-    }
-    End();
 
-    if (RetValueList[id] != -1 && it_anim->second.alpha < 10)
-    {
-        int ret = RetValueList[id];
-        RetValueList.erase(id);
-        anim.erase(id);
-        return ret;
+        if (RetValueList[id] != -1 && it_anim->second.alpha < 5)
+        {
+            const int ret = RetValueList[id];
+            RetValueList.erase(id);
+            anim.erase(id);
+            IsOpen = true; // 保证下次弹窗可以打开
+            CloseCurrentPopup();
+            EndPopup();
+            return ret;
+        }
+        EndPopup();
     }
+
     return -1;
 }
 
@@ -1170,7 +1280,7 @@ void ReleasGui(WNDCLASSEX wcex, GuiData* gui)
     UnregisterClass(wcex.lpszClassName, wcex.hInstance);
 }
 
-static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, D3D11_FILTER filterMode, int* w, int* h, const char* id)
+static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, int* w, int* h, const char* id)
 {
     if (image_width <= 0 || image_height <= 0)
     {
@@ -1242,7 +1352,7 @@ struct TextureInfo
 shared_mutex TextureMutex;
 map<string, TextureInfo> TextureMap;
 map<string, bool> TextureErrorMap;
-Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled, D3D11_FILTER filterMode, int* w, int* h)
+Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled, int* w, int* h)
 {
     // 检查缓存
     if (!CacheDisabled)
@@ -1268,7 +1378,7 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
         return nullptr;
     }
 
-    Texture2D textureSRV = LoadTexture(image_data, image_width, image_height, filterMode, w, h, id);
+    Texture2D textureSRV = LoadTexture(image_data, image_width, image_height, w, h, id);
 
     // 释放图片数据
     stbi_image_free(image_data);
@@ -1284,7 +1394,7 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
     return textureSRV;
 }
 
-Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, D3D11_FILTER filterMode, int* w, int* h)
+Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w, int* h)
 {
     // 假设文件没了就使用缓存，不影响...
     // 检查缓存
@@ -1329,7 +1439,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, D3D11_
         return nullptr;
     }
 
-    Texture2D textureSRV = LoadTexture(image_data, image_width, image_height, filterMode, w, h, filename.c_str());
+    Texture2D textureSRV = LoadTexture(image_data, image_width, image_height, w, h, filename.c_str());
 
     // 释放图片数据
     stbi_image_free(image_data);
@@ -1394,8 +1504,8 @@ auto GetGuiColor(ImGuiStyle& Style, float alpha)
     Colors[ImGuiCol_BorderShadow] = ImVec4{ 0.25f, 0.20f, 0.32f, 0.28f };
 
     // Text
-    Colors[ImGuiCol_Text] = ImVec4{ 1.0f, 1.0f, 1.0f, alpha };
-    Colors[ImGuiCol_TextDisabled] = ImVec4{ 0.5f, 0.5f, 0.5f, alpha };
+    Colors[ImGuiCol_Text] = ImVec4{ 1.0f, 1.0f, 1.0f, 1.0f };
+    Colors[ImGuiCol_TextDisabled] = ImVec4{ 0.5f, 0.5f, 0.5f, 1.0f };
 
     // Headers
     Colors[ImGuiCol_Header] = ImVec4{ 0.13f, 0.13f, 0.17f, alpha };
@@ -1404,28 +1514,34 @@ auto GetGuiColor(ImGuiStyle& Style, float alpha)
 
     // Buttons
     Colors[ImGuiCol_Button] = ImVec4{ 0.13f, 0.13f, 0.17f, alpha };
-    Colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.19f, 0.2f, 0.25f, alpha };
-    Colors[ImGuiCol_ButtonActive] = ImVec4{ 0.16f, 0.16f, 0.21f, alpha };
-    Colors[ImGuiCol_CheckMark] = ImVec4{ 0.74f, 0.58f, 0.98f, alpha };
+    Colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.21f, 0.22f, 0.27f, alpha };
+    Colors[ImGuiCol_ButtonActive] = ImVec4{ 0.17f, 0.17f, 0.22f, alpha };
+
+    Colors[ImGuiCol_CheckMark] = ImVec4{ 0.74f, 0.58f, 0.98f, 1.0f };
 
     // Popups
     Colors[ImGuiCol_PopupBg] = ImVec4{ 0.1f, 0.1f, 0.13f, alpha };
 
     // Slider
-    Colors[ImGuiCol_SliderGrab] = ImVec4{ 0.44f, 0.37f, 0.61f, 0.54f };
-    Colors[ImGuiCol_SliderGrabActive] = ImVec4{ 0.74f, 0.58f, 0.98f, 0.54f };
+    Colors[ImGuiCol_SliderGrab] = ImVec4{ 0.44f, 0.37f, 0.61f, 0.58f };
+    Colors[ImGuiCol_SliderGrabActive] = ImVec4{ 0.74f, 0.58f, 0.98f, 0.58f };
 
     // Frame BG
     Colors[ImGuiCol_FrameBg] = ImVec4{ 0.10f, 0.10, 0.14, alpha };
-    Colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.16f, 0.17f, 0.22f, alpha };
-    Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.13f, 0.13f, 0.18f, alpha };
+    Colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.26f, 0.27f, 0.38f, alpha };
+    Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.2f, 0.2f, 0.25f, alpha };
 
     // Tabs
-    Colors[ImGuiCol_Tab] = ImVec4{ 0.16f, 0.16f, 0.21f, alpha };
-    Colors[ImGuiCol_TabHovered] = ImVec4{ 0.24, 0.24f, 0.32f, alpha };
-    Colors[ImGuiCol_TabActive] = ImVec4{ 0.2f, 0.22f, 0.27f, alpha };
-    Colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.16f, 0.16f, 0.21f, alpha };
-    Colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.16f, 0.16f, 0.21f, alpha };
+    // 普通态：基础暗色，保持沉静
+    Colors[ImGuiCol_Tab] = ImVec4{ 0.13f, 0.12f, 0.17f, alpha };
+    // 悬停态：明显提亮，并引入紫色调，提示可交互
+    Colors[ImGuiCol_TabHovered] = ImVec4{ 0.26f, 0.23f, 0.35f, alpha };
+    // 激活态：最亮，带有强烈的紫色色相，一眼就能看出被选中
+    Colors[ImGuiCol_TabActive] = ImVec4{ 0.36f, 0.30f, 0.50f, alpha };
+    // 失焦普通态：极度压暗，退居二线
+    Colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.10f, 0.09f, 0.13f, alpha };
+    // 失焦激活态：保持比未选中亮一点，但不刺眼
+    Colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.17f, 0.16f, 0.23f, alpha };
 
     // Title
     Colors[ImGuiCol_TitleBg] = ImVec4{ 0.16f, 0.16f, 0.21f, alpha };
@@ -1439,14 +1555,17 @@ auto GetGuiColor(ImGuiStyle& Style, float alpha)
     Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4{ 0.24f, 0.24f, 0.32f, alpha };
 
     // Seperator
-    Colors[ImGuiCol_Separator] = ImVec4{ 0.44f, 0.37f, 0.61f, alpha };
-    Colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.74f, 0.58f, 0.98f, alpha };
-    Colors[ImGuiCol_SeparatorActive] = ImVec4{ 0.84f, 0.58f, 1.0f, alpha };
+    Colors[ImGuiCol_Separator] = ImVec4{ 0.44f, 0.37f, 0.61f, 1.0f };
+    Colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.74f, 0.58f, 0.98f, 1.0f };
+    Colors[ImGuiCol_SeparatorActive] = ImVec4{ 0.84f, 0.58f, 1.0f, 1.0f };
 
     // Resize Grip
     Colors[ImGuiCol_ResizeGrip] = ImVec4{ 0.44f, 0.37f, 0.61f, 0.29f };
     Colors[ImGuiCol_ResizeGripHovered] = ImVec4{ 0.74f, 0.58f, 0.98f, 0.29f };
     Colors[ImGuiCol_ResizeGripActive] = ImVec4{ 0.84f, 0.58f, 1.0f, 0.29f };
+
+    // Modal
+    Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
 
     return Colors;
 }
@@ -1461,8 +1580,8 @@ auto GetGuiStyle(ImGuiStyle& Style)
     Style.TabRounding = 4.0f;
     Style.WindowRounding = 4.0f;
 
-    Style.FramePadding.y = 4;
-    Style.ScrollbarSize = 3;
+    Style.FramePadding.y = 4.0f;
+    Style.ScrollbarSize = 8.0f;
 
     Style.ChildBorderSize = 1.0f;
     Style.WindowBorderSize = 1.0f;
@@ -1716,7 +1835,7 @@ bool CreateDeviceD3D(HWND hWnd)
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd.OutputWindow = hWnd;
-    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Count = 4;// 开启 4x MSAA
     sd.SampleDesc.Quality = 0;
     sd.Windowed = TRUE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
@@ -1732,7 +1851,63 @@ bool CreateDeviceD3D(HWND hWnd)
         return false;
 
     CreateRenderTarget();
+
+    // ============ 创建全局点采样器 ============
+    D3D11_SAMPLER_DESC sampDesc = {};
+    sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;   // 点采样（无模糊）
+    sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    sampDesc.MinLOD = 0;
+    sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+    if (FAILED(MainGuiData.pd3dDevice->CreateSamplerState(&sampDesc, &MainGuiData.pPointSampler)))
+        return false;   // 采样器创建失败
     return true;
+}
+
+static void SetSamplerCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
+{
+    // cmd->UserCallbackData 存储了我们传入的 Sampler 指针
+    ID3D11SamplerState* pSampler = (ID3D11SamplerState*)cmd->UserCallbackData;
+
+    if (MainGuiData.pd3dDeviceContext && pSampler)
+    {
+        // 绑定采样器到 Pixel Shader 的第 0 号槽位
+        // ImGui 默认使用 Slot 0
+        MainGuiData.pd3dDeviceContext->PSSetSamplers(0, 1, &pSampler);
+    }
+}
+
+void CreateSamplers()
+{
+    ID3D11Device* pd3dDevice = MainGuiData.pd3dDevice; // 获取你的设备指针
+
+    // 1. 创建像素风格采样器
+    D3D11_SAMPLER_DESC samplerDesc;
+    ZeroMemory(&samplerDesc, sizeof(samplerDesc));
+    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT; // 关键：设置为点采样
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;   // 或者 CLAMP，看你需求
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samplerDesc.MinLOD = 0;
+    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    pd3dDevice->CreateSamplerState(&samplerDesc, &MainGuiData.pPointSampler);
+
+    // 2. 创建普通线性采样器 (用于恢复默认状态)
+    // 如果不恢复，后面的文字渲染也会变成像素风
+    ZeroMemory(&samplerDesc, sizeof(samplerDesc));
+    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR; // 线性过滤
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samplerDesc.MinLOD = 0;
+    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    pd3dDevice->CreateSamplerState(&samplerDesc, &MainGuiData.pLinearSampler);
 }
 
 void CleanupDeviceD3D()
@@ -1781,7 +1956,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 DWORD WINAPI WindowProcessMessagesThread(LPVOID lpParam)
 {
-    string name = RandomString(Random(6, 16));
+    string name = "  ";
     IsCreateWindowSussce = false;
     HICON hIcon = LoadIcon(GCInstance, MAKEINTRESOURCE(GC_ICON));
     wcex.cbSize = sizeof(WNDCLASSEX);

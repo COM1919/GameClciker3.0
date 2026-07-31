@@ -331,7 +331,8 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
 
                 if (tokens[0] == "hb")
                 {
-                    client.Send("online");// 千万别加u8，之前就是这个BUG导致服务器无法识别online
+                    client.Send("online");
+                    client.Send("online"); // 发2次保险
                     LastHBTime = GetNowMs();
                     continue;
                 }

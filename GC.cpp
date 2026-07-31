@@ -374,8 +374,7 @@ int GCMainLoop()
                 ReloadClicker = true;
                 StopClicker = false;
 
-                string name = RandomString(Random(6, 16));
-                SetWindowText(GCHWND, name.c_str());
+                SetWindowText(GCHWND, "  ");
                 // 设置窗口大小
                 int x = (ScreenWidth - WindowWidth) / 2;
                 SetWindowPos(GCHWND, NULL, x, ScreenHeigth + 30, 800, 500, SWP_NOZORDER | SWP_SHOWWINDOW);
@@ -452,6 +451,8 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         CreateDirectory(ScriptPath.c_str(), NULL);
     if (_access(ScriptTemp.c_str(), 0) != 0)
         CreateDirectory(ScriptTemp.c_str(), NULL);
+    if (_access(Sound_CfgPath.c_str(), 0) != 0)
+        CreateDirectory(Sound_CfgPath.c_str(), NULL);
     if (_access(Sound_KeybdPath.c_str(), 0) != 0)
         CreateDirectory(Sound_KeybdPath.c_str(), NULL);
     if (_access("D:\\GameClicker\\sound", 0) != 0)
@@ -639,7 +640,7 @@ void RenderGui(ImGuiIO& io)
         static Texture2D texture = nullptr;
         if (IsBgImageRefresh || texture == nullptr)
         {
-            texture = LoadTextureFromFile(Pics_Background, true, D3D11_FILTER_MIN_MAG_MIP_LINEAR, &w, &h); // 禁用缓存，手动管理
+            texture = LoadTextureFromFile(Pics_Background, true, &w, &h); // 禁用缓存，手动管理
             IsBgImageRefresh = false;
         }
         ImDrawList* draw_list = GetWindowDrawList();
@@ -766,11 +767,13 @@ void RenderGui(ImGuiIO& io)
     }
 
     //=======================信息显示===========================
+    SetCursorPosX(14);
     Text(u8"CPS:%d | %d", CurrentCPS.left, CurrentCPS.right);
-
+    
+    SetCursorPosX(12);
     ImDrawList* DrawList = GetWindowDrawList();
     ImVec2 RectPos = GetCursorPos();
-    ImVec2 RectSize = { 20, 20 };
+    const ImVec2 RectSize(24, 24);
     ImRect rect(RectPos, ImVec2(RectPos.x + RectSize.x, RectPos.y + RectSize.y));
 
     for (int i = 0; i < 2; i++)
@@ -778,7 +781,7 @@ void RenderGui(ImGuiIO& io)
         const bool IsClickerDown = GetKeyDown((i == 0) ? Click::Left : Click::Right);
         DrawList->AddRectFilled(rect.Min, rect.Max, IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_Button]) : GetColorU32(GuiColor[ImGuiCol_FrameBg]), 6.0f);
         DrawList->AddRect(rect.Min, rect.Max, GetColorU32(GuiColor[ImGuiCol_Border]), 5.0f); // 圆角不使用 6 的原因是，在相同圆角值时AddRectFilled的圆角小一点
-        DrawList->AddText(ImVec2(rect.Min.x + 5, rect.Min.y), IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
+        DrawList->AddText(ImVec2(rect.Min.x + 7, rect.Min.y + 2), IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
         
         if ((IsClickering.left && i == 0) || (IsClickering.right && i == 1))
             DrawList->AddRect(ImVec2(rect.Min.x - 1, rect.Min.y - 1), ImVec2(rect.Max.x + 1, rect.Max.y + 1), GetColorU32((ImVec4)ImColor(176, 51, 205, 255)), 5.5f, 0, 3.0f);
@@ -793,8 +796,8 @@ void RenderGui(ImGuiIO& io)
     if (DebugInfo)
     {
         SetCursorPos({ RectPos.x, RectPos.y + 16 });
-        Text(u8"%.1f FPS", io.Framerate);
-        Text(u8"Human:%d|%d", HumanCPS.left, HumanCPS.right);
+        Text("%.1f FPS", io.Framerate);
+        Text("Human:%d|%d", HumanCPS.left, HumanCPS.right);
     }
 
     //=======================菜单显示===========================
@@ -819,14 +822,18 @@ void RenderGui(ImGuiIO& io)
     {
         case Tab::Hub:
         {
-            TabsText(config.UseChinese ? u8"主页" : "Home");
+            TabsText((ICON_FA_HOUSE + (config.UseChinese ? u8"主页"s : "Home"s)).c_str());
 
-            InputTextMultiline(u8"##notice", (char*)NoticeStr.c_str(), NoticeStr.size(), ImVec2(677, 230),
-                ImGuiInputTextFlags_ReadOnly |
-                ImGuiInputTextFlags_AllowTabInput |
-                ImGuiInputTextFlags_NoHorizontalScroll);
+            /*
+            BeginChild("##MarkdownView", ImVec2(677, 230), true);
+            {
+                MarkdownRender.print(NoticeStr.c_str(), NoticeStr.c_str() + NoticeStr.size());
+            }
+            EndChild();
+            */
+            InputTextMultiline(u8"##notice", (char*)NoticeStr.c_str(), NoticeStr.size(), ImVec2(677, 230), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_NoHorizontalScroll);
 
-            ImGuiWindowFlags flags =
+            const static ImGuiWindowFlags flags =
                 ImGuiWindowFlags_NoScrollbar |
                 ImGuiWindowFlags_NoScrollWithMouse |
                 ImGuiWindowFlags_NoCollapse |
@@ -882,7 +889,7 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Info:
         {
-            TabsText(config.UseChinese ? u8"信息" : "Infomation");
+            TabsText((ICON_FA_CHART_LINE + (config.UseChinese ? u8"信息"s : "Infomation"s)).c_str());
 
             BeginTabBar("##Script");
 
@@ -1248,11 +1255,11 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Setting: //-----------------------设置---------------------------
         {
-            static const Texture2D image_itembar = LoadTextureFromFile(Pics_Itembar, false, D3D11_FILTER_MIN_MAG_MIP_POINT);
-            static const Texture2D image_hotbar = LoadTextureFromFile(Pics_HotBar, false, D3D11_FILTER_MIN_MAG_MIP_POINT);
+            static const Texture2D ImageItembar = LoadTextureFromFile(Pics_Itembar, false);
+            static const Texture2D ImageSelected = LoadTextureFromFile(Pics_Selected, false);
 
             const ImVec2 Pos = GetCursorPos();
-            TabsText(config.UseChinese ? u8"设置" : "Setting");
+            TabsText((ICON_FA_GEAR + (config.UseChinese ? u8"设置"s : "Setting"s)).c_str());
 
             const ImVec2 Pos2 = GetCursorPos();
             SetCursorPos(ImVec2(Pos.x + 500, Pos.y + 10));
@@ -1265,7 +1272,8 @@ void RenderGui(ImGuiIO& io)
                     {
                         if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to\nreset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
                         {
-                            config = Config();
+                            config.~Config();          // 析构
+                            new (&config) Config();    // 原地构造
                             ReloadClicker = true; // 这个相当于保存了配置
                             RenderTip(config.UseChinese ? u8"重置成功" : "Reset success", 1.5f, PT_INFO);
                         }
@@ -1277,7 +1285,7 @@ void RenderGui(ImGuiIO& io)
             BeginTabBar("##Script");
 
             //-----------------------基本设置---------------------------
-            if (BeginTabItem(config.UseChinese ? u8"基本设置" : "Basic Setting"))
+            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"基本设置"s : "Basic Setting"s)).c_str()))
             {
                 BeginCard(config.UseChinese ? u8"基本" : "Basic", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
@@ -1324,6 +1332,7 @@ void RenderGui(ImGuiIO& io)
                             float mid = MinCps + (MaxCps - MinCps) / 2;
                             config.RCPS = round(mid);
                             config.RFluctuationCPS = round(mid - MinCps);
+                            ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
                         }
                     }
                     else
@@ -1364,6 +1373,7 @@ void RenderGui(ImGuiIO& io)
                             float mid = MinCps + (MaxCps - MinCps) / 2;
                             config.LCPS = round(mid);
                             config.LFluctuationCPS = round(mid - MinCps);
+                            ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
                         }
                     }
                     else
@@ -1380,9 +1390,9 @@ void RenderGui(ImGuiIO& io)
                         }
                     }
 
-                    Checkbox(config.UseChinese ? u8"右键CPS波动" : "RCPS Fluctuation", &config.UseRFluctuation);
+                    Toggle(config.UseChinese ? u8"右键CPS波动" : "RCPS Fluctuation", &config.UseRFluctuation, ToggleFlags);
                     SameLine();
-                    Checkbox(config.UseChinese ? u8"左键CPS波动" : "LCPS Fluctuation", &config.UseLFluctuation);
+                    Toggle(config.UseChinese ? u8"左键CPS波动" : "LCPS Fluctuation", &config.UseLFluctuation, ToggleFlags);
 
                     BeginDisabled(!config.UseLFluctuation && !config.UseRFluctuation);
                     {
@@ -1391,51 +1401,17 @@ void RenderGui(ImGuiIO& io)
                         if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
                             IsOpen = !IsOpen;
 
-                        Text(config.UseChinese ? u8"随机生成算法" : "Rand Algorithm");
-                        SetNextItemWidth(200);
-                        SameLine();
-                        if (BeginCombo("##crandomgen", RandomGenList[config.Fluctuation_RandomGen]))
-                        {
-                            for (int n = 0; n < 8; n++)
-                            {
-                                const bool is_selected = (config.Fluctuation_RandomGen == n);
-                                if (Selectable((RandomGenList[n] + "##"s + to_string(n)).c_str(), is_selected))
-                                    config.Fluctuation_RandomGen = n;
-                                if (is_selected)
-                                    SetItemDefaultFocus();
-                            }
-                            EndCombo();
-                        }
-
-                        SameLine();
-
-                        Text(config.UseChinese ? u8"随机生成分布" : "Rand Distribution");
-                        SetNextItemWidth(200);
-                        SameLine();
-                        if (BeginCombo("##crandomdist", RandomDistList[config.Fluctuation_RandomDist]))
-                        {
-                            for (int n = 0; n < 2; n++)
-                            {
-                                const bool is_selected = (config.Fluctuation_RandomDist == n);
-                                if (Selectable((RandomDistList[n] + "##"s + to_string(n)).c_str(), is_selected))
-                                    config.Fluctuation_RandomDist = n;
-                                if (is_selected)
-                                    SetItemDefaultFocus();
-                            }
-                            EndCombo();
-                        }
-
                         static LRPair<vector<WaveParam>> WaveList;
-                        static bool lastOpenState = false;
+                        static bool LastOpenState = false;
                         // 打开弹窗时加载已保存的数据
-                        if (IsOpen && !lastOpenState)
+                        if (IsOpen && !LastOpenState)
                         {
                             if (!config.CPSWaves.left.empty())
                                 WaveList.left = config.CPSWaves.left;
                             if (!config.CPSWaves.right.empty())
                                 WaveList.right = config.CPSWaves.right;
                         }
-                        lastOpenState = IsOpen;
+                        LastOpenState = IsOpen;
 
                         if (BeginPopupWindow(config.UseChinese ? u8"随机波形设置" : "Rand Wave Settings", &IsOpen))
                         {
@@ -1618,7 +1594,7 @@ void RenderGui(ImGuiIO& io)
                                             SameLine();
                                             if (Button("+##phase")) { w.phase = min(PI, w.phase + 0.05f); }
 
-                                            Checkbox("Enabled", &w.enabled);
+                                            Toggle(config.UseChinese ? u8"启用" : "Enabled", &w.enabled, ToggleFlags);
                                         }
                                         else
                                             Text(config.UseChinese ? u8"未选中波形" : "No wave selected");
@@ -1633,7 +1609,7 @@ void RenderGui(ImGuiIO& io)
                             // ---------- 下半部分：总 CPS 叠加图 ----------
                             BeginChild("BottomArea", ImVec2(0, 216), true);
                             {
-                                Checkbox(config.UseChinese ? u8"显示应用CPS后的曲线" : "Show applied CPS curve", &ShowAppliedCPS);
+                                Toggle(config.UseChinese ? u8"显示应用CPS后的曲线" : "Show applied CPS curve", &ShowAppliedCPS, ToggleFlags);
 
                                 if (ImPlot::BeginPlot("##OverallCPS", ImVec2(-1, 170)))
                                 {
@@ -1675,12 +1651,12 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         // 关闭弹窗时保存左右列表
-                        if (!IsOpen && lastOpenState)
+                        if (!IsOpen && LastOpenState)
                         {
                             config.CPSWaves.left = WaveList.left;
                             config.CPSWaves.right = WaveList.right;
                             IsCPSWaveSettingChanged = true;
-                            lastOpenState = false; // 防止重复保存
+                            LastOpenState = false; // 防止重复保存
                         }
                     }
                     EndDisabled();
@@ -1690,21 +1666,21 @@ void RenderGui(ImGuiIO& io)
                 EndCard();
                 
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                
-                BeginCard("##Settings-1", ImVec2(-1, 208), ImGuiChildFlags_Borders);
+
+                BeginCard("##Settings-1", ImVec2(-1, 193), ImGuiChildFlags_Borders);
                 {
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
                     BeginChild("##Settings-1-1", ImVec2(156, -1), false);
                     {
                         //-------------------------暴力模式--------------------------
-                        Checkbox(config.UseChinese ? u8"暴力模式" : "Brutal Mode", &config.UseBrutalMode);
+                        Toggle(config.UseChinese ? u8"暴力模式" : "Brutal Mode", &config.UseBrutalMode, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"让你的CPS轻松破百\n但可能会导致大量占用电脑CPU性能！\n并且可能会导致CPS记录器数据不准确！\n&d开启该功能会导致 物品栏开关 功能失效。" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!\n&dEnabling this feature will cause the ItemBarSwitch function to malfunction.");
 
                         //-------------------------启用连点--------------------------
-                        Checkbox(config.UseChinese ? u8"启用右键连点" : "Enable RClicker", &config.EnableRightClicker);
-                        Checkbox(config.UseChinese ? u8"启用左键连点" : "Enable LClicker", &config.EnableLeftClicker);
-                        if (Checkbox(config.UseChinese ? u8"开机自动启动" : "Start With System", &config.UseStartWithWindows))
+                        Toggle(config.UseChinese ? u8"启用右键连点" : "Enable RClicker", &config.EnableRightClicker, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"启用左键连点" : "Enable LClicker", &config.EnableLeftClicker, ToggleFlags);
+                        if (Toggle(config.UseChinese ? u8"开机自动启动" : "Start With System", &config.UseStartWithWindows, ToggleFlags))
                         {
                             static int FailedCount = 0;
                             thread FunThread([]()
@@ -1749,7 +1725,7 @@ void RenderGui(ImGuiIO& io)
 
                         //-------------------------适配新版基岩版--------------------------
                         static int backup_mode = config.SimulateClickMode;
-                        if (Checkbox(config.UseChinese ? u8"适配&c新版&f基岩版" : "Adapt BE", &config.UseBEAdaptation))
+                        if (Toggle(config.UseChinese ? u8"适配&c新版&f基岩版" : "Adapt BE", &config.UseBEAdaptation, ToggleFlags))
                         {
                             if (config.UseBEAdaptation)
                             {
@@ -1762,7 +1738,7 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         //-------------------------主播模式--------------------------
-                        if (Checkbox(config.UseChinese ? u8"主播模式" : "Broadcaster Mode", &config.UseBroadcasterMode))
+                        if (Toggle(config.UseChinese ? u8"主播模式" : "Broadcaster Mode", &config.UseBroadcasterMode, ToggleFlags))
                         {
                             thread FunThread(SetWindowDisplayAffinity, GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
                             FunThread.detach();
@@ -1780,23 +1756,11 @@ void RenderGui(ImGuiIO& io)
                             (config.UseChinese ? u8"右键连点优先" : "RC Highter Priority"),
                             (config.UseChinese ? u8"左键连点优先" : "LC Highter Priority")
                         };
+
                         Text(config.UseChinese ? u8"左右优先级" : "AC Priority");
                         SetNextItemWidth(146);
                         SameLine();
-                        if (BeginCombo("##ClickerPriorityMode", ClickerPriorityListText[config.ClickerPriorityMode]))
-                        {
-                            for (int n = 0; n < 3; n++)
-                            {
-                                PushID(n);
-                                const bool is_selected = (config.ClickerPriorityMode == n);
-                                if (Selectable(ClickerPriorityListText[n], is_selected))
-                                    config.ClickerPriorityMode = n;
-                                if (is_selected)
-                                    SetItemDefaultFocus();
-                                PopID();
-                            }
-                            EndCombo();
-                        }
+                        Combo("##ClickerPriorityMode", &config.ClickerPriorityMode, ClickerPriorityListText.data(), 3);
 
                         //-------------------------强制开关左右键连点--------------------------
                         SetNextItemWidth(80);
@@ -1819,9 +1783,9 @@ void RenderGui(ImGuiIO& io)
                         Text(config.UseChinese ? u8"自毁快捷键" : "Self-Destruct Key");
 
                         //-------------------------允许控制连点开关--------------------------
-                        Checkbox(config.UseChinese ? u8"允许控制右键连点开关" : "Allow Ctrl RC Enables", &config.AllowSetRClicker);
+                        Toggle(config.UseChinese ? u8"允许控制右键连点开关" : "Allow Ctrl RC Enables", &config.AllowSetRClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制右键的开关状态。" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the right-click switch status. ");
-                        Checkbox(config.UseChinese ? u8"允许控制左键连点开关" : "Allow Ctrl LC Enables", &config.AllowSetLClicker);
+                        Toggle(config.UseChinese ? u8"允许控制左键连点开关" : "Allow Ctrl LC Enables", &config.AllowSetLClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"默认开启，关闭后，连点器将无法控制左键的开关状态。" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the left-click switch status. ");
                     }
                     EndChild();
@@ -1830,25 +1794,32 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-1-3", ImVec2(229, -1), false);
                     {
-                        Checkbox(config.UseChinese ? u8"过热保护" : "Feature Timeout", &config.UseOverheatProtec);
+                        Toggle(config.UseChinese ? u8"过热保护" : "Feature Timeout", &config.UseOverheatProtec, ToggleFlags);
 
                         BeginDisabled(!config.UseOverheatProtec);
                         {
                             Text(config.UseChinese ? u8"过热时长" : "Timeout");
                             SameLine();
-                            SliderFloat(u8"##OverheatTime", &config.OverheatTime, 0.1f, 30, config.UseChinese ? u8"%.2f秒" : "%.2fs", ImGuiSliderFlags_AlwaysClamp);
+                            SliderFloat(u8"##OverheatTime", &config.OverheatTime, 1.0f, 20.0f, config.UseChinese ? u8"%.2f秒" : "%.2fs", ImGuiSliderFlags_AlwaysClamp);
 
-                            Checkbox(config.UseChinese ? u8"播放提示音" : "Play Sound", &config.UseOHPPlaySound);
-                            Checkbox(config.UseChinese ? u8"立即重置计时器" : "Immediately reset the timer", &config.UseOHPResetTimerOnStop);
-                            AttachTooltip(config.UseChinese ? u8"停止连点后立即重置计时器，\n而不是等等计时器的时间慢慢流失直到0。" : "Immediately reset the timer when stopping the clicker, \ninstead of waiting for the timer to slowly lose time until 0.");
-
-                            Text(config.UseChinese ? u8"时间流失速度" : "Time Loss Speed");
-                            AttachTooltip(config.UseChinese ? u8"数值越大，计时器时间流失越快。" : "The higher the value, the faster the timer loses time.");
+                            Text(config.UseChinese ? u8"冷却时长" : "Cooldown");
                             SameLine();
                             SetNextItemWidth(120);
-                            SliderFloat(u8"##OHPTimerTimeLossSpeed", &config.OHPTimerTimeLossSpeed, 0.05f, 5.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                            SliderFloat(u8"##OverheatCooldownTime", &config.OverheatCooldownTime, 0.0f, 6.0f, (config.OverheatCooldownTime <= 0) ? (config.UseChinese ? u8"禁用" : "Disabled") : "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
-                            Text(config.UseChinese ? u8"计时器值：%.3f" : "Timer Value: %.3f", OverheatProtecTimer);
+                            static const array<const char*, 3> OverheatSoundTypeListText = {
+                                (config.UseChinese ? u8"禁用" : "Disabled"),
+                                (config.UseChinese ? u8"系统默认" : "System Default"),
+                                (config.UseChinese ? u8"特殊的彩蛋" : "Special Easter Egg")
+                            };
+
+                            Text(config.UseChinese ? u8"提示音" : "Alert");
+                            SetNextItemWidth(146);
+                            SameLine();
+                            Combo("##OverheatSoundType", &config.OverheatSoundType, OverheatSoundTypeListText.data(), 3);
+
+                            Text(config.UseChinese ? u8"过热计时器值：%.2f" : "Overheat Timer: %.2f", Overheat::Timer);
+                            Text(config.UseChinese ? u8"冷却计时器值：%.2f" : "Cooldown Timer: %.2f", Overheat::CooldownTimer);
                         }
                         EndDisabled();
                     }
@@ -1921,12 +1892,12 @@ void RenderGui(ImGuiIO& io)
                     //-------------------------破坏方块/使用物品--------------------------
                     if (config.RClickerMode & C_ASSISTMODE || config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE)
                     {
-                        Checkbox(config.UseChinese ? u8"破坏方块" : "Break Blocks", &config.UseBreakBlocksWithClicker);
+                        Toggle(config.UseChinese ? u8"破坏方块" : "Break Blocks", &config.UseBreakBlocksWithClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你可以破坏方块。\n&d该功能与 按下间隔 冲突\n&d启用后将会禁用冲突功能。" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         SameLine();
 
-                        Checkbox(config.UseChinese ? u8"使用物品" : "Use Items", &config.UseItemWithClicker);
+                        Toggle(config.UseChinese ? u8"使用物品" : "Use Items", &config.UseItemWithClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你可以破坏方块。\n&d该功能与 按下间隔 冲突\n&d启用后将会禁用冲突功能。" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         if (config.UseBreakBlocksWithClicker)
@@ -1936,7 +1907,7 @@ void RenderGui(ImGuiIO& io)
                     //-------------------------过滤单点--------------------------
                     if (config.RClickerMode & C_MOUSESMODE)
                     {
-                        Checkbox(config.UseChinese ? u8"过滤右键单点" : "Filter RMB Single Clicks", &config.UseFilterRSingleClick);
+                        Toggle(config.UseChinese ? u8"过滤右键单点" : "Filter RMB Single Clicks", &config.UseFilterRSingleClick, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你普通的点击将&c不会触发连点" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
                     }
 
@@ -1944,7 +1915,7 @@ void RenderGui(ImGuiIO& io)
                     {
                         if (config.RClickerMode & C_MOUSESMODE)
                             SameLine();
-                        Checkbox(config.UseChinese ? u8"过滤左键单点" : "Filter LMB Single Clicks", &config.UseFilterLSingleClick);
+                        Toggle(config.UseChinese ? u8"过滤左键单点" : "Filter LMB Single Clicks", &config.UseFilterLSingleClick, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你普通的点击将&c不会触发连点" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
                     }
 
@@ -2000,10 +1971,10 @@ void RenderGui(ImGuiIO& io)
                         SliderInt(u8"##AssistModeCPSThreshold", &config.AssistModeCPSThreshold, 1, 16, u8"%dCPS", ImGuiSliderFlags_AlwaysClamp);
                         AttachTooltip(config.UseChinese ? u8"当你点击的CPS达到预定值时，才会触发辅助点击\n&6该功能可有效降低误判。" : "When the CPS reaches the prescribed value, The assist click will be triggered, \n&6which can effectively reduce the misjudgment.");
                     }
-                    if (!config.UseConciseMode && (config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE))
+                    if (config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE)
                     {
                         SetCursorPosY(GetCursorPosY() + 10);
-                        Checkbox(config.UseChinese ? u8"自动重置鼠标状态" : "Auto Reset Mouse Status", &config.UseAutoResetOnDisable);
+                        Toggle(config.UseChinese ? u8"自动重置鼠标状态" : "Auto Reset Mouse Status", &config.UseAutoResetOnDisable, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"当你设置为鼠标模式时，并且在使用过程中被连点控制禁用了连点\n此时可能会发现你明明没有按下鼠标，\n但是游戏却表现出按下鼠标的状态。\n&6此功能可以消除这种问题，\n但是可能对于手动禁用然后挖方块的人造成挖掘状态断开。" : "When you set the clicker to mouse mode \nand disable the clicker control during use\nYou may find that you are not pressing the mouse, \nbut the game is showing the state of pressing the mouse. \n&6This feature can eliminate this problem,\nBut it may cause mining status disconnection for \nthose who manually disable and mine blocks.");
                     }
                 }
@@ -2014,7 +1985,7 @@ void RenderGui(ImGuiIO& io)
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 BeginCard(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Checkbox(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", &config.UseItembarSwitch);
+                    Toggle(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags);
                     AttachTooltip(config.UseChinese ? u8"将对应物品格子的按钮关闭，连点器就会在你手拿对应物品时关闭连点。\n其中的快捷键必须设置，主要用于判断物品栏位置！" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
 
                     if (Button(config.UseChinese ? u8"全部启用" : "Enable All"))
@@ -2038,6 +2009,7 @@ void RenderGui(ImGuiIO& io)
                     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5, 5));
                     BeginChild("##ItembarChild", ImVec2(680, 250), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
                     {
+                        ImDrawList* DrawList = GetWindowDrawList();
                         for (unsigned int j = 0; j < 2; j++)
                         {
                             PushID(j);
@@ -2047,13 +2019,15 @@ void RenderGui(ImGuiIO& io)
                             DrawSpiltLine(528 - CalcTextSize(text).x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
                             const ImVec2 pos1 = GetCursorPos();
-                            Image((ImTextureID)image_itembar, ImVec2(540, 66));
+                            {
+                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                                Image((ImTextureID)ImageItembar, ImVec2(178 * 3, 19 * 3));
+                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                            }
                             const ImVec2 pos2 = GetCursorPos();
 
-                            ImVec2 MainPos(GetCursorPosX() + ((60 - 40) / 2.0f) + 3, GetCursorPosY() - 55);
-                            SetCursorPos(MainPos);
+                            SetCursorPos(ImVec2(GetCursorPosX() + ((60 - 40) / 2.0f) + 3, GetCursorPosY() - 55));
 
-                            ImDrawList* draw_list = GetWindowDrawList();
                             auto& IsEnableClicker = (j == 0) ? config.ItemEnableClicker.left : config.ItemEnableClicker.right;
                             auto& IsEnablePresetCPS = (j == 0) ? config.ItemBarEnablePresetCPS.left : config.ItemBarEnablePresetCPS.right;
                             auto& PresetCPS = (j == 0) ? config.ItemBarPresetCPS.left : config.ItemBarPresetCPS.right;
@@ -2066,75 +2040,65 @@ void RenderGui(ImGuiIO& io)
                                 if (ItemBarPos == i)
                                 {
                                     const ImVec2 pos2 = GetCursorPos();
-                                    SetCursorPos({ PosX - 3, pos1.y });
-                                    ImageRounded((ImTextureID)image_hotbar, ImVec2(66, 66), 6.0f);
+                                    SetCursorPos(ImVec2(PosX - 1, pos1.y));
+                                    {
+                                        DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                                        Image((ImTextureID)ImageSelected, ImVec2(18 * 3, 19 * 3));
+                                        DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                                    }
                                     SetCursorPos(pos2);
                                 }
 
                                 // pos.y的值是格子的顶部Y坐标
-                                const ImVec2 BoxPos(PosX + 10, pos1.y + 42);
-                                const ImVec2 BoxSize(46, 4);
-                                ImRect BoxRect(BoxPos, ImVec2(BoxPos.x + 40, BoxPos.y + 16));
-                                BoxRect.Translate(GetWindowPos());
-
-                                const ImU32 color = GetColorU32(IsEnableClicker[i] ? GuiColor[ImGuiCol_CheckMark] : GuiColor[ImGuiCol_ScrollbarGrabActive]);
-                                draw_list->AddRectFilled(BoxRect.Min, BoxRect.Max, color, 2.0f);
+                                SetCursorPos(ImVec2(PosX + 7, pos1.y + 28));
+                                Toggle("##ItembarToggle", &IsEnableClicker[i], ToggleFlags);
                                 SameLine(0, 20);
                                 PopID();
                             }
-                            // 和下面注释同理,不过要微调
-                            SetCursorPos(ImVec2(pos1.x + 540 + 2, (j == 1) ? pos1.y - 25 + 4 : pos1.y));
 
-                            // +25是因为中间有50px的高度空间，50/2=25
-                            BeginChild("##ItembarChildIn", ImVec2(130, 66 + 35), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                            SetCursorPos(ImVec2(pos1.x + 540 + 2, pos1.y));
+                            PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+                            BeginChild("##ItembarChildIn", ImVec2(130, 19 * 3), false);
                             {
                                 BeginDisabled(!config.UseItembarSwitch);
                                 {
-                                    Checkbox(config.UseChinese ? u8"启用连点" : "Enable Clicker", &IsEnableClicker[ItemBarPos]);
-                                    Checkbox(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos]);
+                                    Toggle(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos], ToggleFlags);
                                     AttachTooltip(config.UseChinese ? u8"可以让每一个格子对应不同的CPS\n如果使用了CPS波动，&d会自动计算波动范围&f，你只需要调整CPS就可以" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
 
                                     BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
                                     {
-                                        Text("CPS");
-                                        SameLine();
-                                        SetNextItemWidth(80);
-                                        SliderInt("##ib_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
+										SetNextItemWidth(100);
+                                        SliderInt("##itembar_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
                                     }
                                     EndDisabled();
                                 }
                                 EndDisabled();
                             }
                             EndChild();
+                            PopStyleColor();
 
-                            if (j == 0)
-                            {
-                                SetCursorPos(pos2);
-                                const char* text = config.UseChinese ? u8"物品栏快捷键设置" : "Itembar Shortcut Key Settings";
-                                Text(text);
-                                AttachTooltip(config.UseChinese ? u8"&c请确保快捷键和游戏中的一致！\n&6否则将无法判断物品栏切换" : "&cPlease make sure the shortcut key is consistent with the game!\n&6Otherwise, it cannot determine the position of the item bar switch!");
-                                SameLine();
-                                DrawSpiltLine(528 + CalcTextSize(text).x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-
-                                SetCursorPos(ImVec2(pos2.x, pos2.y + (50 / 2.0f) - 3));
-                                for (unsigned int i = 0; i < 9; i++)
-                                {
-                                    PushID(i);
-                                    SetNextItemWidth(40);
-                                    InputKey(u8"##item", &config.ItemEnableClickerKey.at(i), config.UseChinese ? u8"请按下按键" : "Press a key");
-                                    if (i != 8)
-                                        SameLine(0, 21);
-                                    PopID();
-                                }
-                                // 中间露出50px高度的空间
-                                SetCursorPos(ImVec2(pos2.x, pos2.y + 50));
-                            }
                             PopID();
                         }
                     }
                     EndChild();
                     PopStyleVar(); //ImGuiStyleVar_WindowPadding
                 }
+                EndCard();
+
+				BeginCard(config.UseChinese ? u8"物品栏按键设置" : "Itembar Key Settings", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+				{
+                    AttachTooltip(config.UseChinese ? u8"&c请确保快捷键和游戏中的一致！\n&6否则将无法判断物品栏切换" : "&cPlease make sure the shortcut key is consistent with the game!\n&6Otherwise, it cannot determine the position of the item bar switch!");
+                    
+                    for (unsigned int i = 0; i < 9; i++)
+                    {
+                        PushID(i);
+                        SetNextItemWidth(40);
+                        InputKey(u8"##item", &config.ItemEnableClickerKey.at(i), config.UseChinese ? u8"请按下按键" : "Press a key");
+                        if (i != 8)
+                            SameLine(0, 21);
+                        PopID();
+                    }
+				}
                 EndCard();
 
                 //-------------------------获取游戏窗口----------------------------
@@ -2223,233 +2187,226 @@ void RenderGui(ImGuiIO& io)
             }
 
             //-------------------------高级设置--------------------------
-            if (BeginTabItem(config.UseChinese ? u8"高级设置" : "Advanced Setting"))
+            if (BeginTabItem((ICON_FA_GEAR + (config.UseChinese ? u8"高级设置"s : "Advanced Setting"s)).c_str()))
             {
-                if (!config.UseMinimalistMode)
+                BeginCard("##Settings-2", ImVec2(-1, 222), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    BeginCard("##Settings-2", ImVec2(-1, 232), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                    PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+
+                    //-------------------------连点间隙----------------------------
+                    BeginChild("##Settings-2-1", ImVec2(328, -1), false);
                     {
-                        PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-
-                        //-------------------------连点间隙----------------------------
-                        BeginChild("##Settings-2-1", ImVec2(328, -1), false);
+                        Toggle(config.UseChinese ? u8"右键连点间隙" : "RClicker Interval", &config.UseRClickTime, ToggleFlags);
+                        BeginDisabled(!config.UseRClickTime);
                         {
-                            Checkbox(config.UseChinese ? u8"右键连点间隙" : "RClicker Interval", & config.UseRClickTime);
-                            BeginDisabled(!config.UseRClickTime);
-                            {
-                                Text(config.UseChinese ? u8"点击时长" : "Clicker Time");
-                                AttachTooltip(config.UseChinese ? u8"连点的时长，单位毫秒" : "The duration of the click in milliseconds");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##RCTime", &config.RCTime, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
+                            Text(config.UseChinese ? u8"点击时长" : "Clicker Time");
+                            AttachTooltip(config.UseChinese ? u8"连点的时长，单位毫秒" : "The duration of the click in milliseconds");
+                            SameLine();
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##RCTime", &config.RCTime, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
 
-                                Text(config.UseChinese ? u8"停止时长" : "Stop Time");
-                                AttachTooltip(config.UseChinese ? u8"连点停止的时长，单位毫秒" : "The duration of the stop in milliseconds");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##RCSleep", &config.RCSleep, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
-
-                            DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-
-                            Checkbox(config.UseChinese ? u8"左键连点间隙" : "RClicker Interval", & config.UseLClickTime);
-                            BeginDisabled(!config.UseLClickTime);
-                            {
-                                Text(config.UseChinese ? u8"连点时长" : "Clicker Time");
-                                AttachTooltip(config.UseChinese ? u8"连点的时长，单位毫秒" : "The duration of the click in milliseconds");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##LCTime", &config.LCTime, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
-
-                                Text(config.UseChinese ? u8"停止时长" : "Stop Time");
-                                AttachTooltip(config.UseChinese ? u8"连点停止的时长，单位毫秒" : "The duration of the stop in milliseconds");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##LCSleep", &config.LCSleep, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
-
-                            if (config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_ASSISTMODE)
-                                Text(config.UseChinese ? u8"&c辅助模式不支持该功能" : "&cThe AssistMode does not support this function.");
+                            Text(config.UseChinese ? u8"停止时长" : "Stop Time");
+                            AttachTooltip(config.UseChinese ? u8"连点停止的时长，单位毫秒" : "The duration of the stop in milliseconds");
+                            SameLine();
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##RCSleep", &config.RCSleep, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
                         }
-                        EndChild();
+                        EndDisabled();
 
-                        SameLine();
+                        DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
-                        //-------------------------空刀概率----------------------------
-                        BeginChild("##Settings-2-2", ImVec2(328, -1), false);
+                        Toggle(config.UseChinese ? u8"左键连点间隙" : "RClicker Interval", &config.UseLClickTime, ToggleFlags);
+                        BeginDisabled(!config.UseLClickTime);
                         {
-                            Checkbox(config.UseChinese ? u8"右键空刀概率" : "RClicker Empty Rate", &config.UseREmptyRate);
-                            BeginDisabled(!config.UseREmptyRate);
-                            {
-                                Text(config.UseChinese ? u8"右键空刀概率" : "RClicker Empty Rate");
-                                SameLine();
-                                SetNextItemWidth(200);
-                                SliderInt(u8"##UseREmptyRate", &config.REmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
+                            Text(config.UseChinese ? u8"连点时长" : "Clicker Time");
+                            AttachTooltip(config.UseChinese ? u8"连点的时长，单位毫秒" : "The duration of the click in milliseconds");
+                            SameLine();
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##LCTime", &config.LCTime, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
 
-                            DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-
-                            Checkbox(config.UseChinese ? u8"左键空刀概率" : "LClicker Empty Rate", &config.UseLEmptyRate);
-                            BeginDisabled(!config.UseLEmptyRate);
-                            {
-                                Text(config.UseChinese ? u8"左键空刀概率" : "LClicker Empty Rate");
-                                SameLine();
-                                SetNextItemWidth(200);
-                                SliderInt(u8"##UseLEmptyRate", &config.LEmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
-
-                            BeginDisabled(!config.UseLEmptyRate && !config.UseREmptyRate);
-                            if (!config.UseConciseMode)
-                            {
-                                Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
-                                SetNextItemWidth(200);
-                                SameLine();
-                                if (BeginCombo("##erandomgen", RandomGenList[config.EmptyRate_RandomGen]))
-                                {
-                                    for (int n = 0; n < 8; n++)
-                                    {
-                                        PushID(n);
-                                        const bool is_selected = (config.EmptyRate_RandomGen == n);
-                                        if (Selectable(RandomGenList[n], is_selected))
-                                            config.EmptyRate_RandomGen = n;
-                                        if (is_selected)
-                                            SetItemDefaultFocus();
-                                        PopID();
-                                    }
-                                    EndCombo();
-                                }
-
-                                Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
-                                SetNextItemWidth(200);
-                                SameLine();
-                                if (BeginCombo("##erandomdist", RandomDistList[config.EmptyRate_RandomDist]))
-                                {
-                                    for (int n = 0; n < 3; n++)
-                                    {
-                                        PushID(n);
-                                        const bool is_selected = (config.EmptyRate_RandomDist == n);
-                                        if (Selectable(BoolRandomDistList[n], is_selected))
-                                            config.EmptyRate_RandomDist = n;
-                                        if (is_selected)
-                                            SetItemDefaultFocus();
-                                        PopID();
-                                    }
-                                    EndCombo();
-                                }
-
-                                static bool IsOpen = false;
-                                if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
-                                    IsOpen = !IsOpen;
-
-                                if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
-                                {
-                                    static int PointsSize = 200;
-                                    static vector<short> ClickDatas;
-                                    static vector<short> EmpytDatas;
-                                    static float GenDurationSum = 0;
-                                    static bool IsInit = false;
-                                    static bool IsGenerating = false;
-                                    static float auv = 0;
-                                    static float ActualRate = 0;
-
-                                    Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
-                                    SameLine();
-                                    SetNextItemWidth(300);
-                                    SetCursorPosX(300);
-                                    SliderInt(u8"##rgc_points", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-                                    if (VarHasChanged(config.UseLEmptyRate, "UseLEmptyRate") ||
-                                        VarHasChanged(config.UseREmptyRate, "UseREmptyRate") ||
-                                        VarHasChanged(PointsSize, "EmptyRate_PointsSize"))
-                                    {
-                                        IsInit = false;
-                                    }
-
-                                    Text(config.UseChinese ? u8"&7*注：橙色柱代表实际有点击，灰色代表空刀，默认使用的是右键空刀概率。" : "&7*Note: The orange bar represents the actual click, \nthe gray bar represents the empty click, \nthe default is to use the left key empty rate.");
-                                    AttachTooltip(config.UseChinese ? u8"&6橙色柱：这个位置在实际情况中&a已点击&f\n&6灰色柱：这个位置在实际情况中&c没有点击&f\n你可以理解为，每个数据点代表一个点击\n颜色代表是否空刀，灰色为空刀。" : "Orange bar: This position has been clicked in the actual situation\nGray bar: This position has not been clicked in the actual situation\nYou can understand it as each data point represents a click\nColor represents whether it is an empty click, gray means empty.");
-
-                                    if ((Button(config.UseChinese ? u8"刷新" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
-                                    {
-                                        IsGenerating = true;
-                                        thread FunThread([]()
-                                            {
-                                                ClickDatas.clear();
-                                                EmpytDatas.clear();
-                                                GenDurationSum = 0;
-                                                int ClickCount = 0;
-                                                const float Proportion = config.REmptyRateValue / 100.0f;
-
-                                                for (int i = 0; i < PointsSize; i++)
-                                                {
-                                                    auto start = chrono::high_resolution_clock::now();
-
-                                                    const bool data = RandomBool(Proportion, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist);
-                                                    ClickDatas.push_back(data);
-                                                    EmpytDatas.push_back(!data);
-
-                                                    auto end = chrono::high_resolution_clock::now();
-                                                    auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                                                    GenDurationSum += duration.count() / 1000.0;
-                                                    if (ClickDatas.back())
-                                                        ClickCount++;
-                                                }
-                                                auv = GenDurationSum / PointsSize;
-                                                ActualRate = (double)ClickCount / PointsSize * 100;
-                                                IsGenerating = false;
-                                            });
-                                        FunThread.detach();
-                                        IsInit = true;
-                                    }
-
-                                    if (ImPlot::BeginPlot("##Random_curves1", ImVec2(-1, -1), ImPlotFlags_CanvasOnly))
-                                    {
-                                        ImPlot::SetupAxesLimits(0, PointsSize, -2, 2, ImGuiCond_Always);
-
-                                        ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
-                                        ImPlot::SetNextLineStyle((ImVec4)ImColor(254, 189, 57, 200), 0);
-                                        ImPlot::PlotBars(config.UseChinese ? u8"已点击" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
-
-                                        ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
-                                        ImPlot::SetNextLineStyle((ImVec4)ImColor(0, 106, 201, 200), 0);
-                                        ImPlot::PlotBars(config.UseChinese ? u8"空点击" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
-                                        ImPlot::EndPlot();
-                                    }
-                                    Text(config.UseChinese ? u8"耗时：%.6f毫秒" : "Time: %.6f ms", GenDurationSum);
-                                    SameLine();
-                                    Text(config.UseChinese ? u8"共 %d 个数据点" : "A total of %d data points", PointsSize);
-                                    SameLine();
-                                    Text(config.UseChinese ? u8"平均用时：%.6f毫秒/数据点" : "Average time: %.6f ms/data point", auv);
-                                    Text(config.UseChinese ? u8"实际空刀概率：%.3f%" : "Actual empty click: %.3f%", ActualRate);
-                                    EndPopupWindow();
-                                }
-                            }
-                            EndDisabled();
+                            Text(config.UseChinese ? u8"停止时长" : "Stop Time");
+                            AttachTooltip(config.UseChinese ? u8"连点停止的时长，单位毫秒" : "The duration of the stop in milliseconds");
+                            SameLine();
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##LCSleep", &config.LCSleep, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
                         }
-                        EndChild();
+                        EndDisabled();
 
-                        PopStyleColor();
+                        if (config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_ASSISTMODE)
+                            Text(config.UseChinese ? u8"&c辅助模式不支持该功能" : "&cThe AssistMode does not support this function.");
                     }
-                    EndCard();
+                    EndChild();
+
+                    SameLine();
+
+                    //-------------------------空刀概率----------------------------
+                    BeginChild("##Settings-2-2", ImVec2(328, -1), false);
+                    {
+                        Toggle(config.UseChinese ? u8"右键空刀概率" : "RClicker Empty Rate", &config.UseREmptyRate, ToggleFlags);
+                        BeginDisabled(!config.UseREmptyRate);
+                        {
+                            Text(config.UseChinese ? u8"右键空刀概率" : "RClicker Empty Rate");
+                            SameLine();
+                            SetNextItemWidth(200);
+                            SliderInt(u8"##UseREmptyRate", &config.REmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+                        }
+                        EndDisabled();
+
+                        DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
+
+                        Toggle(config.UseChinese ? u8"左键空刀概率" : "LClicker Empty Rate", &config.UseLEmptyRate, ToggleFlags);
+                        BeginDisabled(!config.UseLEmptyRate);
+                        {
+                            Text(config.UseChinese ? u8"左键空刀概率" : "LClicker Empty Rate");
+                            SameLine();
+                            SetNextItemWidth(200);
+                            SliderInt(u8"##UseLEmptyRate", &config.LEmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+                        }
+                        EndDisabled();
+
+                        BeginDisabled(!config.UseLEmptyRate && !config.UseREmptyRate);
+                        {
+                            Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
+                            SetNextItemWidth(200);
+                            SameLine();
+                            if (BeginCombo("##erandomgen", RandomGenList[config.EmptyRate_RandomGen]))
+                            {
+                                for (int n = 0; n < 8; n++)
+                                {
+                                    PushID(n);
+                                    const bool is_selected = (config.EmptyRate_RandomGen == n);
+                                    if (Selectable(RandomGenList[n], is_selected))
+                                        config.EmptyRate_RandomGen = n;
+                                    if (is_selected)
+                                        SetItemDefaultFocus();
+                                    PopID();
+                                }
+                                EndCombo();
+                            }
+
+                            Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
+                            SetNextItemWidth(200);
+                            SameLine();
+                            if (BeginCombo("##erandomdist", RandomDistList[config.EmptyRate_RandomDist]))
+                            {
+                                for (int n = 0; n < 3; n++)
+                                {
+                                    PushID(n);
+                                    const bool is_selected = (config.EmptyRate_RandomDist == n);
+                                    if (Selectable(BoolRandomDistList[n], is_selected))
+                                        config.EmptyRate_RandomDist = n;
+                                    if (is_selected)
+                                        SetItemDefaultFocus();
+                                    PopID();
+                                }
+                                EndCombo();
+                            }
+
+                            static bool IsOpen = false;
+                            if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
+                                IsOpen = !IsOpen;
+
+                            if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
+                            {
+                                static int PointsSize = 200;
+                                static vector<short> ClickDatas;
+                                static vector<short> EmpytDatas;
+                                static float GenDurationSum = 0;
+                                static bool IsInit = false;
+                                static bool IsGenerating = false;
+                                static float auv = 0;
+                                static float ActualRate = 0;
+
+                                Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
+                                SameLine();
+                                SetNextItemWidth(300);
+                                SetCursorPosX(300);
+                                SliderInt(u8"##rgc_points", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+                                if (VarHasChanged(config.UseLEmptyRate, "UseLEmptyRate") ||
+                                    VarHasChanged(config.UseREmptyRate, "UseREmptyRate") ||
+                                    VarHasChanged(PointsSize, "EmptyRate_PointsSize"))
+                                {
+                                    IsInit = false;
+                                }
+
+                                Text(config.UseChinese ? u8"&7*注：橙色柱代表实际有点击，灰色代表空刀，默认使用的是右键空刀概率。" : "&7*Note: The orange bar represents the actual click, \nthe gray bar represents the empty click, \nthe default is to use the left key empty rate.");
+                                AttachTooltip(config.UseChinese ? u8"&6橙色柱：这个位置在实际情况中&a已点击&f\n&6灰色柱：这个位置在实际情况中&c没有点击&f\n你可以理解为，每个数据点代表一个点击\n颜色代表是否空刀，灰色为空刀。" : "Orange bar: This position has been clicked in the actual situation\nGray bar: This position has not been clicked in the actual situation\nYou can understand it as each data point represents a click\nColor represents whether it is an empty click, gray means empty.");
+
+                                if ((Button(config.UseChinese ? u8"刷新" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
+                                {
+                                    IsGenerating = true;
+                                    thread FunThread([]()
+                                        {
+                                            ClickDatas.clear();
+                                            EmpytDatas.clear();
+                                            GenDurationSum = 0;
+                                            int ClickCount = 0;
+                                            const float Proportion = config.REmptyRateValue / 100.0f;
+
+                                            for (int i = 0; i < PointsSize; i++)
+                                            {
+                                                auto start = chrono::high_resolution_clock::now();
+
+                                                const bool data = RandomBool(Proportion, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist);
+                                                ClickDatas.push_back(data);
+                                                EmpytDatas.push_back(!data);
+
+                                                auto end = chrono::high_resolution_clock::now();
+                                                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+                                                GenDurationSum += duration.count() / 1000.0;
+                                                if (ClickDatas.back())
+                                                    ClickCount++;
+                                            }
+                                            auv = GenDurationSum / PointsSize;
+                                            ActualRate = (double)ClickCount / PointsSize * 100;
+                                            IsGenerating = false;
+                                        });
+                                    FunThread.detach();
+                                    IsInit = true;
+                                }
+
+                                if (ImPlot::BeginPlot("##Random_curves1", ImVec2(-1, -1), ImPlotFlags_CanvasOnly))
+                                {
+                                    ImPlot::SetupAxesLimits(0, PointsSize, -2, 2, ImGuiCond_Always);
+
+                                    ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
+                                    ImPlot::SetNextLineStyle((ImVec4)ImColor(254, 189, 57, 200), 0);
+                                    ImPlot::PlotBars(config.UseChinese ? u8"已点击" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
+
+                                    ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
+                                    ImPlot::SetNextLineStyle((ImVec4)ImColor(0, 106, 201, 200), 0);
+                                    ImPlot::PlotBars(config.UseChinese ? u8"空点击" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
+                                    ImPlot::EndPlot();
+                                }
+                                Text(config.UseChinese ? u8"耗时：%.6f毫秒" : "Time: %.6f ms", GenDurationSum);
+                                SameLine();
+                                Text(config.UseChinese ? u8"共 %d 个数据点" : "A total of %d data points", PointsSize);
+                                SameLine();
+                                Text(config.UseChinese ? u8"平均用时：%.6f毫秒/数据点" : "Average time: %.6f ms/data point", auv);
+                                Text(config.UseChinese ? u8"实际空刀概率：%.3f%" : "Actual empty click: %.3f%", ActualRate);
+                                EndPopupWindow();
+                            }
+                        }
+                        EndDisabled();
+                    }
+                    EndChild();
+
+                    PopStyleColor();
                 }
+                EndCard();
 
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 BeginCard("##Settings-3", ImVec2(-1, -1), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (!config.UseConciseMode)
-                    {
-                        //-------------------------主循环延迟----------------------------
-                        Text(config.UseChinese ? u8"主循环延迟" : "Loop Delay");
-                        AttachTooltip(config.UseChinese ? u8"每次轮询间隔，单位毫秒，\n太高会导致有延迟(设置为1ms就几乎没有延迟)\n通常不需要设置，在GC占用率大时，调高该数值。\n不会就保持默认。" : "The interval between each polling, in milliseconds, \nToo high will cause delay (set to 1ms almost no delay)\nUsually do not need to set, increase this value when the GC occupancy is high. \nIt will not stay at the default value.");
-                        SameLine();
-                        SetNextItemWidth(300);
-                        SetCursorPosX(300);
-                        SliderInt(u8"##MainClickSleep", &config.MainClickSleep, 0, 50, config.UseChinese ? u8"%d毫秒" : "%d ms", ImGuiSliderFlags_AlwaysClamp);
-                    }
-
+                    //-------------------------主循环延迟----------------------------
+                    Text(config.UseChinese ? u8"主循环延迟" : "Loop Delay");
+                    AttachTooltip(config.UseChinese ? u8"每次轮询间隔，单位毫秒，\n太高会导致有延迟(设置为1ms就几乎没有延迟)\n通常不需要设置，在GC占用率大时，调高该数值。\n不会就保持默认。" : "The interval between each polling, in milliseconds, \nToo high will cause delay (set to 1ms almost no delay)\nUsually do not need to set, increase this value when the GC occupancy is high. \nIt will not stay at the default value.");
+                    SameLine();
+                    SetNextItemWidth(300);
+                    SetCursorPosX(300);
+                    SliderInt(u8"##MainClickSleep", &config.MainClickSleep, 0, 50, config.UseChinese ? u8"%d毫秒" : "%d ms", ImGuiSliderFlags_AlwaysClamp);
+                    
                     BeginDisabled(config.UseBEAdaptation);
                     {
                         //-------------------------点击方式----------------------------
@@ -2501,7 +2458,7 @@ void RenderGui(ImGuiIO& io)
                         EndCombo();
                     }
 
-                    Checkbox(config.UseChinese ? u8"仅人类操作触发" : "Human Only Trigger", &config.UseHumanOnlyTrigger);
+                    Toggle(config.UseChinese ? u8"仅人类操作触发" : "Human Only Trigger", &config.UseHumanOnlyTrigger, ToggleFlags);
                 }
                 EndCard();
 
@@ -2511,9 +2468,9 @@ void RenderGui(ImGuiIO& io)
                 {
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
-                    BeginChild("##Settings-4-1", ImVec2(328, -1), false);
+                    BeginChild("##Settings-4-1", ImVec2(323, -1), false);
                     {
-                        Checkbox(config.UseChinese ? u8"启用" : "Enable", & config.UseRStartClickerDelay);
+                        Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseRStartClickerDelay, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"让你触发连点时有延迟\n&d通常为鼠标模式使用" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
 
                         BeginDisabled(!config.UseRStartClickerDelay);
@@ -2531,7 +2488,7 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-4-2", ImVec2(328, -1), false);
                     {
-                        Checkbox(config.UseChinese ? u8"启用" : "Enable", & config.UseLStartClickerDelay);
+                        Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseLStartClickerDelay, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"让你触发连点时有延迟\n&d通常为鼠标模式使用" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
 
                         BeginDisabled(!config.UseLStartClickerDelay);
@@ -2553,247 +2510,239 @@ void RenderGui(ImGuiIO& io)
                 EndCard();
 
                 //-------------------------按下间隔--------------------------
-                if (!config.UseMinimalistMode)
+                SetCursorPosY(GetCursorPosY() + 10.0f);
+                BeginCard(config.UseChinese ? u8"点击按下间隔" : "Click Press Interval", ImVec2(-1, 131), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    SetCursorPosY(GetCursorPosY() + 10.0f);
-                    BeginCard(config.UseChinese ? u8"点击按下间隔" : "Click Press Interval", ImVec2(-1, 139), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                    PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+
+                    BeginChild("##Settings-5-1", ImVec2(328, -1), false);
                     {
-                        PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+                        Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseRClickPressTime, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"在每次点击之中，按下按键的持续时长。" : "The duration of the button press during each click.");
 
-                        BeginChild("##Settings-5-1", ImVec2(328, -1), false);
+                        BeginDisabled(!config.UseRClickPressTime);
                         {
-                            Checkbox(config.UseChinese ? u8"启用" : "Enable", &config.UseRClickPressTime);
-                            AttachTooltip(config.UseChinese ? u8"在每次点击之中，按下按键的持续时长。" : "The duration of the button press during each click.");
-
-                            BeginDisabled(!config.UseRClickPressTime);
-                            {
-                                Checkbox(config.UseChinese ? u8"动态设置按下时长&7（建议）" : "Dynamically set press duration &7(recommended)", &config.UseRAutoPressDuration);
-                                AttachTooltip(config.UseChinese ? u8"动态的设置按下时长\n来模拟人类点击的的按下间隔\n&a除非特殊用途，否则建议开启。" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
-                            }
-                            EndDisabled();
-
-                            BeginDisabled(!config.UseRClickPressTime || config.UseRAutoPressDuration);
-                            {
-                                Text(config.UseChinese ? u8"按住持续时长" : "Press Duration");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##PressDuration", &config.RPressDuration, 0, 500, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
+                            Toggle(config.UseChinese ? u8"动态设置按下时长&7（建议）" : "Dynamically set press duration &7(recommended)", &config.UseRAutoPressDuration, ToggleFlags);
+                            AttachTooltip(config.UseChinese ? u8"动态的设置按下时长\n来模拟人类点击的的按下间隔\n&a除非特殊用途，否则建议开启。" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
                         }
-                        EndChild();
+                        EndDisabled();
 
-                        SameLine();
-
-                        BeginChild("##Settings-5-2", ImVec2(328, -1), false);
+                        BeginDisabled(!config.UseRClickPressTime || config.UseRAutoPressDuration);
                         {
-                            Checkbox(config.UseChinese ? u8"启用" : "Enable", & config.UseLClickPressTime);
-                            AttachTooltip(config.UseChinese ? u8"在每次点击之中，按下按键的持续时长。" : "The duration of the button press during each click.");
-
-                            BeginDisabled(!config.UseLClickPressTime);
-                            {
-                                Checkbox(config.UseChinese ? u8"动态设置按下时长&7（建议）" : "Dynamically set press duration &7(recommended)", &config.UseLAutoPressDuration);
-                                AttachTooltip(config.UseChinese ? u8"动态的设置按下时长\n来模拟人类点击的的按下间隔\n&a除非特殊用途，否则建议开启。" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
-                            }
-                            EndDisabled();
-
-                            BeginDisabled(!config.UseLClickPressTime || config.UseLAutoPressDuration);
-                            {
-                                Text(config.UseChinese ? u8"按住持续时长" : "Press Duration");
-                                SameLine();
-                                SetNextItemWidth(220);
-                                SliderInt(u8"##PressDuration", &config.LPressDuration, 0, 500, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
-                            }
-                            EndDisabled();
-                        }
-                        EndChild();
-
-                        PopStyleColor();
-                    }
-                    EndCard();
-                }
-
-                //-------------------------鼠标抖动--------------------------
-
-                if (!config.UseMinimalistMode)
-                {
-                    SetCursorPosY(GetCursorPosY() + 10.0f);
-                    BeginCard(config.UseChinese ? u8"鼠标抖动" : "Mouse Shake", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
-                    {
-                        Checkbox(config.UseChinese ? u8"启用" : "Enable", &config.UseMouseShake);
-                        AttachTooltip(config.UseChinese ? u8"开启后，在连点时会随机抖动鼠标位置。" : "Turn on this function to randomly shake the mouse position during clicking.");
-
-                        BeginDisabled(!config.UseMouseShake);
-                        {
-                            Text(config.UseChinese ? u8"抖动范围" : "Shake Range");
+                            Text(config.UseChinese ? u8"按住持续时长" : "Press Duration");
                             SameLine();
-                            SetNextItemWidth(300);
-                            SetCursorPosX(300);
-                            SliderInt(u8"##MouseShakeRect", &config.MouseShakeRect, 1, 20, config.UseChinese ? u8"%d像素" : "%d px", ImGuiSliderFlags_AlwaysClamp);
-                            AttachTooltip(config.UseChinese ? u8"抖动范围的正方形边长大小，建议不要太大。" : "The size of the shake rectangle, it is recommended not to be too large.");
-
-                            Text(config.UseChinese ? u8"鼠标移动速度" : "Mouse Move Speed");
-                            SameLine();
-                            SetNextItemWidth(300);
-                            SetCursorPosX(300);
-                            SliderInt(u8"##MouseShakeSpeed", &config.MouseShakeSpeed, 100, 1000, config.UseChinese ? u8"%d像素/每分钟" : "%d px/minute", ImGuiSliderFlags_AlwaysClamp);
-                            AttachTooltip(config.UseChinese ? u8"在两点之间运动的速度，也就是抖动时的速度。" : "The speed at which the mouse moves between two points, which is the speed of the shake.");
-
-                            Checkbox(config.UseChinese ? u8"非线性移动" : "Non-linear Move", &config.UseMSSmoothSpeed);
-                            AttachTooltip(config.UseChinese ? u8"使用非线性函数，来实现缓冲移动的效果。" : "Use a non-linear function to \nachieve the effect of buffer movement.");
-                            SameLine();
-
-                            Checkbox(config.UseChinese ? u8"原始输入" : "Raw Input", &config.UseMouseShakeRawInput);
-                            AttachTooltip(config.UseChinese ? u8"模拟鼠标原始输入，防止系统对鼠标加速度\n导致移动距离不精确。" : "Simulate the raw mouse input to prevent the system from \naccurately measuring the mouse acceleration.");
-
-                            Checkbox(config.UseChinese ? u8"防止视角偏离" : "Prevent View Sliding", &config.UseMSPreventViewSliding);
-                            AttachTooltip(config.UseChinese ? u8"使用算法实现在鼠标抖动时不会出现视角偏离原先位置。" : "Use an algorithm to prevent the view from sliding during mouse shake.");
-
-                            if (!config.UseConciseMode)
-                            {
-                                Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
-                                SameLine();
-                                SetNextItemWidth(300);
-                                SetCursorPosX(300);
-                                if (BeginCombo("##mrandomgen", RandomGenList[config.MouseShake_RandomGen]))
-                                {
-                                    for (int n = 0; n < 8; n++)
-                                    {
-                                        const bool is_selected = (config.MouseShake_RandomGen == n);
-                                        if (Selectable((RandomGenList[n] + "##"s + to_string(n)).c_str(), is_selected))
-                                            config.MouseShake_RandomGen = n;
-                                        if (is_selected)
-                                            SetItemDefaultFocus();
-                                    }
-                                    EndCombo();
-                                }
-
-                                Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
-                                SameLine();
-                                SetNextItemWidth(300);
-                                SetCursorPosX(300);
-                                if (BeginCombo("##mrandomdist", RandomDistList[config.MouseShake_RandomDist]))
-                                {
-                                    for (int n = 0; n < 2; n++)
-                                    {
-                                        const bool is_selected = (config.MouseShake_RandomDist == n);
-                                        if (Selectable((RandomDistList[n] + "##"s + to_string(n)).c_str(), is_selected))
-                                            config.MouseShake_RandomDist = n;
-                                        if (is_selected)
-                                            SetItemDefaultFocus();
-                                    }
-                                    EndCombo();
-                                }
-
-                                TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"为了防止误触，该功能无法在GC窗口中使用！\n请切换到其他窗口该功能方可生效。" : "To prevent accidental triggering, this function cannot be used in the GC window!\nPlease switch to another window for this feature to take effect.");
-
-                                static bool IsOpen = false;
-                                if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
-                                    IsOpen = !IsOpen;
-
-                                if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
-                                {
-                                    static int PointsSize = 200;
-                                    static vector<int> Points_x;
-                                    static vector<int> Points_y;
-                                    static vector<int> Points_z;
-                                    static float GenDurationSum = 0;
-                                    static bool IsInit = false;
-                                    static bool IsGenerating = false;
-                                    static float auv = 0;
-
-                                    Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
-                                    SameLine();
-                                    SetNextItemWidth(300);
-                                    SetCursorPosX(300);
-                                    SliderInt(u8"##ms_points2", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-                                    if (VarHasChanged(config.MouseShake_RandomDist, "MouseShake_RandomDist") ||
-                                        VarHasChanged(config.MouseShake_RandomGen, "MouseShake_RandomGen") ||
-                                        VarHasChanged(PointsSize, "PointsSize_ms") ||
-                                        VarHasChanged(config.MouseShakeRect, "MouseShakeRect") ||
-                                        VarHasChanged(config.UseMSPreventViewSliding, "UseMSPreventViewSliding"))
-                                    {
-                                        IsInit = false;
-                                    }
-
-                                    if ((Button(config.UseChinese ? u8"刷新" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
-                                    {
-                                        IsGenerating = true;
-                                        thread FunThread([]()
-                                            {
-                                                Points_x.clear();
-                                                Points_y.clear();
-                                                Points_z.clear();
-                                                GenDurationSum = 0;
-                                                POINT view{};
-
-                                                for (int i = 0; i < PointsSize; i++)
-                                                {
-                                                    auto start = chrono::high_resolution_clock::now();
-
-                                                    POINT pt = MouseShakeAlgorithm(view, { 0, 0 });
-                                                    Points_x.push_back(pt.x);
-                                                    Points_y.push_back(pt.y);
-                                                    Points_z.push_back(i);
-
-                                                    auto end = chrono::high_resolution_clock::now();
-                                                    auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                                                    GenDurationSum += duration.count() / 1000.0;
-                                                }
-                                                auv = GenDurationSum / PointsSize;
-                                                IsGenerating = false;
-                                            });
-                                        FunThread.detach();
-                                        IsInit = true;
-                                    }
-
-                                    static int PointsTime = -1;
-
-                                    if (ImPlot3D::BeginPlot("##RandomPlot3D", ImVec2(420, 250) /*ImPlot3DFlags_NoMenus | ImPlot3DFlags_CanvasOnly*/))
-                                    {
-                                        ImPlot3D::SetupBoxRotation(ImPlot3DQuat::FromElAz(44.5f, 21.4f), false);
-                                        //ImPlot3D::SetupBoxScale(1.5f, 1.0f, 1.0f);
-                                        ImPlot3D::SetupAxes("X", config.UseChinese ? u8"时间" : "Time", "Y");
-                                        ImPlot3D::SetupAxesLimits(-20, 20, 0, PointsSize, -20, 20, ImGuiCond_Always);
-                                        ImPlot3D::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
-
-                                        ImPlot3D::EndPlot();
-                                    }
-
-                                    SameLine();
-
-                                    if (ImPlot::BeginPlot("##RandomPlot2D", ImVec2(250, 250), ImPlotFlags_CanvasOnly))
-                                    {
-                                        ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(184, 30, 1, 255));
-                                        ImPlot::SetNextLineStyle((ImVec4)ImColor(30, 156, 214, 255), 2);
-                                        ImPlot::SetupAxesLimits(-20, 20, -20, 20, ImGuiCond_Always);
-
-                                        ImPlot::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
-                                        if (PointsTime >= 0 && PointsTime <= Points_z.size())
-                                            ImPlot::PlotScatter("##PlotPoints", &Points_y[PointsSize], &Points_x[PointsSize], 1);
-
-                                        ImPlot::EndPlot();
-                                    }
-
-                                    Text(config.UseChinese ? u8"时间点" : "point of time");
-                                    SameLine();
-                                    SetNextItemWidth(300);
-                                    SetCursorPosX(300);
-                                    SliderInt(u8"##randomplotmove", &PointsTime, -1, PointsSize, "%d", ImGuiSliderFlags_AlwaysClamp);
-
-                                    Text(config.UseChinese ? u8"耗时：%.6f毫秒" : "Time: %.6f millisecond", GenDurationSum);
-                                    SameLine();
-                                    Text(config.UseChinese ? u8"共 %d 个数据点" : "A total of %d data points", PointsSize);
-                                    Text(config.UseChinese ? u8"平均用时：%.3f毫秒/数据点" : "Average time: %.3f ms/data point", auv);
-                                    EndPopupWindow();
-                                }
-                            }
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##PressDuration", &config.RPressDuration, 0, 500, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
                     }
-                    EndCard();
+                    EndChild();
+
+                    SameLine();
+
+                    BeginChild("##Settings-5-2", ImVec2(328, -1), false);
+                    {
+                        Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseLClickPressTime, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"在每次点击之中，按下按键的持续时长。" : "The duration of the button press during each click.");
+
+                        BeginDisabled(!config.UseLClickPressTime);
+                        {
+                            Toggle(config.UseChinese ? u8"动态设置按下时长&7（建议）" : "Dynamically set press duration &7(recommended)", &config.UseLAutoPressDuration, ToggleFlags);
+                            AttachTooltip(config.UseChinese ? u8"动态的设置按下时长\n来模拟人类点击的的按下间隔\n&a除非特殊用途，否则建议开启。" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
+                        }
+                        EndDisabled();
+
+                        BeginDisabled(!config.UseLClickPressTime || config.UseLAutoPressDuration);
+                        {
+                            Text(config.UseChinese ? u8"按住持续时长" : "Press Duration");
+                            SameLine();
+                            SetNextItemWidth(220);
+                            SliderInt(u8"##PressDuration", &config.LPressDuration, 0, 500, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
+                        }
+                        EndDisabled();
+                    }
+                    EndChild();
+
+                    PopStyleColor();
                 }
+                EndCard();
+
+                //-------------------------鼠标抖动--------------------------
+
+                SetCursorPosY(GetCursorPosY() + 10.0f);
+                BeginCard(config.UseChinese ? u8"鼠标抖动" : "Mouse Shake", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                {
+                    Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseMouseShake, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"开启后，在连点时会随机抖动鼠标位置。" : "Turn on this function to randomly shake the mouse position during clicking.");
+
+                    BeginDisabled(!config.UseMouseShake);
+                    {
+                        Text(config.UseChinese ? u8"抖动范围" : "Shake Range");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##MouseShakeRect", &config.MouseShakeRect, 1, 20, config.UseChinese ? u8"%d像素" : "%d px", ImGuiSliderFlags_AlwaysClamp);
+                        AttachTooltip(config.UseChinese ? u8"抖动范围的正方形边长大小，建议不要太大。" : "The size of the shake rectangle, it is recommended not to be too large.");
+
+                        Text(config.UseChinese ? u8"鼠标移动速度" : "Mouse Move Speed");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##MouseShakeSpeed", &config.MouseShakeSpeed, 100, 1000, config.UseChinese ? u8"%d像素/每分钟" : "%d px/minute", ImGuiSliderFlags_AlwaysClamp);
+                        AttachTooltip(config.UseChinese ? u8"在两点之间运动的速度，也就是抖动时的速度。" : "The speed at which the mouse moves between two points, which is the speed of the shake.");
+
+                        Toggle(config.UseChinese ? u8"非线性移动" : "Non-linear Move", &config.UseMSSmoothSpeed, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"使用非线性函数，来实现缓冲移动的效果。" : "Use a non-linear function to \nachieve the effect of buffer movement.");
+                        SameLine();
+
+                        Toggle(config.UseChinese ? u8"原始输入" : "Raw Input", &config.UseMouseShakeRawInput, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"模拟鼠标原始输入，防止系统对鼠标加速度\n导致移动距离不精确。" : "Simulate the raw mouse input to prevent the system from \naccurately measuring the mouse acceleration.");
+
+                        Toggle(config.UseChinese ? u8"防止视角偏离" : "Prevent View Sliding", &config.UseMSPreventViewSliding, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"使用算法实现在鼠标抖动时不会出现视角偏离原先位置。" : "Use an algorithm to prevent the view from sliding during mouse shake.");
+
+
+                        Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        if (BeginCombo("##mrandomgen", RandomGenList[config.MouseShake_RandomGen]))
+                        {
+                            for (int n = 0; n < 8; n++)
+                            {
+                                const bool is_selected = (config.MouseShake_RandomGen == n);
+                                if (Selectable((RandomGenList[n] + "##"s + to_string(n)).c_str(), is_selected))
+                                    config.MouseShake_RandomGen = n;
+                                if (is_selected)
+                                    SetItemDefaultFocus();
+                            }
+                            EndCombo();
+                        }
+
+                        Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        if (BeginCombo("##mrandomdist", RandomDistList[config.MouseShake_RandomDist]))
+                        {
+                            for (int n = 0; n < 2; n++)
+                            {
+                                const bool is_selected = (config.MouseShake_RandomDist == n);
+                                if (Selectable((RandomDistList[n] + "##"s + to_string(n)).c_str(), is_selected))
+                                    config.MouseShake_RandomDist = n;
+                                if (is_selected)
+                                    SetItemDefaultFocus();
+                            }
+                            EndCombo();
+                        }
+
+                        TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"为了防止误触，该功能无法在GC窗口中使用！\n请切换到其他窗口该功能方可生效。" : "To prevent accidental triggering, this function cannot be used in the GC window!\nPlease switch to another window for this feature to take effect.");
+
+                        static bool IsOpen = false;
+                        if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
+                            IsOpen = !IsOpen;
+
+                        if (BeginPopupWindow(config.UseChinese ? u8"随机曲线分布" : "Random Curve", &IsOpen))
+                        {
+                            static int PointsSize = 200;
+                            static vector<int> Points_x;
+                            static vector<int> Points_y;
+                            static vector<int> Points_z;
+                            static float GenDurationSum = 0;
+                            static bool IsInit = false;
+                            static bool IsGenerating = false;
+                            static float auv = 0;
+
+                            Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
+                            SameLine();
+                            SetNextItemWidth(300);
+                            SetCursorPosX(300);
+                            SliderInt(u8"##ms_points2", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+                            if (VarHasChanged(config.MouseShake_RandomDist, "MouseShake_RandomDist") ||
+                                VarHasChanged(config.MouseShake_RandomGen, "MouseShake_RandomGen") ||
+                                VarHasChanged(PointsSize, "PointsSize_ms") ||
+                                VarHasChanged(config.MouseShakeRect, "MouseShakeRect") ||
+                                VarHasChanged(config.UseMSPreventViewSliding, "UseMSPreventViewSliding"))
+                            {
+                                IsInit = false;
+                            }
+
+                            if ((Button(config.UseChinese ? u8"刷新" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
+                            {
+                                IsGenerating = true;
+                                thread FunThread([]()
+                                    {
+                                        Points_x.clear();
+                                        Points_y.clear();
+                                        Points_z.clear();
+                                        GenDurationSum = 0;
+                                        POINT view{};
+
+                                        for (int i = 0; i < PointsSize; i++)
+                                        {
+                                            auto start = chrono::high_resolution_clock::now();
+
+                                            POINT pt = MouseShakeAlgorithm(view, { 0, 0 });
+                                            Points_x.push_back(pt.x);
+                                            Points_y.push_back(pt.y);
+                                            Points_z.push_back(i);
+
+                                            auto end = chrono::high_resolution_clock::now();
+                                            auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+                                            GenDurationSum += duration.count() / 1000.0;
+                                        }
+                                        auv = GenDurationSum / PointsSize;
+                                        IsGenerating = false;
+                                    });
+                                FunThread.detach();
+                                IsInit = true;
+                            }
+
+                            static int PointsTime = -1;
+
+                            if (ImPlot3D::BeginPlot("##RandomPlot3D", ImVec2(420, 250) /*ImPlot3DFlags_NoMenus | ImPlot3DFlags_CanvasOnly*/))
+                            {
+                                ImPlot3D::SetupBoxRotation(ImPlot3DQuat::FromElAz(44.5f, 21.4f), false);
+                                //ImPlot3D::SetupBoxScale(1.5f, 1.0f, 1.0f);
+                                ImPlot3D::SetupAxes("X", config.UseChinese ? u8"时间" : "Time", "Y");
+                                ImPlot3D::SetupAxesLimits(-20, 20, 0, PointsSize, -20, 20, ImGuiCond_Always);
+                                ImPlot3D::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
+
+                                ImPlot3D::EndPlot();
+                            }
+
+                            SameLine();
+
+                            if (ImPlot::BeginPlot("##RandomPlot2D", ImVec2(250, 250), ImPlotFlags_CanvasOnly))
+                            {
+                                ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(184, 30, 1, 255));
+                                ImPlot::SetNextLineStyle((ImVec4)ImColor(30, 156, 214, 255), 2);
+                                ImPlot::SetupAxesLimits(-20, 20, -20, 20, ImGuiCond_Always);
+
+                                ImPlot::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
+                                if (PointsTime >= 0 && PointsTime <= Points_z.size())
+                                    ImPlot::PlotScatter("##PlotPoints", &Points_y[PointsSize], &Points_x[PointsSize], 1);
+
+                                ImPlot::EndPlot();
+                            }
+
+                            Text(config.UseChinese ? u8"时间点" : "point of time");
+                            SameLine();
+                            SetNextItemWidth(300);
+                            SetCursorPosX(300);
+                            SliderInt(u8"##randomplotmove", &PointsTime, -1, PointsSize, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+                            Text(config.UseChinese ? u8"耗时：%.6f毫秒" : "Time: %.6f millisecond", GenDurationSum);
+                            SameLine();
+                            Text(config.UseChinese ? u8"共 %d 个数据点" : "A total of %d data points", PointsSize);
+                            Text(config.UseChinese ? u8"平均用时：%.3f毫秒/数据点" : "Average time: %.3f ms/data point", auv);
+                            EndPopupWindow();
+                        }
+                    }
+                    EndDisabled();
+                }
+                EndCard();
 
                 EndTabItem();
             }
@@ -2815,10 +2764,14 @@ void RenderGui(ImGuiIO& io)
             }*/
 
             //-------------------------鼠标声音--------------------------
-            if (BeginTabItem(config.UseChinese ? u8"点击声音" : "Click Sound"))
+            if (BeginTabItem((ICON_FA_VOLUME_HIGH + (config.UseChinese ? u8"点击声音"s : "Click Sound"s)).c_str()))
             {
+                auto ReloadSoundFile = []() {
+                    RenderTip(config.UseChinese ? u8"正在重新加载声音..." : "Reloading sounds...", 4.0f, PT_INFO);
+                    LoadSounds();
+                    RenderTip(config.UseChinese ? u8"重新加载成功！" : "Reloading success!", 3.0f, PT_INFO);
+                };
                 //-------------------------点击声音--------------------------
-                
                 BeginCard(config.UseChinese ? u8"鼠标声音" : "Mouse Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     static int MouseType = []()->int {
@@ -2829,7 +2782,7 @@ void RenderGui(ImGuiIO& io)
                             return 0;  // 或者 return -1，看你默认想显示第几个
                         return static_cast<int>(distance(MouseSoundList.begin(), it));
                     }();
-                    Checkbox(config.UseChinese ? u8"启用鼠标声音" : "Enable Mouse Sound", &config.UseMouseSound);
+                    Toggle(config.UseChinese ? u8"启用鼠标声音" : "Enable Mouse Sound", &config.UseMouseSound, ToggleFlags);
                     BeginDisabled(!config.UseMouseSound);
                     {
                         Text(config.UseChinese ? u8"鼠标声音类型" : "Mouse Sound Type");
@@ -2874,7 +2827,7 @@ void RenderGui(ImGuiIO& io)
                             return 0;
                         return static_cast<int>(distance(KeybdSoundList.begin(), it));
                         }();
-                    Checkbox(config.UseChinese ? u8"启用键盘声音" : "Enable Keybd Sound", &config.UseKeybdSound);
+                    Toggle(config.UseChinese ? u8"启用键盘声音" : "Enable Keybd Sound", &config.UseKeybdSound, ToggleFlags);
                     BeginDisabled(!config.UseKeybdSound);
                     {
                         Text(config.UseChinese ? u8"键盘声音类型" : "Keybd Sound Type");
@@ -2932,10 +2885,64 @@ void RenderGui(ImGuiIO& io)
                             {
                                 LastMechvibesClick = GetTickCount64();
                                 ShellExecute(NULL, NULL, "https://mechvibes.com/sound-packs/", NULL, NULL, SW_SHOWNORMAL);
-                                RenderMessageBox(u8"在打开的网页列表中，找到想要的音色\n点击左边的“Learn More”，然后点击“Download”就可以下载了。\n&6如何导入？\n&f1.打开文件夹&5D:\\GameClicker\\sound\\keys&f\n2.新建一个文件夹（任意名字）\n3.打开新建的文件夹，将压缩包里面的文件\n解压到当前文件夹。\n4.重启GC连点器。", u8"教程", MB_OK, false);
+                                RenderMessageBox(u8"在打开的网页列表中，找到想要的音色\n点击左边的“Learn More”，然后点击“Download”就可以下载了。\n&6如何导入？\n&f1.打开下载好的压缩包，将里面的音频文件解压出来。\n2.将解压的音频文件转为wav格式（有在线转换的工具）\n3.把转换后的wav文件拖入原先的压缩包，并且重命名为 sound.wav\n4.点击旁边的“导入文件”按钮然后选择你刚刚修改的压缩包。\n&6注意：导入的音色必须是wav格式（如果已经是了就可以不用转换）\n且文件名必须为 sound.wav，否则无法使用。", config.UseChinese ? u8"导入音色教程" : "How to import sounds", MB_OK, false);
                             }
                         }
                         EndDisabled();
+
+                        SameLine();
+
+                        if (Button(config.UseChinese ? u8"导入文件" : "Import File"))
+                        {
+                            static bool IsOpen = false;
+                            if (!IsOpen)
+                            {
+                                thread th([&]()
+                                    {
+                                        IsOpen = true;
+
+                                        const string OriginFile = SelectFile("Zip压缩包\0*.zip\0\0");
+                                        if (!OriginFile.empty())
+                                        {
+                                            size_t LastSlash = OriginFile.find_last_of("\\/");
+                                            string FileName = (LastSlash == string::npos) ? OriginFile : OriginFile.substr(LastSlash + 1);
+
+                                            // 去除 ".zip" 后缀（不区分大小写，先统一转小写比较）
+                                            string BaseName = FileName;
+                                            string ext = ".zip";
+                                            if (BaseName.size() >= ext.size() &&
+                                                _stricmp(BaseName.c_str() + BaseName.size() - ext.size(), ext.c_str()) == 0)
+                                            {
+                                                BaseName = BaseName.substr(0, BaseName.size() - ext.size());
+                                            }
+                                            string TargetDir = Sound_KeybdPath + "\\" + BaseName;
+                                            // 若该目录已存在，则添加 (1), (2) ...
+                                            string OriginalTarget = TargetDir;
+                                            int counter = 1;
+                                            while (GetFileAttributes(TargetDir.c_str()) != INVALID_FILE_ATTRIBUTES)
+                                            {
+                                                TargetDir = OriginalTarget + "(" + to_string(counter) + ")";
+                                                counter++;
+                                            }
+                                            if (CreateDirectory(TargetDir.c_str(), NULL) || GetLastError() == ERROR_ALREADY_EXISTS)
+                                                UnZipFile(OriginFile.c_str(), TargetDir.c_str());
+                                            else
+                                            {
+                                                PrintLog("[File] 无法创建目录 " + TargetDir, PL_ERROR);
+                                                RenderTip(config.UseChinese ? u8"无法创建目录 " : "Failed to create directory " + TargetDir, 3.0f, PT_ERROR);
+                                            }
+											RenderTip(config.UseChinese ? u8"导入成功！" : "Import success!", 3.0f, PT_INFO);
+
+                                            ReloadSoundFile();
+
+                                            IsBgImageRefresh = true;
+                                        }
+
+                                        IsOpen = false;
+                                    });
+                                th.detach();
+                            }
+                        }
 
                         Text(config.UseChinese ? u8"键盘点击音量" : "Keybd Click Volume");
                         SameLine();
@@ -2975,12 +2982,7 @@ void RenderGui(ImGuiIO& io)
                         if (Button(config.UseChinese ? u8"重载声音文件" : "Reload Sound Files"))
                         {
                             LastReloadClick = GetTickCount64();
-                            auto dlth = []() {
-                                RenderTip(config.UseChinese ? u8"正在重新加载声音..." : "Reloading sounds...", 4.0f, PT_INFO);
-                                LoadSounds();
-                                RenderTip(config.UseChinese ? u8"重新加载成功！" : "Reloading success!", 3.0f, PT_INFO);
-                                };
-                            thread th(dlth);
+                            thread th(ReloadSoundFile);
                             th.detach();
                         }
                     }
@@ -2992,7 +2994,7 @@ void RenderGui(ImGuiIO& io)
             }
 
             //-------------------------连点控制--------------------------
-            if (BeginTabItem(config.UseChinese ? u8"连点控制" : "Click Control"))
+            if (BeginTabItem((ICON_FA_CIRCLE_PLAY + (config.UseChinese ? u8"连点控制"s : "Click Control"s)).c_str()))
             {
                 //-----------------------自动开关连点---------------------------
                 /*
@@ -3068,7 +3070,7 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard("##CCtrlSettings-1", ImVec2(235, 174), ImGuiChildFlags_Borders);
                 {
-                    Checkbox(config.UseChinese ? u8"GUI检测" : "GUI Detect", & config.UseGUIDetection);
+                    Toggle(config.UseChinese ? u8"GUI检测" : "GUI Detect", & config.UseGUIDetection, ToggleFlags);
                     AttachTooltip(config.UseChinese ? u8"&a开启该功能后\n&f打开GUI时，会自动关闭连点\n&d前提条件：&6开启允许控制连点开关" : "&aTurn on this function\n&fWhen the GUI is opened, the clicker will be automatically closed\n&dPrerequisite: &6Turn on the function of allowing control of clicker switch");
                 }
                 EndCard();
@@ -3079,10 +3081,10 @@ void RenderGui(ImGuiIO& io)
                 {
                     //-------------------------仅移动触发连点--------------------------
 
-                    Checkbox(config.UseChinese ? u8"仅移动触发右键连点" : " Only Moving Trig RC", &config.UseROnlyMoveClicker);
+                    Toggle(config.UseChinese ? u8"仅移动触发右键连点" : " Only Moving Trig RC", &config.UseROnlyMoveClicker, ToggleFlags);
                     AttachTooltip(config.UseChinese ? u8"开启后，连点器只会在你移动鼠标时触发连点。" : "Turn on this function to trigger the clicker only when you move the mouse.");
 
-                    Checkbox(config.UseChinese ? u8"仅移动触发左键连点" : " Only Moving Trig LC", &config.UseLOnlyMoveClicker);
+                    Toggle(config.UseChinese ? u8"仅移动触发左键连点" : " Only Moving Trig LC", &config.UseLOnlyMoveClicker, ToggleFlags);
                     AttachTooltip(config.UseChinese ? u8"开启后，连点器只会在你移动鼠标时触发连点。" : "Turn on this function to trigger the clicker only when you move the mouse.");
 
                     //-------------------------仅跳跃触发连点--------------------------
@@ -3090,14 +3092,14 @@ void RenderGui(ImGuiIO& io)
 
                     BeginDisabled(config.UseROnlyMoveClicker);
                     {
-                        Checkbox(config.UseChinese ? u8"仅跳跃触发右键连点" : "Only Jump On RC", &config.UseROnlyJumpClicker);
+                        Toggle(config.UseChinese ? u8"仅跳跃触发右键连点" : "Only Jump On RC", &config.UseROnlyJumpClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，只有你跳跃时才能连点。\n如果你已经开启了 &6仅移动触发右键连点 &f功能，则该功能无效。\n因为已经包含此功能。" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
                     }
                     EndDisabled();
 
                     BeginDisabled(config.UseLOnlyMoveClicker);
                     {
-                        Checkbox(config.UseChinese ? u8"仅跳跃触发左键连点" : " Only Jump On LC", &config.UseLOnlyJumpClicker);
+                        Toggle(config.UseChinese ? u8"仅跳跃触发左键连点" : " Only Jump On LC", &config.UseLOnlyJumpClicker, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，只有你跳跃时才能连点。\n如果你已经开启了 &6仅移动触发右键连点 &f功能，则该功能无效。\n因为已经包含此功能。" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
                     }
                     EndDisabled();
@@ -3108,13 +3110,13 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard("##CCtrlSettings-3", ImVec2(215, 174), ImGuiChildFlags_Borders);
                 {
-                    Checkbox(config.UseChinese ? u8"仅限游戏内连点" : "In-game clicker only", & config.UseInGameOnlyClicker);
+                    Toggle(config.UseChinese ? u8"仅限游戏内连点" : "In-game clicker only", & config.UseInGameOnlyClicker, ToggleFlags);
                     if (GameHwnd == NULL)
                         Text(config.UseChinese ? u8"&e请先获取游戏窗口" : "&ePlease choose game window first");
                     else if (!config.AllowSetLClicker || config.AllowSetRClicker)
                         Text(config.UseChinese ? u8"&e请打开 允许控制连点开关" : "&ePlease enable \"Allow Control Clicker\"");
 
-                    Checkbox(config.UseChinese ? u8"停止移动时关闭连点" : "Stop Click On Stop Move", &config.UseDisableMoveOnStopMove);
+                    Toggle(config.UseChinese ? u8"停止移动时关闭连点" : "Stop Click On Stop Move", &config.UseDisableMoveOnStopMove, ToggleFlags);
                 }
                 EndCard();
 
@@ -3212,7 +3214,7 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
             
-            if (BeginTabItem(config.UseChinese ? u8"个性化" : "Custom"))
+            if (BeginTabItem((ICON_FA_PALETTE + (config.UseChinese ? u8"个性化"s : "Custom"s)).c_str()))
             {
                 BeginCard(config.UseChinese ? u8"背景图片" : "Background Image", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
@@ -3259,7 +3261,7 @@ void RenderGui(ImGuiIO& io)
                     }
                     PopStyleColor(4);
 
-                    Checkbox(config.UseChinese ? u8"自动调整图片大小" : "Auto Image Size", &BgAutoResize);
+                    Toggle(config.UseChinese ? u8"自动调整图片大小" : "Auto Image Size", &BgAutoResize, ToggleFlags);
 
                     Text(config.UseChinese ? u8"背景图片：" : "Background Image: ");
                     SameLine();
@@ -3486,7 +3488,7 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Script:
         {
-            TabsText(config.UseChinese ? u8"脚本" : "Scripts");
+            TabsText((ICON_FA_CODE + (config.UseChinese ? u8"脚本"s : "Scripts"s)).c_str());
             if (IsEnableScript);
             {
                 const static ImGuiWindowFlags flags =
@@ -3562,7 +3564,7 @@ void RenderGui(ImGuiIO& io)
                 if (BeginTabBar("##Script"))
                 {
                     // shop放前面相当于先刷新shop，防止可用列表先加载导致检查更新失败
-                    if (BeginTabItem(config.UseChinese ? u8"脚本商场" : "Shop", NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
+                    if (BeginTabItem((ICON_FA_STORE + (config.UseChinese ? u8"脚本商场"s : "Shop"s)).c_str(), NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
                     {
                         IsShopTab = true;
                         static bool IsInit = false;
@@ -3620,7 +3622,7 @@ void RenderGui(ImGuiIO& io)
                                     DisableAnimation(true);
                                     PopStyleColor(); // ImGuiCol_ChildBg
                                     // 绘画脚本图片
-                                    Texture2D iamge_texture = LoadTextureFromFile(script.texture, false, D3D11_FILTER_MIN_MAG_MIP_POINT);
+                                    Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                     SetCursorPosY(GetCursorPosY() - 6 + 2);
                                     ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
@@ -3735,7 +3737,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem(config.UseChinese ? u8"可用" : "Available"))
+                    if (BeginTabItem((ICON_FA_CIRCLE_CHECK + (config.UseChinese ? u8"可用"s : "Available"s)).c_str()))
                     {
                         IsShopTab = false;
                         static bool IsCheckUpdate = false;
@@ -3770,7 +3772,7 @@ void RenderGui(ImGuiIO& io)
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
                                 // 绘画脚本图片
-                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false, D3D11_FILTER_MIN_MAG_MIP_POINT);
+                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                 SetCursorPosY(GetCursorPosY() - 6 + 2);
                                 ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
@@ -3891,7 +3893,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem(config.UseChinese ? u8"已安装" : "Installed"))
+                    if (BeginTabItem((ICON_FA_BOLT + (config.UseChinese ? u8"已安装"s : "Installed"s)).c_str()))
                     {
                         IsShopTab = false;
                         if (InstalledScripts.size() == 0)
@@ -3918,7 +3920,7 @@ void RenderGui(ImGuiIO& io)
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
                                 // 绘画脚本图片
-                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false, D3D11_FILTER_MIN_MAG_MIP_POINT);
+                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                 SetCursorPosY(GetCursorPosY() - 6 + 2);
                                 ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
@@ -4017,7 +4019,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem(config.UseChinese ? u8"脚本开发" : "Script Creator", NULL))
+                    if (BeginTabItem((ICON_FA_CODE + (config.UseChinese ? u8"脚本开发"s : "Script Creator"s)).c_str(), NULL))
                     {
                         IsScriptCreatorTab = true;
 
@@ -4067,7 +4069,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem(config.UseChinese ? u8"日志" : "Logs", NULL))
+                    if (BeginTabItem((ICON_FA_LIST_UL + (config.UseChinese ? u8"日志"s : "Logs"s)).c_str(), NULL))
                     {
                         IsScriptCreatorTab = true; // 也算
                         string log = StringToUTF8(LogContext, true);
@@ -4078,16 +4080,18 @@ void RenderGui(ImGuiIO& io)
                     EndTabBar();
                 }
                 
-                SetCursorPos(ImVec2(pos.x + (IsScriptCreatorTab ? 320 : 528), pos.y - 18));
+                SetCursorPos(ImVec2(pos.x + (IsScriptCreatorTab ? 384 : 528), pos.y - 18));
                 if (IsScriptCreatorTab)
                 {
                     static bool IsRunning = false;
                     static HANDLE ThreadHandle = nullptr;
                     static int StartKey = VK_END; // 用于持久化按键信息，防止每次启动都要设置
                     
-                    SetCursorPosY(pos.y - 10);
+                    const float PosX = GetCursorPosX();
+                    SetCursorPosY(pos.y - 22);
                     Text(config.UseChinese ? u8"启动按键" : "Start Key");
-                    SameLine();
+
+                    SetCursorPos(ImVec2(PosX, pos.y - 2));
                     SetNextItemWidth(100);
                     {
                         const bool IsNoState = !IsRunning || (ScriptStates.count(ScriptTestFile) == 0);
@@ -4150,7 +4154,7 @@ void RenderGui(ImGuiIO& io)
                     BeginDisabled(!IsRunning);
                     {
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Setting);
-                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"脚本设置" : "Script cfg", ImVec2(100, 40)))
+                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"脚本配置" : "Script Cfg", ImVec2(100, 40)))
                         {
                             ScriptSelected = 999999999;
                             // 写入锁
@@ -4261,41 +4265,14 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Other://-----------------------其他---------------------------
         {
-            TabsText(config.UseChinese ? u8"其他" : "Other");
+            TabsText((ICON_FA_BARS_PROGRESS + (config.UseChinese ? u8"其他"s : "Other"s)).c_str());
 
             BeginTabBar("##Other");
-            
-            if (BeginTabItem(config.UseChinese ? u8"其他设置" : "OtherSettings"))
-            {
-                BeginDisabled(config.UseMinimalistMode);
-                {
-                    if (Checkbox(config.UseChinese ? u8"简洁模式" : "Concise Mode", &config.UseConciseMode))
-                        ReloadClicker = true;
-                }
-                EndDisabled();
-
-                if (Checkbox(config.UseChinese ? u8"极简模式" : "Minimal Mode", &config.UseMinimalistMode) && config.UseMinimalistMode)
-                {
-                    ReloadClicker = true; // 保存当前极简模式的开关状态
-                    RenderMessageBox(config.UseChinese ? u8"打开极简功能后，大部分功能将隐藏。\n并且会重置连点设置。" : "After turning on the minimalist feature, most of the functions will be hidden. \nAnd it will reset the connection point settings.", config.UseChinese ? u8"警告" : "Warning", MB_OK, false);
-
-                    config = Config();
-                    // 为了保证极简为开启状态并且不会被重置
-                    config.UseMinimalistMode = true;
-                    config.UseConciseMode = true;
-
-                    ReloadClicker = true; // 这个相当于保存了配置
-
-                    RenderTip(config.UseChinese ? u8"重置成功" : "Reset Success", 1.5f, PT_INFO);
-                }
-
-                EndTabItem();
-            }
             
             static int IsOpenLnagPaper = -1;
             if (IsOpenLnagPaper == 1)// 这个函数告诉ImGui，下一个要绘制的标签项应该处于打开/激活状态
                 ImGui::SetNextItemOpen(true);
-            if (BeginTabItem(config.UseChinese ? u8"语言设置" : "Language", NULL))
+            if (BeginTabItem((ICON_FA_LANGUAGE + (config.UseChinese ? u8"语言设置"s : "Language"s)).c_str(), NULL))
             {
                 const static array<const char*, 2> LanguageList = { u8"中文", "English" };
                 static int LanguageSelected = 0;
@@ -4346,11 +4323,11 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::About:
         {
-            TabsText(config.UseChinese ? u8"其他" : "Other");
+            TabsText((ICON_FA_CIRCLE_INFO + (config.UseChinese ? u8"关于"s : "About"s)).c_str());
 
             BeginTabBar("##About");
 
-            if (BeginTabItem(config.UseChinese ? u8"关于我们" : "About"))
+            if (BeginTabItem((ICON_FA_ADDRESS_CARD + (config.UseChinese ? u8"关于我们"s : "About"s)).c_str()))
             {
                 const static ImGuiWindowFlags flags =
                     ImGuiWindowFlags_HorizontalScrollbar |
@@ -4359,37 +4336,13 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard(config.UseChinese ? u8"关于" : "About", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    BeginChild("##COM1919", ImVec2(0, 100), true, flags);
-                    {
-                        const ImVec2 pos = GetCursorPos();
-                        Text(u8"COM1919");
-                        SetCursorPos(ImVec2(pos.x, pos.y + 15));
-                        TextColored((ImVec4)ImColor(149, 157, 164, 255), config.UseChinese ? u8"GC连点器开发者，连点器是我一个人开发的" : "Creator of GameClicker, I developed it alone.");
-                    }
-                    EndChild();
-
-                    BeginChild("##挽芙大魔王", ImVec2(0, 100), true, flags);
-                    {
-                        const ImVec2 pos = GetCursorPos();
-                        Text(u8"挽芙大魔王");
-                        SetCursorPos(ImVec2(pos.x, pos.y + 15));
-                        TextColored((ImVec4)ImColor(149, 157, 164, 255), config.UseChinese ? u8"YoClicker连点器开发者" : "Creator of YoClicker, he gave me many ideas, thank you very much.");
-                    }
-                    EndChild();
-
-                    BeginChild("##BOWEN", ImVec2(0, 100), true, flags);
-                    {
-                        const ImVec2 pos = GetCursorPos();
-                        Text(u8"y_bowen");
-                        SetCursorPos(ImVec2(pos.x, pos.y + 15));
-                        TextColored((ImVec4)ImColor(149, 157, 164, 255), config.UseChinese ? u8"提供网站和服务器的费用" : "Paid for website and server");
-                        TextColored((ImVec4)ImColor(12, 12, 12, 255), config.UseChinese ? u8"从GC一开始的开发都有他的身影。" : "He is the face of GC from the beginning.");
-                    }
-                    EndChild();
+                    Text(u8"GameClicker开发者：COM1919");
+                    Text(u8"服务商··：y_bowen");
+                    Text(u8"YoClicker开发者：挽芙大魔王");
                 }
                 EndCard();
 
-                TabsText(config.UseChinese ? u8"相关链接" : "Related Links");
+                TabsText((ICON_FA_LINK + (config.UseChinese ? u8"相关链接"s : "Related Links"s)).c_str());
                 BeginCard(config.UseChinese ? u8"网站链接" : "Website Links", ImVec2(180, 190), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     if (Button(config.UseChinese ? u8"论坛" : "Forum"))
@@ -4441,7 +4394,7 @@ void RenderGui(ImGuiIO& io)
                     // 1. Dear ImGui
                     Text(u8"1. Dear ImGui");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##ImGui" : "License##ImGui"))
+                    if (Button(config.UseChinese ? u8"许可证信息##ImGui" : "License##ImGui"))
                         OpenPopup("LicensePopup_DearImGui");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 2014-2024 Omar Cornut.");
 
@@ -4482,7 +4435,7 @@ void RenderGui(ImGuiIO& io)
                     // 2. ImPlot
                     Text(u8"2. ImPlot");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##ImPlot" : "License##ImPlot"))
+                    if (Button(config.UseChinese ? u8"许可证信息##ImPlot" : "License##ImPlot"))
                         OpenPopup("LicensePopup_ImPlot");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 2023 Evan Pezent.");
 
@@ -4523,7 +4476,7 @@ void RenderGui(ImGuiIO& io)
                     // 3. Stb
                     Text(u8"3. Stb");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Stb" : "License##Stb"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Stb" : "License##Stb"))
                         OpenPopup("LicensePopup_Stb");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 2017 Sean Barrett.");
 
@@ -4563,7 +4516,7 @@ void RenderGui(ImGuiIO& io)
                     // 4. Mechvibes
                     Text(u8"4. Mechvibes");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Mechvibes" : "License##Mechvibes"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Mechvibes" : "License##Mechvibes"))
                         OpenPopup("LicensePopup_Mechvibes");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 2023 Pyro Calzone.");
 
@@ -4604,7 +4557,7 @@ void RenderGui(ImGuiIO& io)
                     // 5. SDL2
                     Text(u8"5. SDL2");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##SDL2" : "License##SDL2"))
+                    if (Button(config.UseChinese ? u8"许可证信息##SDL2" : "License##SDL2"))
                         OpenPopup("LicensePopup_SDL2");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 1997-2024 Sam Lantinga <slouken@libsdl.org>.");
 
@@ -4643,7 +4596,7 @@ void RenderGui(ImGuiIO& io)
                     // 6. Zlib
                     Text(u8"6. Zlib");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Zlib" : "License##Zlib"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Zlib" : "License##Zlib"))
                         OpenPopup("LicensePopup_Zlib");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 1995-2024 Jean-loup Gailly and Mark Adler.");
 
@@ -4682,7 +4635,7 @@ void RenderGui(ImGuiIO& io)
                     // 7. Minizip
                     Text(u8"7. Minizip");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Minizip" : "License##Minizip"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Minizip" : "License##Minizip"))
                         OpenPopup("LicensePopup_Minizip");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 1998-2010 Gilles Vollant.\nCopyright(C) 2007-2008 Even Rouault.");
 
@@ -4722,7 +4675,7 @@ void RenderGui(ImGuiIO& io)
                     // 8. Picojson
                     Text(u8"8. Picojson");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Picojson" : "License##Picojson"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Picojson" : "License##Picojson"))
                         OpenPopup("LicensePopup_Picojson");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 2009-2010 Cybozu Labs, Inc.\nCopyright(C) 2011-2014 Kazuho Oku.");
 
@@ -4766,7 +4719,7 @@ void RenderGui(ImGuiIO& io)
                     // 9. Lua
                     Text(u8"9. Lua");
                     SameLine();
-                    if (Button(config.UseChinese ? "许可证信息##Lua" : "License##Lua"))
+                    if (Button(config.UseChinese ? u8"许可证信息##Lua" : "License##Lua"))
                         OpenPopup("LicensePopup_Lua");
                     TextColored((ImVec4)ImColor(149, 157, 164, 255), u8"Copyright(C) 1994-2025 Lua.org, PUC-Rio.");
 
@@ -4817,7 +4770,10 @@ void RenderGui(ImGuiIO& io)
                     SetCursorPosY(GetCursorPosY() + 12);
 
                     Text(config.UseChinese ? u8"用户协议" : "Usage Help");
-                    TextUnformatted(UserAgreement.c_str(), UserAgreement.c_str() + UserAgreement.size());
+                    if (config.UseChinese)
+                        TextUnformatted(AgreementCNString.c_str(), AgreementCNString.c_str() + AgreementCNString.size());
+					else
+                        TextUnformatted(AgreementENString.c_str(), AgreementENString.c_str() + AgreementENString.size());
                 }
                 EndCard();
 
@@ -4857,14 +4813,17 @@ void RenderGui(ImGuiIO& io)
     {
         BeginChild(u8"##ua_child", ImVec2(711, 260), true, ImGuiWindowFlags_HorizontalScrollbar);
         SetWindowFontScale(0.8f);
-        Text(UserAgreement.c_str());
+        if (config.UseChinese)
+            TextUnformatted(AgreementCNString.c_str(), AgreementCNString.c_str() + AgreementCNString.size());
+        else
+            TextUnformatted(AgreementENString.c_str(), AgreementENString.c_str() + AgreementENString.size());
         SetWindowFontScale(1.0f);
         EndChild();
 
         Text(config.UseChinese ? u8"&c本软件完全免费！！！\n&c如果你是购买的本软件，可以举报。" : "This software is completely free! \nIf you have purchased this software, you can report it.");
 
         static bool IsCheck = false;
-        Checkbox(config.UseChinese ? u8"我已阅读并同意用户协议" : "I have read and agree to the user agreement", & IsCheck);
+        Toggle(config.UseChinese ? u8"我已阅读并同意用户协议" : "I have read and agree to the user agreement", &IsCheck, ToggleFlags);
 
         if (Button(config.UseChinese ? u8"不同意" : "Decline", ImVec2(70, 40)))
             GCExit = true;

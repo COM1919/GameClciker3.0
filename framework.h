@@ -1,15 +1,15 @@
 #pragma once
 
+#define _NO_BYTE_DEFINITONS
+
 #define _WINSOCKAPI_
 
 // 支持WIN7，防止使用WIN7不支持的API
 #define _WIN32_WINNT   0x0601
 #define WINVER         0x0601
 
-#define byte win_byte_override
 #include <windows.h>
 #include <wincodec.h>
-#undef byte
 #include <iostream>
 #include <mmsystem.h>
 #include <math.h>
@@ -54,6 +54,10 @@
 #include "ImGui/implot3d.h"
 #include "ImGui/imgui_stdlib.h"
 #include "ImGui/TextEditor/TextEditor.h"
+#include "ImGui/ImGuiToggle/imgui_toggle.h"
+#include "ImGui/Icons/IconsFontAwesome6.h"
+#include "ImGui/Icons/fa.h"
+#include "ImGui/ImGuiMD/imgui_md.h"
 
 #include "json/picojson.h"
 

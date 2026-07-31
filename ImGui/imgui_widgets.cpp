@@ -811,7 +811,7 @@ bool ImGui::ButtonEx(const char* label, const ImVec2& size_arg, ImGuiButtonFlags
         anim.insert({ id, { ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_Button))} });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
     ImU32 col = (held && hovered) ? GetColorU32(ImGuiCol_ButtonActive) : hovered ? GetColorU32(ImGuiCol_ButtonHovered) : GetColorU32(ImGuiCol_Button);
     ImVec4 col_vec = ImGui::ColorConvertU32ToFloat4(col);
@@ -1294,7 +1294,7 @@ bool ImGui::ImageButtonEx(ImGuiID id, ImTextureRef tex_ref, const ImVec2& image_
         anim.insert({ id, { ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg)) } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
     // Render
     ImU32 col = GetColorU32((held && hovered) ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
@@ -1408,7 +1408,7 @@ bool ImGui::Checkbox(const char* label, bool* v)
         anim.insert({ id, { *v ? 1.0f : 0.0f, ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg)) } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
     it_anim->second.tp = ImLerp(it_anim->second.tp, *v ? 1.0f : (hovered ? 0.2f : 0.0f), speed);
 
     ImU32 tFB = (held && hovered) ? GetColorU32(ImGuiCol_FrameBgActive) : hovered ? GetColorU32(ImGuiCol_FrameBgHovered) : GetColorU32(ImGuiCol_FrameBg);
@@ -1539,7 +1539,7 @@ bool ImGui::RadioButton(const char* label, bool active)
         anim.insert({ id, { ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg)), ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_CheckMark)) } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
     ImVec4 tFB_vec = ImGui::ColorConvertU32ToFloat4(GetColorU32((held && hovered) ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
     it_anim->second.FB = ImLerp(it_anim->second.FB, tFB_vec, speed);
 
@@ -2090,8 +2090,8 @@ struct BeginCombo_element
 {
     ImVec4 FB, AB;
     float arrow_alph;
-    float pos;
     float angle;
+    bool IsLastOpen = true; // 这个不是动画，而是状态记录
 };
 bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboFlags flags)
 {
@@ -2138,10 +2138,10 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
     if (it_anim == anim.end())
     {
         ImVec4 col = ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg));
-        anim.insert({ id, { col, col, 0, bb.Min.y, -180.0f } });
+        anim.insert({ id, { col, col, 0, -180.0f, true } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - GetIO().DeltaTime);
     ImVec4 col_vec = ColorConvertU32ToFloat4(GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg));
     it_anim->second.FB = ImLerp(it_anim->second.FB, col_vec, speed);
     const ImU32 frame_col = ColorConvertFloat4ToU32(it_anim->second.FB);
@@ -2189,12 +2189,22 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
         RenderText(ImVec2(bb.Max.x + style.ItemInnerSpacing.x, bb.Min.y + style.FramePadding.y), label);
 
     if (!popup_open)
+    {
+        it_anim->second.IsLastOpen = false;
         return false;
+    }
 
     g.NextWindowData.HasFlags = backup_next_window_data_flags;
+    if (it_anim->second.IsLastOpen == false)
+		flags |= ImGuiComboFlags_ResetAnimation;
+    it_anim->second.IsLastOpen = true;
     return BeginComboPopup(popup_id, bb, flags);
 }
 
+struct BeginComboPopup_element
+{
+    float pos;
+};
 bool ImGui::BeginComboPopup(ImGuiID popup_id, const ImRect& bb, ImGuiComboFlags flags)
 {
     ImGuiContext& g = *GImGui;
@@ -2223,7 +2233,23 @@ bool ImGui::BeginComboPopup(ImGuiID popup_id, const ImRect& bb, ImGuiComboFlags 
         if ((g.NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasSize) == 0 || g.NextWindowData.SizeVal.x <= 0.0f) // Don't apply constraints if user specified a size
             constraint_min.x = w;
         if ((g.NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasSize) == 0 || g.NextWindowData.SizeVal.y <= 0.0f)
-            constraint_max.y = CalcMaxPopupHeightFromItemCount(popup_max_height_in_items);
+        {
+            static std::map <ImGuiID, BeginComboPopup_element> anim;
+            auto it_anim = anim.find(popup_id);
+            if (it_anim == anim.end())
+            {
+                ImVec4 col = ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg));
+                anim.insert({ popup_id, { 0 } });
+                it_anim = anim.find(popup_id);
+            }
+            float speed = 0.2f * (1.0f - GetIO().DeltaTime);
+
+			if (flags & ImGuiComboFlags_ResetAnimation)
+				it_anim->second.pos = 0.0f;
+
+            it_anim->second.pos = ImLerp(it_anim->second.pos, CalcMaxPopupHeightFromItemCount(popup_max_height_in_items), speed);
+			constraint_max.y = it_anim->second.pos;
+        }
         SetNextWindowSizeConstraints(constraint_min, constraint_max);
     }
 
@@ -3581,7 +3607,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
         anim.insert({ id, { ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_FrameBg)) } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
     // Draw frame
     ImU32 frame_col = GetColorU32(g.ActiveId == id ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg);
@@ -7301,7 +7327,7 @@ bool ImGui::TreeNodeBehavior(ImGuiID id, ImGuiTreeNodeFlags flags, const char* l
             anim.insert({ id, {ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_Header))} });
             it_anim = anim.find(id);
         }
-        float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+        float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
         const ImU32 text_col = GetColorU32(ImGuiCol_Text);
         ImGuiNavRenderCursorFlags nav_render_cursor_flags = ImGuiNavRenderCursorFlags_Compact;
@@ -7610,7 +7636,7 @@ bool ImGui::Selectable(const char* label, bool selected, ImGuiSelectableFlags fl
         anim.insert({ id, { ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_Header)) } });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
     if ((flags & ImGuiSelectableFlags_NoPadWithHalfSpacing) == 0)
     {
@@ -10916,7 +10942,7 @@ bool    ImGui::TabItemEx(ImGuiTabBar* tab_bar, const char* label, bool* p_open, 
         anim.insert({ id, {ColorConvertU32ToFloat4(GetColorU32(ImGuiCol_Tab))} });
         it_anim = anim.find(id);
     }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    float speed = 0.2f * (1.0f - ImGui::GetIO().DeltaTime);
 
     const bool is_visible = (g.LastItemData.StatusFlags & ImGuiItemStatusFlags_Visible) && !(flags & ImGuiTabItemFlags_Invisible);
     if (is_visible)
@@ -10926,7 +10952,10 @@ bool    ImGui::TabItemEx(ImGuiTabBar* tab_bar, const char* label, bool* p_open, 
         const ImU32 tab_col = ColorConvertFloat4ToU32(it_anim->second.B);
 
         ImDrawList* display_draw_list = window->DrawList;
-        TabItemBackground(display_draw_list, bb, flags, tab_col);
+        //TabItemBackground(display_draw_list, bb, flags, tab_col);
+        // 绘制四个角都是圆角的背景
+        display_draw_list->AddRectFilled(bb.Min, bb.Max, tab_col, style.TabRounding, ImDrawFlags_RoundCornersAll);
+
         if (tab_contents_visible && (tab_bar->Flags & ImGuiTabBarFlags_DrawSelectedOverline) && style.TabBarOverlineSize > 0.0f)
         {
             // Might be moved to TabItemBackground() ?

@@ -396,6 +396,7 @@ namespace ScriptAPI
         int mode = luaL_optinteger(L, 2, config.SimulateClickMode);
         int sleep = luaL_optinteger(L, 3, 60);
 
+        ItemBarPos = pos;
         ::SetKeyClick(config.ItemEnableClickerKey[pos], sleep, mode);
         return 0;
     }
@@ -845,7 +846,7 @@ namespace ScriptAPI
             luaL_error(L, "Checkbox的参数不足或太多");
         string label = StringToUTF8(luaL_checkstring(L, 1));
         bool checked = lua_toboolean(L, 2);
-        ImGui::Checkbox(label.c_str(), &checked);
+        ImGui::Toggle(label.c_str(), &checked, ToggleFlags);
         lua_pushboolean(L, checked);
         return 1;
     }

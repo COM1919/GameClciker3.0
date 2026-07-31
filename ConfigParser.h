@@ -196,7 +196,8 @@ void SaveConfig()
 	WritePrivateProfileString("BasicSettings", "setGameWindowKey", to_string(config.SetGameWindowKey).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "hideClickerKey", to_string(config.HideClickerKey).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "ohpTimerTimeLossSpeed", to_string(config.OHPTimerTimeLossSpeed).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "simulateClickMode", to_string(config.SimulateClickMode).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "clickerPriorityMode", to_string(config.ClickerPriorityMode).c_str(), CIniPos);
 
@@ -256,8 +257,6 @@ void SaveConfig()
 	WritePrivateProfileString("FeatureSwitches", "useAutoResetOnDisable", config.UseAutoResetOnDisable ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useConciseMode", config.UseConciseMode ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMinimalistMode", config.UseMinimalistMode ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useRightOnlyJumpClicker", config.UseROnlyJumpClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE", CIniPos);
@@ -273,8 +272,6 @@ void SaveConfig()
 	WritePrivateProfileString("FeatureSwitches", "useRightCpsChangeTrend", config.UseRCPSChangeTrend ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useLeftCpsChangeTrend", config.UseLCPSChangeTrend ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useOhpResetTimerOnStop", config.UseOHPResetTimerOnStop ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useOhpPlaySound", config.UseOHPPlaySound ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "inGameOnlyClicker", config.UseInGameOnlyClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useItembarSwitch", config.UseItembarSwitch ? "TRUE" : "FALSE", CIniPos);
@@ -358,24 +355,39 @@ void SaveConfig()
 	WritePrivateProfileString("RandomSettings", "leftCpsChangeTrendList", lCpsTrendStr.c_str(), CIniPos);
 
 	//-----------------------统计信息-----------------------
-	HKEY hKey;
-	if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL) != ERROR_SUCCESS)
-		PrintLog("[Config] 无法创建注册表项", PL_ERROR);
-	else
 	{
-		static const array<void*, 6> Datas = {
-			&app_status.ClickerClickCount.left, &app_status.ClickerClickCount.right, &app_status.MouseClickCount.left,
-			&app_status.MouseClickCount.right, &app_status.UseTime, &app_status.StartCount
-		};
-
-		int IdCount = 0;
-		for (void* pdata : Datas)
+		HKEY hKey;
+		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
+			REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS)
 		{
-			if (RegSetValueEx(hKey, to_string(IdCount).c_str(), 0, REG_DWORD, (LPBYTE)pdata, sizeof(pdata)) != ERROR_SUCCESS)
-				PrintLog("[Config] 读取注册表项时发生错误", PL_ERROR);
-			IdCount++;
+			// 0: ClickerClickCount.left
+			ULONGLONG val = app_status.ClickerClickCount.left;
+			RegSetValueEx(hKey, "0", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+
+			// 1: ClickerClickCount.right
+			val = app_status.ClickerClickCount.right;
+			RegSetValueEx(hKey, "1", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+
+			// 2: MouseClickCount.left
+			val = app_status.MouseClickCount.left;
+			RegSetValueEx(hKey, "2", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+
+			// 3: MouseClickCount.right
+			val = app_status.MouseClickCount.right;
+			RegSetValueEx(hKey, "3", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+
+			// 4: StartCount
+			unsigned int uval = app_status.StartCount;
+			RegSetValueEx(hKey, "4", 0, REG_DWORD, (const BYTE*)&uval, sizeof(uval));
+
+			// 5: UseTime → 转为字符串存储
+			stringstream ss;
+			ss << fixed << setprecision(18) << (long double)app_status.UseTime;
+			string str = ss.str();
+			RegSetValueEx(hKey, "5", 0, REG_SZ, (const BYTE*)str.c_str(), (DWORD)(str.size() + 1));
+
+			RegCloseKey(hKey);
 		}
-		RegCloseKey(hKey);
 	}
 
 	//--------------------个性化设置------------------------------
@@ -468,8 +480,10 @@ void LoadConfig()
 		// 注意：OverheatTime 和 OHPTimerTimeLossSpeed 是浮点数，不能直接用 GetPrivateProfileInt
 		GetPrivateProfileString("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), buffer, MAX_BUF, CIniPos);
 		config.OverheatTime = stof(buffer);
-		GetPrivateProfileString("BasicSettings", "ohpTimerTimeLossSpeed", to_string(config.OHPTimerTimeLossSpeed).c_str(), buffer, MAX_BUF, CIniPos);
-		config.OHPTimerTimeLossSpeed = stof(buffer);
+		GetPrivateProfileString("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), buffer, MAX_BUF, CIniPos);
+		config.OverheatCooldownTime = stof(buffer);
+		GetPrivateProfileString("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str(), buffer, MAX_BUF, CIniPos);
+		config.OverheatSoundType = stof(buffer);
 
 		config.SimulateClickMode = GetPrivateProfileInt("BasicSettings", "simulateClickMode", config.SimulateClickMode, CIniPos);
 		config.HideClickerKey = GetPrivateProfileInt("BasicSettings", "hideClickerKey", config.HideClickerKey, CIniPos);
@@ -643,12 +657,6 @@ void LoadConfig()
 		GetPrivateProfileString("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.AllowSetRClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useConciseMode", config.UseConciseMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
-		st = buffer;
-		config.UseConciseMode = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMinimalistMode", config.UseMinimalistMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
-		st = buffer;
-		config.UseMinimalistMode = st.find("TRUE") != string::npos;
 		GetPrivateProfileString("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseEnableGameGui = st.find("TRUE") != string::npos;
@@ -694,12 +702,6 @@ void LoadConfig()
 		GetPrivateProfileString("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseOverheatProtec = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useOhpResetTimerOnStop", config.UseOHPResetTimerOnStop ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
-		st = buffer;
-		config.UseOHPResetTimerOnStop = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useOhpPlaySound", config.UseOHPPlaySound ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
-		st = buffer;
-		config.UseOHPPlaySound = st.find("TRUE") != string::npos;
 		GetPrivateProfileString("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseBEAdaptation = st.find("TRUE") != string::npos;
@@ -753,127 +755,154 @@ void LoadConfig()
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-                config.ItemEnableClickerKey[i++] = stoi(token);
-        }
+				config.ItemEnableClickerKey[i++] = stoi(token);
+		}
 
-        //==================================================LRPair arrays==================================================
-        GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemBarPresetCPS.left[i++] = stoi(token);
-        }
+		//==================================================LRPair arrays==================================================
+		GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemBarPresetCPS.left[i++] = stoi(token);
+		}
 
-        GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsRight", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemBarPresetCPS.right[i++] = stoi(token);
-        }
+		GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsRight", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemBarPresetCPS.right[i++] = stoi(token);
+		}
 
-        GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemBarEnablePresetCPS.left[i++] = token.find("TRUE") != string::npos;
-        }
+		GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemBarEnablePresetCPS.left[i++] = token.find("TRUE") != string::npos;
+		}
 
-        GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsRight", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemBarEnablePresetCPS.right[i++] = token.find("TRUE") != string::npos;
-        }
+		GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsRight", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemBarEnablePresetCPS.right[i++] = token.find("TRUE") != string::npos;
+		}
 
-        GetPrivateProfileString("ItemBarSettings", "itemEnableClickerLeft", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemEnableClicker.left[i++] = token.find("TRUE") != string::npos;
-        }
+		GetPrivateProfileString("ItemBarSettings", "itemEnableClickerLeft", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemEnableClicker.left[i++] = token.find("TRUE") != string::npos;
+		}
 
-        GetPrivateProfileString("ItemBarSettings", "itemEnableClickerRight", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            stringstream ss(buffer);
-            string token;
-            int i = 0;
-            while (getline(ss, token, ',') && i < 10)
-                config.ItemEnableClicker.right[i++] = token.find("TRUE") != string::npos;
-        }
+		GetPrivateProfileString("ItemBarSettings", "itemEnableClickerRight", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			stringstream ss(buffer);
+			string token;
+			int i = 0;
+			while (getline(ss, token, ',') && i < 10)
+				config.ItemEnableClicker.right[i++] = token.find("TRUE") != string::npos;
+		}
 
-        //==================================================RandomSettings section==================================================
-        GetPrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
-        config.MouseShake_RandomDist = stoi(buffer);
-        GetPrivateProfileString("RandomSettings", "mouseShakeRandomGen", to_string(config.MouseShake_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-        config.MouseShake_RandomGen = stoi(buffer);
-        GetPrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
-        config.EmptyRate_RandomDist = stoi(buffer);
-        GetPrivateProfileString("RandomSettings", "emptyRateRandomGen", to_string(config.EmptyRate_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-        config.EmptyRate_RandomGen = stoi(buffer);
-        GetPrivateProfileString("RandomSettings", "fluctuationRandomDist", to_string(config.Fluctuation_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
-        config.Fluctuation_RandomDist = stoi(buffer);
-        GetPrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-        config.Fluctuation_RandomGen = stoi(buffer);
+		//==================================================RandomSettings section==================================================
+		GetPrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
+		config.MouseShake_RandomDist = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "mouseShakeRandomGen", to_string(config.MouseShake_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
+		config.MouseShake_RandomGen = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
+		config.EmptyRate_RandomDist = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "emptyRateRandomGen", to_string(config.EmptyRate_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
+		config.EmptyRate_RandomGen = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "fluctuationRandomDist", to_string(config.Fluctuation_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
+		config.Fluctuation_RandomDist = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
+		config.Fluctuation_RandomGen = stoi(buffer);
 
-        //==================================================Vector读取==================================================
-        GetPrivateProfileString("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            config.RCPSChangeTrendList.clear();
-            stringstream ss(buffer);
-            string token;
-            while (getline(ss, token, ','))
-                config.RCPSChangeTrendList.push_back(stoi(token));
-        }
+		//==================================================Vector读取==================================================
+		GetPrivateProfileString("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			config.RCPSChangeTrendList.clear();
+			stringstream ss(buffer);
+			string token;
+			while (getline(ss, token, ','))
+				config.RCPSChangeTrendList.push_back(stoi(token));
+		}
 
-        GetPrivateProfileString("RandomSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
-        if (strlen(buffer) > 0)
-        {
-            config.LCPSChangeTrendList.clear();
-            stringstream ss(buffer);
-            string token;
-            while (getline(ss, token, ','))
-                config.LCPSChangeTrendList.push_back(stoi(token));
-        }
+		GetPrivateProfileString("RandomSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+		if (strlen(buffer) > 0)
+		{
+			config.LCPSChangeTrendList.clear();
+			stringstream ss(buffer);
+			string token;
+			while (getline(ss, token, ','))
+				config.LCPSChangeTrendList.push_back(stoi(token));
+		}
 	}
 	//==================================================统计信息==================================================
-	HKEY hKey;
-	if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL) != ERROR_SUCCESS)
-		PrintLog("[Config] 无法创建注册表项", PL_ERROR);
-	else
 	{
-		static const array<void*, 6> Datas = {
-			&app_status.ClickerClickCount.left, &app_status.ClickerClickCount.right, &app_status.MouseClickCount.left, 
-			&app_status.MouseClickCount.right, &app_status.UseTime, &app_status.StartCount
-		};
-
-		int IdCount = 0;
-		for (void* pdata : Datas)
+		HKEY hKey;
+		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
+			REG_OPTION_NON_VOLATILE, KEY_READ, NULL, &hKey, NULL) == ERROR_SUCCESS)
 		{
-			DWORD RegDataSize;
-			if (RegQueryValueEx(hKey, to_string(IdCount).c_str(), NULL, NULL, (LPBYTE)pdata, &RegDataSize) != ERROR_SUCCESS)
-				PrintLog("[Config] 读取注册表项时发生错误", PL_ERROR);
-			if (RegDataSize != sizeof(pdata))
-				PrintLog("[Config] 注册表项数据长度不匹配", PL_ERROR);
-			IdCount++;
+			DWORD type, size;
+
+			ULONGLONG temp;
+			size = sizeof(temp);
+			if (RegQueryValueEx(hKey, "0", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
+				type == REG_QWORD && size == sizeof(temp))
+				app_status.ClickerClickCount.left = temp;
+
+			size = sizeof(temp);
+			if (RegQueryValueEx(hKey, "1", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
+				type == REG_QWORD && size == sizeof(temp))
+				app_status.ClickerClickCount.right = temp;
+
+			size = sizeof(temp);
+			if (RegQueryValueEx(hKey, "2", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
+				type == REG_QWORD && size == sizeof(temp))
+				app_status.MouseClickCount.left = temp;
+
+			size = sizeof(temp);
+			if (RegQueryValueEx(hKey, "3", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
+				type == REG_QWORD && size == sizeof(temp))
+				app_status.MouseClickCount.right = temp;
+
+			unsigned int tempUInt;
+			size = sizeof(tempUInt);
+			if (RegQueryValueEx(hKey, "4", NULL, &type, (LPBYTE)&tempUInt, &size) == ERROR_SUCCESS &&
+				type == REG_DWORD && size == sizeof(tempUInt))
+				app_status.StartCount = tempUInt;
+
+			char buffer[64] = { 0 };
+			size = sizeof(buffer);
+			if (RegQueryValueEx(hKey, "5", NULL, &type, (LPBYTE)buffer, &size) == ERROR_SUCCESS &&
+				type == REG_SZ)
+			{
+				try {
+					long double val = std::stold(buffer);
+					app_status.UseTime = val;
+				}
+				catch (...){}
+			}
+
+			RegCloseKey(hKey);
 		}
-		RegCloseKey(hKey);
 	}
 
 	//--------------------个性化设置------------------------------

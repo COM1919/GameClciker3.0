@@ -5,7 +5,6 @@
 bool RandomBool(const float& probability, UINT uGen, UINT uDist);
 int Random(int min, int max, UINT uGen, UINT uDist);
 void InitRandom();
-string RandomString(unsigned int length);
 
 static random_device                                                      rd;
 static mt19937                                                            gen_mt(rd());
@@ -133,14 +132,4 @@ static char random_char()
         return 'A' + (r - 10);    // ´óÐ´×ÖÄ¸: A-Z
     else
         return 'a' + (r - 36);    // Ð¡Ð´×ÖÄ¸: a-z
-}
-
-string RandomString(unsigned int length)
-{
-    string result;
-    result.reserve(length);
-
-    for (int i = 0; i < length; ++i)
-        result += random_char();
-    return result;
 }

@@ -28,6 +28,15 @@
     <Filter Include="ImGui\TextEditor">
       <UniqueIdentifier>{924f8eea-112d-4225-95a2-82bd9b781c10}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ImGui\ImGuiToggle">
+      <UniqueIdentifier>{57cc042e-b968-449b-b8b6-6402538d1a3c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ImGui\Icons">
+      <UniqueIdentifier>{27e4bca3-c21c-410a-8dcb-41e6195b8392}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ImGui\ImGuiMD">
+      <UniqueIdentifier>{7c1dc4f3-7182-4703-a927-83639662298b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Definitons.h">
@@ -240,6 +249,36 @@
     <ClInclude Include="ImGui\TextEditor\TextEditor.h">
       <Filter>ImGui\TextEditor</Filter>
     </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_offset_rect.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_math.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_palette.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_presets.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiToggle\imgui_toggle_renderer.h">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\Icons\fa.h">
+      <Filter>ImGui\Icons</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\Icons\IconsFontAwesome6.h">
+      <Filter>ImGui\Icons</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiMD\imgui_md.h">
+      <Filter>ImGui\ImGuiMD</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\ImGuiMD\md4c.h">
+      <Filter>ImGui\ImGuiMD</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GC.cpp">
@@ -304,6 +343,24 @@
     </ClCompile>
     <ClCompile Include="ImGui\TextEditor\TextEditor.cpp">
       <Filter>ImGui\TextEditor</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle.cpp">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_palette.cpp">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_presets.cpp">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiToggle\imgui_toggle_renderer.cpp">
+      <Filter>ImGui\ImGuiToggle</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiMD\imgui_md.cpp">
+      <Filter>ImGui\ImGuiMD</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\ImGuiMD\md4c.c">
+      <Filter>ImGui\ImGuiMD</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

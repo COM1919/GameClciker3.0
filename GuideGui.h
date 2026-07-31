@@ -72,7 +72,10 @@ int RenderGuide(ImGuiIO& io)
 
                 BeginChild(u8"##ua_child", ImVec2(596, 260), true, ImGuiWindowFlags_HorizontalScrollbar);
                 SetWindowFontScale(0.8f);
-                Text(UserAgreement.c_str());
+                if (config.UseChinese)
+                    TextUnformatted(AgreementCNString.c_str(), AgreementCNString.c_str() + AgreementCNString.size());
+                else
+                    TextUnformatted(AgreementENString.c_str(), AgreementENString.c_str() + AgreementENString.size());
                 SetWindowFontScale(1.0f);
                 EndChild();
 
