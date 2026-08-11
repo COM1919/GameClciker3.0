@@ -505,9 +505,14 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     {
         // 写入锁
         lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
-        for (auto& script : InstalledScripts)
-            script.hThread = StartScript(script.file);
-        // 不用设置IsInstall，因为config里面已经设置了
+        // 修复：删除"脚本自启动"功能（废弃且不能正常工作）——启动程序不再自动运行所有已安装脚本。
+        // 改为由用户在"已安装"列表的"启用"开关手动启动。
+        for (const ScriptInfo& script : InstalledScripts)
+        {
+            // 确保 ScriptState 条目存在（供"启用"开关/启动按键显示，IsRunning=false → 显示"关闭"）
+            lock_guard<shared_mutex> lock2(ScriptStatesMtx);
+            ScriptStates[script.file];
+        }
     }
 
     // 允许拖拽文件到窗口
@@ -517,6 +522,8 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     CreateDirectory(ScriptShopTemp.c_str(), NULL);
     CreateDirectory(ScriptTemp.c_str(), NULL);
     RefushScriptList();
+    // 修复：已安装列表恢复必须在 AvaiableScripts 填充之后（原逻辑在 LoadConfig 中因列表为空被跳过）
+    RestoreInstalledScripts();
 
     while (!IsCreateWindowSussce)
         Sleep(2);
@@ -526,7 +533,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
             InitSuccessTime = GetNowMs();
     }
-    PrintLog("[Init] 初始化已完成，耗时: " + to_string(StartTime), PL_INFO);
+    PrintLog("[Init] 初始化已完成，耗时: " + to_string(GetNowMs() - StartTime), PL_INFO); // 原代码误打印了启动时间戳，而非耗时
     return 0;
 }
 
@@ -534,18 +541,27 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 {
     while (!GCExit)
     {
-        CpuRates.push_back(GetCpuUsageRate(200) / 100.0f);
-        GpuRates.push_back(GetGpuUsageRate(200) / 100.0f);
-        MemRates.push_back(GetMemUsageRate(200) / 100.0f);
+        // 修复：原代码无锁 push_back/erase，与主渲染线程的 back()/copy 并发时，
+        // vector 扩容/缩容导致迭代与访问已释放内存 → 0xC0000005。写入统一加写锁。
+        // 采样函数（内部会 Sleep）放在锁外，避免长时间占用锁阻塞渲染线程。
+        const float cpuRate = GetCpuUsageRate(200) / 100.0f;
+        const float gpuRate = GetGpuUsageRate(200) / 100.0f;
+        const float memRate = GetMemUsageRate(200) / 100.0f;
+        {
+            lock_guard<shared_mutex> lock(PerformanceMutex);
+            CpuRates.push_back(cpuRate);
+            GpuRates.push_back(gpuRate);
+            MemRates.push_back(memRate);
 
-        if(CpuRates.size() > MAX_PERF_RECORDS)
-            CpuRates.erase(CpuRates.begin());
+            if (CpuRates.size() > MAX_PERF_RECORDS)
+                CpuRates.erase(CpuRates.begin());
 
-        if (GpuRates.size() > MAX_PERF_RECORDS)
-            GpuRates.erase(GpuRates.begin());
+            if (GpuRates.size() > MAX_PERF_RECORDS)
+                GpuRates.erase(GpuRates.begin());
 
-        if(MemRates.size() > MAX_PERF_RECORDS)
-            MemRates.erase(MemRates.begin());
+            if (MemRates.size() > MAX_PERF_RECORDS)
+                MemRates.erase(MemRates.begin());
+        }
         //GetCpuUsageRate等函数会进行Sleep
 
         /*
@@ -569,6 +585,20 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 
 void RenderGui(ImGuiIO& io)
 {
+    // 修复：config 重置在帧边界由主线程执行（后台线程只负责弹窗确认并置位标记）。
+    // 重建前先停止连点器并触发重载，尽量缩小与后台线程读 config 的竞态窗口。
+    if (IsNeedResetConfig.exchange(false))
+    {
+        // 持写锁重建：所有高频消费 config 的后台线程此时在循环体入口的读锁处被挡住，
+        // 保证析构+原地构造期间没有任何后台线程读到 config 内部的 string/vector 成员。
+        lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
+        StopClicker = true;
+        ReloadClicker = true; // 连点线程重载时会重新读取新配置
+        config.~Config();     // 析构
+        new (&config) Config(); // 原地构造
+        RenderTip(config.UseChinese ? u8"重置成功" : "Reset success", 1.5f, PT_INFO);
+    }
+
     bool HasBgImage = _access(Pics_Background.c_str(), 0) == 0;
 
     SetCurrentContext(GCCtx);
@@ -841,11 +871,21 @@ void RenderGui(ImGuiIO& io)
                 ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoTitleBar;
 
-            static const int StartupTime = InitSuccessTime - StartTime;
+            // 修复：原代码为 static const int，会把 ULONGLONG 差值截断为 32 位 int（>24.8天即溢出），
+            // 且 InitSuccessTime 可能尚未被 InitGC 写入（==0），0-StartTime 无符号下溢成巨大值。
+            // 改为加锁读取 + ULONGLONG 类型 + 未初始化时实时计算。
+            ULONGLONG StartupTime = 0;
+            {
+                shared_lock<shared_mutex> lock(InitSuccessTimeMutex);
+                if (InitSuccessTime != 0 && InitSuccessTime >= StartTime)
+                    StartupTime = InitSuccessTime - StartTime;
+            }
+            if (StartupTime == 0)
+                StartupTime = GetNowMs() - StartTime; // 初始化尚未完成，回退为实时耗时
             static string DailyMotto = DailyMottos[Random(0, 29)];
             Text(config.UseChinese ? u8"&c本次启动耗时" : "&cStartup time");
             SameLine();
-            Text(config.UseChinese ? u8"&a%d 毫秒" : "&a%d ms", StartupTime);
+            Text(config.UseChinese ? u8"&a%llu 毫秒" : "&a%llu ms", StartupTime);
             SameLine();
             PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(0, 0, 0, 0));
             PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(0, 0, 0, 0));
@@ -855,35 +895,6 @@ void RenderGui(ImGuiIO& io)
                     DailyMotto = DailyMottos.at(Random(0, 29));
             }
             PopStyleColor(3);
-
-            unique_lock<shared_mutex> lock(AdListMutex, try_to_lock);
-            if (lock.owns_lock() && AdList.size() >= 4)
-            {
-                const int count = AdList.size();
-                for (int i = 0; i < count && i < 4; i++)
-                {
-                    PushID(i);
-                    PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-                    BeginChild(u8"##AD", ImVec2(335, 70), true, flags);
-                    {
-                        SetCursorPosY(3);
-                        ImDrawList* list = GetWindowDrawList();
-                        if (AdList.at(i).texture != NULL)
-                            ImageRounded((ImTextureID)AdList.at(i).texture, ImVec2(64, 64), 4.0f);
-                        else
-                            InvisibleButton("##I from China", ImVec2(64, 64));
-                        SameLine();
-                        SetCursorPosY(4);
-                        Text(AdList.at(i).text.c_str());
-                    }
-                    EndChild();
-                    PopStyleVar();
-
-                    if (i != 3 && (i % 2) == 0)
-                        SameLine();
-                    PopID();
-                }
-            }
 
             break;
         }
@@ -968,7 +979,8 @@ void RenderGui(ImGuiIO& io)
                 Text(config.UseChinese ? u8"左键最高CPS：%d" : "highest LCPS: %d", Lmax);
 
                 //-----------------------CPU/GPU/内存监控信息---------------------------
-
+                // 修复：读取端加读锁，避免与 RecordsPCRate 线程的 push_back/erase 并发（vector realloc → 悬垂访问）
+                shared_lock<shared_mutex> perfLock(PerformanceMutex);
                 DrawProgressBar(config.UseChinese ? u8"CPU占用率" : "CPU usage", CpuRates.back(), { 120, 120 }, GuiColor[ImGuiCol_CheckMark], GuiColor[ImGuiCol_FrameBg]);
                 SameLine();
                 DrawProgressBar(config.UseChinese ? u8"显卡占用率" : "GPU usage", GpuRates.back(), { 120, 120 }, GuiColor[ImGuiCol_CheckMark], GuiColor[ImGuiCol_FrameBg]);
@@ -1268,15 +1280,13 @@ void RenderGui(ImGuiIO& io)
             SameLine();
             if (Button(config.UseChinese ? u8"重置配置" : "Reset Settings", ImVec2(80, 40)))
             {
+                // 修复：原 detach 线程在确认后直接执行 config.~Config()+placement new，
+                // 与 ClickerControl/MouseSoundThread/GetInfo 等线程并发读写 config → 0xC0000005。
+                // 线程只负责弹窗确认，真正的重建由主线程在下一帧 RenderGui 开头执行。
                 thread FunThread([]()
                     {
                         if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to\nreset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
-                        {
-                            config.~Config();          // 析构
-                            new (&config) Config();    // 原地构造
-                            ReloadClicker = true; // 这个相当于保存了配置
-                            RenderTip(config.UseChinese ? u8"重置成功" : "Reset success", 1.5f, PT_INFO);
-                        }
+                            IsNeedResetConfig = true;
                     });
                 FunThread.detach();
             }
@@ -1679,7 +1689,11 @@ void RenderGui(ImGuiIO& io)
 
                         //-------------------------启用连点--------------------------
                         Toggle(config.UseChinese ? u8"启用右键连点" : "Enable RClicker", &config.EnableRightClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"该选项可能会被其他功能设置\n&7如果出现无法 &a打开&7/&c关闭 &f该选项\n可以尝试关闭一下功能：\n&7物品栏开关\n&7仅移动连点\n&7GUI检测" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
+
                         Toggle(config.UseChinese ? u8"启用左键连点" : "Enable LClicker", &config.EnableLeftClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"该选项可能会被其他功能设置\n&7如果出现无法 &a打开&7/&c关闭 &f该选项\n可以尝试关闭一下功能：\n&7物品栏开关\n&7仅移动连点\n&7GUI检测" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
+
                         if (Toggle(config.UseChinese ? u8"开机自动启动" : "Start With System", &config.UseStartWithWindows, ToggleFlags))
                         {
                             static int FailedCount = 0;
@@ -1731,7 +1745,7 @@ void RenderGui(ImGuiIO& io)
                             {
                                 backup_mode = config.SimulateClickMode;
                                 config.SimulateClickMode = SC_SEND_INPUT;
-                                RenderTip(config.UseChinese ? u8"已开启适配基岩版\n已调整 &d模拟点击 &f模式为 &6Sned Input" : "Adaptation to BE has been turned on\nThe &dSimulate Click mode set to &6Send Input.", 2.2f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"已调整 &d点击方式 &f切换为 &6Send Input" : "The &dSimulate Click mode set to &6Send Input.", 2.2f, PT_INFO);
                             }
                             else
                                 config.SimulateClickMode = backup_mode;
@@ -1892,15 +1906,20 @@ void RenderGui(ImGuiIO& io)
                     //-------------------------破坏方块/使用物品--------------------------
                     if (config.RClickerMode & C_ASSISTMODE || config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE)
                     {
-                        Toggle(config.UseChinese ? u8"破坏方块" : "Break Blocks", &config.UseBreakBlocksWithClicker, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"破坏方块" : "Break Blocks", &config.UseLClickerTrigInter, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你可以破坏方块。\n&d该功能与 按下间隔 冲突\n&d启用后将会禁用冲突功能。" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         SameLine();
 
-                        Toggle(config.UseChinese ? u8"使用物品" : "Use Items", &config.UseItemWithClicker, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"使用物品" : "Use Items", &config.UseRClickerTrigInter, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"开启后，你可以破坏方块。\n&d该功能与 按下间隔 冲突\n&d启用后将会禁用冲突功能。" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
-                        if (config.UseBreakBlocksWithClicker)
+                        SameLine();
+
+                        Toggle(config.UseChinese ? u8"使用旧方法" : "Use Old Method", &config.UseOldMethodToTrigInter, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"本功能针对 &d使用物品 &7/ &d破坏方块&f\n如果出现上述功能无法使用\n则可以尝试开启本功能" : "This function is designed for&d UseItem s&7/&d BreakBlocks&f.\nIf the above functions cannot be used,\nyou can try to turn on this function");
+
+                        if (config.UseLClickerTrigInter)
                             Text(config.UseChinese ? u8"&e注意：开启 破坏方块 可能出现卡刀的情况\n并且会导致鼠标声音识别异常！ 请自行衡量！" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nAnd it will cause abnormal mouse sound recognition!\nUse at your own risk!");
                     }
 
@@ -1983,7 +2002,7 @@ void RenderGui(ImGuiIO& io)
                 //-------------------------物品栏开关----------------------------
                 //DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", ImVec2(0, 280), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     Toggle(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags);
                     AttachTooltip(config.UseChinese ? u8"将对应物品格子的按钮关闭，连点器就会在你手拿对应物品时关闭连点。\n其中的快捷键必须设置，主要用于判断物品栏位置！" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
@@ -2088,14 +2107,42 @@ void RenderGui(ImGuiIO& io)
 				BeginCard(config.UseChinese ? u8"物品栏按键设置" : "Itembar Key Settings", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
 				{
                     AttachTooltip(config.UseChinese ? u8"&c请确保快捷键和游戏中的一致！\n&6否则将无法判断物品栏切换" : "&cPlease make sure the shortcut key is consistent with the game!\n&6Otherwise, it cannot determine the position of the item bar switch!");
-                    
+
+                    // 参考 ##ItembarChild 样式：用物品栏图片包装 9 个快捷键，InputKey 精确对齐每个格子
+                    ImDrawList* DrawList = GetWindowDrawList();
+                    const ImVec2 pos1 = GetCursorPos();          // 物品栏图片左上角（相对本 card）
+                    const ImVec2 ItembarSize(178 * 3, 19 * 3);   // (534, 57)
+                    const float SlotWidth = 60.0f;               // 每个格子的定位宽度（与 ##ItembarChild 一致）
+
+                    // 画物品栏底图
+                    DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                    Image((ImTextureID)ImageItembar, ItembarSize);
+                    DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+
+                    // 9 个快捷键：InputKey 中心对齐格子中心。
+                    // 水平：格子宽 60、InputKey 宽 40 -> 左偏移 (60-40)/2=10，中心=PosX+30；
+                    // 垂直：图片高 57、InputKey 高 24 -> 偏移 (57-24)/2≈16，中心与图片中心对齐。
                     for (unsigned int i = 0; i < 9; i++)
                     {
                         PushID(i);
+                        const float PosX = pos1.x + (i * SlotWidth);
+
+                        // 高亮当前选中的物品栏格子（与 ##ItembarChild 一致）
+                        if (ItemBarPos == i)
+                        {
+                            const ImVec2 cur = GetCursorPos();
+                            SetCursorPos(ImVec2(PosX - 1, pos1.y));
+                            {
+                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                                Image((ImTextureID)ImageSelected, ImVec2(18 * 3, 19 * 3));
+                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                            }
+                            SetCursorPos(cur);
+                        }
+
+                        SetCursorPos(ImVec2(PosX + 10, pos1.y + 24));
                         SetNextItemWidth(40);
                         InputKey(u8"##item", &config.ItemEnableClickerKey.at(i), config.UseChinese ? u8"请按下按键" : "Press a key");
-                        if (i != 8)
-                            SameLine(0, 21);
                         PopID();
                     }
 				}
@@ -2194,7 +2241,7 @@ void RenderGui(ImGuiIO& io)
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
                     //-------------------------连点间隙----------------------------
-                    BeginChild("##Settings-2-1", ImVec2(328, -1), false);
+                    BeginChild("##Settings-2-1", ImVec2(326, -1), false);
                     {
                         Toggle(config.UseChinese ? u8"右键连点间隙" : "RClicker Interval", &config.UseRClickTime, ToggleFlags);
                         BeginDisabled(!config.UseRClickTime);
@@ -2212,8 +2259,6 @@ void RenderGui(ImGuiIO& io)
                             SliderInt(u8"##RCSleep", &config.RCSleep, 10, 10000, u8"%d毫秒", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
-
-                        DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
                         Toggle(config.UseChinese ? u8"左键连点间隙" : "RClicker Interval", &config.UseLClickTime, ToggleFlags);
                         BeginDisabled(!config.UseLClickTime);
@@ -2240,7 +2285,7 @@ void RenderGui(ImGuiIO& io)
                     SameLine();
 
                     //-------------------------空刀概率----------------------------
-                    BeginChild("##Settings-2-2", ImVec2(328, -1), false);
+                    BeginChild("##Settings-2-2", ImVec2(326, -1), false);
                     {
                         Toggle(config.UseChinese ? u8"右键空刀概率" : "RClicker Empty Rate", &config.UseREmptyRate, ToggleFlags);
                         BeginDisabled(!config.UseREmptyRate);
@@ -2251,8 +2296,6 @@ void RenderGui(ImGuiIO& io)
                             SliderInt(u8"##UseREmptyRate", &config.REmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
-
-                        DrawSpiltLine(321, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
                         Toggle(config.UseChinese ? u8"左键空刀概率" : "LClicker Empty Rate", &config.UseLEmptyRate, ToggleFlags);
                         BeginDisabled(!config.UseLEmptyRate);
@@ -2266,24 +2309,6 @@ void RenderGui(ImGuiIO& io)
 
                         BeginDisabled(!config.UseLEmptyRate && !config.UseREmptyRate);
                         {
-                            Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
-                            SetNextItemWidth(200);
-                            SameLine();
-                            if (BeginCombo("##erandomgen", RandomGenList[config.EmptyRate_RandomGen]))
-                            {
-                                for (int n = 0; n < 8; n++)
-                                {
-                                    PushID(n);
-                                    const bool is_selected = (config.EmptyRate_RandomGen == n);
-                                    if (Selectable(RandomGenList[n], is_selected))
-                                        config.EmptyRate_RandomGen = n;
-                                    if (is_selected)
-                                        SetItemDefaultFocus();
-                                    PopID();
-                                }
-                                EndCombo();
-                            }
-
                             Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
                             SetNextItemWidth(200);
                             SameLine();
@@ -2302,6 +2327,26 @@ void RenderGui(ImGuiIO& io)
                                 EndCombo();
                             }
 
+                            Text(config.UseChinese ? u8"随机模式" : "Random Mode");
+                            AttachTooltip(config.UseChinese ? u8"&7普通随机：按设定概率均匀随机空刀\n&7疲劳效应：随时间推移空刀率上升（模拟疲劳）\n&7仿生幽灵：疲劳 + 手抖 + 马尔可夫纠错（模拟真人）\n\n&6注意：疲劳/仿生模式下，实际空刀率会随时间在 1%~40% 之间浮动，\n可能偏离你设置的概率。" : "Normal: uniform random by the set probability\nFatigue: error rate increases over time\nGhost: fatigue + hand shaking + Markov error correction (human-like)\n\nNote: in Fatigue/Ghost modes the actual empty rate floats between 1%~40% over time.");
+                            SetNextItemWidth(200);
+                            SameLine();
+                            if (BeginCombo("##erandommode", RandomBoolModeList[config.EmptyRate_RandomMode]))
+                            {
+                                for (int n = 0; n < 3; n++)   // 修复：移除 STIFF 后仅 3 种模式
+                                {
+                                    PushID(n + 100); // 与上方分布 combo 的 PushID 错开，避免 ID 冲突
+                                    const bool is_selected = (config.EmptyRate_RandomMode == n);
+                                    if (Selectable(RandomBoolModeList[n], is_selected))
+                                        config.EmptyRate_RandomMode = n;
+                                    if (is_selected)
+                                        SetItemDefaultFocus();
+                                    PopID();
+                                }
+                                EndCombo();
+                            }
+
+
                             static bool IsOpen = false;
                             if (Button(config.UseChinese ? u8"随机曲线分布" : "Random Curve"))
                                 IsOpen = !IsOpen;
@@ -2316,6 +2361,9 @@ void RenderGui(ImGuiIO& io)
                                 static bool IsGenerating = false;
                                 static float auv = 0;
                                 static float ActualRate = 0;
+                                // 修复：ClickDatas/EmpytDatas 等由 detach 线程重填、主线程每帧绘制，
+                                // 原代码无锁，线程 push_back 扩容时主线程 data()/size() 访问已释放内存 → 0xC0000005。
+                                static mutex CurveMutex;
 
                                 Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
                                 SameLine();
@@ -2325,6 +2373,9 @@ void RenderGui(ImGuiIO& io)
 
                                 if (VarHasChanged(config.UseLEmptyRate, "UseLEmptyRate") ||
                                     VarHasChanged(config.UseREmptyRate, "UseREmptyRate") ||
+                                    VarHasChanged(config.EmptyRate_RandomDist, "EmptyRate_RandomDist") ||
+                                    VarHasChanged(config.EmptyRate_RandomMode, "EmptyRate_RandomMode") ||
+                                    VarHasChanged(config.REmptyRateValue, "EmptyRate_REmptyRateValue") ||
                                     VarHasChanged(PointsSize, "EmptyRate_PointsSize"))
                                 {
                                     IsInit = false;
@@ -2337,31 +2388,55 @@ void RenderGui(ImGuiIO& io)
                                 {
                                     IsGenerating = true;
                                     thread FunThread([]()
+                                    {
+                                        // 先在局部临时容器中生成，避免长时间持有锁
+                                        vector<short> tmpClick;
+                                        vector<short> tmpEmpty;
+                                        tmpClick.reserve(PointsSize);
+                                        tmpEmpty.reserve(PointsSize);
+                                        float tmpDur = 0;
+                                        int ClickCount = 0;
+
+                                        // 补全：预览需与连点实际行为一致（随机模式：普通/极速/疲劳/仿生），
+                                        // 改用 RandomBoolManager；rand() 返回 true=点击（与 MainClick.h 的 rbm 用法一致）。
+                                        RandomBoolManager rbm;
+                                        rbm.SetErrorRate(config.REmptyRateValue / 100.0f);
+                                        rbm.SetMode((RandomBoolMode)config.EmptyRate_RandomMode);
+                                        rbm.SetDistribution(config.EmptyRate_RandomDist);
+
+                                        // 修复：预览是毫秒级快速生成，真实时间几乎不流逝 → FATIGUE/BIONIC 的
+                                        // 疲劳因子恒≈1.0，各模式曲线看起来一样（实际连点中按真实时间累积才有效）。
+                                        // 用右键 CPS 模拟真实点击节奏（每次点击推进一个点击间隔），
+                                        // 让"随时间失误率上升"在曲线中可见（如 10CPS × 2000 点 ≈ 3 分钟，疲劳因子升至 ~1.5）。
+                                        const int SimCPS = max(config.RCPS, 1);
+                                        const chrono::steady_clock::duration SimStep = chrono::milliseconds(1000 / SimCPS);
+
+                                        for (int i = 0; i < PointsSize; i++)
                                         {
-                                            ClickDatas.clear();
-                                            EmpytDatas.clear();
-                                            GenDurationSum = 0;
-                                            int ClickCount = 0;
-                                            const float Proportion = config.REmptyRateValue / 100.0f;
+                                            auto start = chrono::high_resolution_clock::now();
 
-                                            for (int i = 0; i < PointsSize; i++)
-                                            {
-                                                auto start = chrono::high_resolution_clock::now();
+                                            rbm.AdvanceFatigueTime(SimStep);   // 模拟一次点击间隔的流逝
+                                            const bool data = rbm.rand();   // true=有点击（橙色），false=空刀（灰色）
+                                            tmpClick.push_back(data);
+                                            tmpEmpty.push_back(!data);
 
-                                                const bool data = RandomBool(Proportion, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist);
-                                                ClickDatas.push_back(data);
-                                                EmpytDatas.push_back(!data);
-
-                                                auto end = chrono::high_resolution_clock::now();
-                                                auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                                                GenDurationSum += duration.count() / 1000.0;
-                                                if (ClickDatas.back())
-                                                    ClickCount++;
-                                            }
+                                            auto end = chrono::high_resolution_clock::now();
+                                            auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
+                                            tmpDur += duration.count() / 1000.0;
+                                            if (data)
+                                                ClickCount++;
+                                        }
+                                        {
+                                            // 锁内一次性交换数据，主线程绘制期间能看到一致的数据
+                                            lock_guard<mutex> lock(CurveMutex);
+                                            ClickDatas.swap(tmpClick);
+                                            EmpytDatas.swap(tmpEmpty);
+                                            GenDurationSum = tmpDur;
                                             auv = GenDurationSum / PointsSize;
                                             ActualRate = (double)ClickCount / PointsSize * 100;
                                             IsGenerating = false;
-                                        });
+                                        }
+                                    });
                                     FunThread.detach();
                                     IsInit = true;
                                 }
@@ -2372,11 +2447,18 @@ void RenderGui(ImGuiIO& io)
 
                                     ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
                                     ImPlot::SetNextLineStyle((ImVec4)ImColor(254, 189, 57, 200), 0);
-                                    ImPlot::PlotBars(config.UseChinese ? u8"已点击" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
+                                    {
+                                        // 绘制期间加锁，防止后台线程 swap 导致 data() 悬垂
+                                        lock_guard<mutex> lock(CurveMutex);
+                                        ImPlot::PlotBars(config.UseChinese ? u8"已点击" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
+                                    }
 
                                     ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
                                     ImPlot::SetNextLineStyle((ImVec4)ImColor(0, 106, 201, 200), 0);
-                                    ImPlot::PlotBars(config.UseChinese ? u8"空点击" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
+                                    {
+                                        lock_guard<mutex> lock(CurveMutex);
+                                        ImPlot::PlotBars(config.UseChinese ? u8"空点击" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
+                                    }
                                     ImPlot::EndPlot();
                                 }
                                 Text(config.UseChinese ? u8"耗时：%.6f毫秒" : "Time: %.6f ms", GenDurationSum);
@@ -2406,7 +2488,7 @@ void RenderGui(ImGuiIO& io)
                     SetNextItemWidth(300);
                     SetCursorPosX(300);
                     SliderInt(u8"##MainClickSleep", &config.MainClickSleep, 0, 50, config.UseChinese ? u8"%d毫秒" : "%d ms", ImGuiSliderFlags_AlwaysClamp);
-                    
+
                     BeginDisabled(config.UseBEAdaptation);
                     {
                         //-------------------------点击方式----------------------------
@@ -2459,6 +2541,39 @@ void RenderGui(ImGuiIO& io)
                     }
 
                     Toggle(config.UseChinese ? u8"仅人类操作触发" : "Human Only Trigger", &config.UseHumanOnlyTrigger, ToggleFlags);
+                }
+                EndCard();
+
+                //-------------------------过热降频--------------------------
+                SetCursorPosY(GetCursorPosY() + 10.0f);
+                BeginCard(config.UseChinese ? u8"过热降频" : "Overheat Throttle", ImVec2(-1, 167), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                {
+                    Toggle(config.UseChinese ? u8"启用" : "Enable", &config.UseOverheatThrottle, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"&6过热降频：连点时间过长会导致\"过热\"，CPS 自动下降，模拟真实手部/硬件疲劳。\n&c停止连点后自动恢复，下次连点重新计时" : "&6Overheat Throttle: Long continuous clicking causes \"overheating\" and the CPS automatically drops, simulating real hand/hardware fatigue.\n&cStops clicking and it recovers automatically; the next session restarts the timer");
+                    BeginDisabled(!config.UseOverheatThrottle);
+                    {
+                        Text(config.UseChinese ? u8"CPS最低限制" : "Min CPS");
+                        AttachTooltip(config.UseChinese ? u8"降频后 CPS 不会低于该值。\n例如设置为 10，则无论过热多久，CPS 最低保持 10。" : "CPS never drops below this value.\nE.g. 10 means CPS stays at least 10 even after long overheating.");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderInt(u8"##OverheatMinCPS", &config.Overheat_MinCPS, 1, 100, config.UseChinese ? u8"%d CPS" : "%d CPS", ImGuiSliderFlags_AlwaysClamp);
+
+                        Text(config.UseChinese ? u8"过热速度" : "Overheat Time");
+                        AttachTooltip(config.UseChinese ? u8"连点持续多少秒后达到过热点。\n&a到达过热点之后才开始降频，之前保持设定的 CPS。" : "How many seconds of continuous clicking to reach the overheat point.\n&aThrottling starts only AFTER reaching it; CPS stays normal before that.");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderFloat(u8"##OverheatTime", &config.Overheat_Time, 1.0f, 60.0f, config.UseChinese ? u8"%.1f秒" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
+
+                        Text(config.UseChinese ? u8"降频速度" : "Throttle Time");
+                        AttachTooltip(config.UseChinese ? u8"到达过热点后，多少秒内从当前 CPS 线性降到最低限制。\n数值越小降频越快，越大越平缓。" : "After reaching the overheat point, how many seconds to linearly drop from current CPS to the minimum limit.\nSmaller = faster throttle, larger = smoother.");
+                        SameLine();
+                        SetNextItemWidth(300);
+                        SetCursorPosX(300);
+                        SliderFloat(u8"##OverheatThrottleTime", &config.Overheat_ThrottleTime, 1.0f, 60.0f, config.UseChinese ? u8"%.1f秒" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
+                    }
+                    EndDisabled();
                 }
                 EndCard();
 
@@ -2601,24 +2716,6 @@ void RenderGui(ImGuiIO& io)
                         Toggle(config.UseChinese ? u8"防止视角偏离" : "Prevent View Sliding", &config.UseMSPreventViewSliding, ToggleFlags);
                         AttachTooltip(config.UseChinese ? u8"使用算法实现在鼠标抖动时不会出现视角偏离原先位置。" : "Use an algorithm to prevent the view from sliding during mouse shake.");
 
-
-                        Text(config.UseChinese ? u8"随机生成算法" : "Random Algorithm");
-                        SameLine();
-                        SetNextItemWidth(300);
-                        SetCursorPosX(300);
-                        if (BeginCombo("##mrandomgen", RandomGenList[config.MouseShake_RandomGen]))
-                        {
-                            for (int n = 0; n < 8; n++)
-                            {
-                                const bool is_selected = (config.MouseShake_RandomGen == n);
-                                if (Selectable((RandomGenList[n] + "##"s + to_string(n)).c_str(), is_selected))
-                                    config.MouseShake_RandomGen = n;
-                                if (is_selected)
-                                    SetItemDefaultFocus();
-                            }
-                            EndCombo();
-                        }
-
                         Text(config.UseChinese ? u8"随机生成分布" : "Random Distribution");
                         SameLine();
                         SetNextItemWidth(300);
@@ -2652,6 +2749,9 @@ void RenderGui(ImGuiIO& io)
                             static bool IsInit = false;
                             static bool IsGenerating = false;
                             static float auv = 0;
+                            // 修复：Points_x/y/z 由 detach 线程重填、主线程每帧绘制，
+                            // 原代码无锁，线程 push_back 扩容时主线程 data() 访问已释放内存 → 0xC0000005。
+                            static mutex CurveMutex2;
 
                             Text(config.UseChinese ? u8"数据点数量" : "Number of data points");
                             SameLine();
@@ -2660,7 +2760,6 @@ void RenderGui(ImGuiIO& io)
                             SliderInt(u8"##ms_points2", &PointsSize, 10, 2000, "%d", ImGuiSliderFlags_AlwaysClamp);
 
                             if (VarHasChanged(config.MouseShake_RandomDist, "MouseShake_RandomDist") ||
-                                VarHasChanged(config.MouseShake_RandomGen, "MouseShake_RandomGen") ||
                                 VarHasChanged(PointsSize, "PointsSize_ms") ||
                                 VarHasChanged(config.MouseShakeRect, "MouseShakeRect") ||
                                 VarHasChanged(config.UseMSPreventViewSliding, "UseMSPreventViewSliding"))
@@ -2673,10 +2772,14 @@ void RenderGui(ImGuiIO& io)
                                 IsGenerating = true;
                                 thread FunThread([]()
                                     {
-                                        Points_x.clear();
-                                        Points_y.clear();
-                                        Points_z.clear();
-                                        GenDurationSum = 0;
+                                        // 先在局部临时容器中生成，避免长时间持有锁
+                                        vector<int> tmp_x;
+                                        vector<int> tmp_y;
+                                        vector<int> tmp_z;
+                                        tmp_x.reserve(PointsSize);
+                                        tmp_y.reserve(PointsSize);
+                                        tmp_z.reserve(PointsSize);
+                                        float tmpDur = 0;
                                         POINT view{};
 
                                         for (int i = 0; i < PointsSize; i++)
@@ -2684,16 +2787,24 @@ void RenderGui(ImGuiIO& io)
                                             auto start = chrono::high_resolution_clock::now();
 
                                             POINT pt = MouseShakeAlgorithm(view, { 0, 0 });
-                                            Points_x.push_back(pt.x);
-                                            Points_y.push_back(pt.y);
-                                            Points_z.push_back(i);
+                                            tmp_x.push_back(pt.x);
+                                            tmp_y.push_back(pt.y);
+                                            tmp_z.push_back(i);
 
                                             auto end = chrono::high_resolution_clock::now();
                                             auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                                            GenDurationSum += duration.count() / 1000.0;
+                                            tmpDur += duration.count() / 1000.0;
                                         }
-                                        auv = GenDurationSum / PointsSize;
-                                        IsGenerating = false;
+                                        {
+                                            // 锁内一次性交换数据
+                                            lock_guard<mutex> lock(CurveMutex2);
+                                            Points_x.swap(tmp_x);
+                                            Points_y.swap(tmp_y);
+                                            Points_z.swap(tmp_z);
+                                            GenDurationSum = tmpDur;
+                                            auv = GenDurationSum / PointsSize;
+                                            IsGenerating = false;
+                                        }
                                     });
                                 FunThread.detach();
                                 IsInit = true;
@@ -2707,7 +2818,11 @@ void RenderGui(ImGuiIO& io)
                                 //ImPlot3D::SetupBoxScale(1.5f, 1.0f, 1.0f);
                                 ImPlot3D::SetupAxes("X", config.UseChinese ? u8"时间" : "Time", "Y");
                                 ImPlot3D::SetupAxesLimits(-20, 20, 0, PointsSize, -20, 20, ImGuiCond_Always);
-                                ImPlot3D::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
+                                {
+                                    // 绘制期间加锁，防止后台线程 swap 导致 data() 悬垂
+                                    lock_guard<mutex> lock(CurveMutex2);
+                                    ImPlot3D::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
+                                }
 
                                 ImPlot3D::EndPlot();
                             }
@@ -2720,9 +2835,14 @@ void RenderGui(ImGuiIO& io)
                                 ImPlot::SetNextLineStyle((ImVec4)ImColor(30, 156, 214, 255), 2);
                                 ImPlot::SetupAxesLimits(-20, 20, -20, 20, ImGuiCond_Always);
 
-                                ImPlot::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
-                                if (PointsTime >= 0 && PointsTime <= Points_z.size())
-                                    ImPlot::PlotScatter("##PlotPoints", &Points_y[PointsSize], &Points_x[PointsSize], 1);
+                                {
+                                    lock_guard<mutex> lock(CurveMutex2);
+                                    ImPlot::PlotLine(config.UseChinese ? u8"鼠标位置" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
+                                    // 修复：原代码 &Points_y[PointsSize] 在 PointsSize == size() 时越界读（0xC0000005 隐患），
+                                    // 且滑块语义应为"当前时间点"，改用 PointsTime 并收紧边界检查
+                                    if (PointsTime >= 0 && PointsTime < static_cast<int>(Points_z.size()))
+                                        ImPlot::PlotScatter("##PlotPoints", &Points_y[PointsTime], &Points_x[PointsTime], 1);
+                                }
 
                                 ImPlot::EndPlot();
                             }
@@ -3585,10 +3705,20 @@ void RenderGui(ImGuiIO& io)
                         static bool IsRefushList = true;
                         if (IsRefushList || IsNeedRefushShopList)
                         {
-                            thread FuncThread([&]() {
-                                ScriptShopList.clear();
-                                TotalPaper = RefushScriptShopList(ScriptShopList, CurrentPaper, false, IsScriptUseGitee);
-                                IsRefushSuccess = true;
+                            thread FuncThread([&]()
+                            {
+                                // 修复：原代码在 detach 线程中无锁 clear/重填 ScriptShopList，
+                                // 与主线程遍历、CheckUpdateScriptFromShop（另一 detach 线程）并发，
+                                // vector 扩容 -> 迭代器失效 -> 0xC0000005。
+                                // 改为先在临时列表填充，锁内一次性 swap。
+                                vector<ScriptInfo> tmpList;
+                                const int papers = RefushScriptShopList(tmpList, CurrentPaper, false, IsScriptUseGitee);
+                                {
+                                    lock_guard<shared_mutex> lock(ScriptShopListMtx);
+                                    ScriptShopList.swap(tmpList);
+                                    TotalPaper = papers;
+                                    IsRefushSuccess = true;
+                                }
                             });
                             FuncThread.detach();
                             IsRefushList = false;
@@ -3596,7 +3726,7 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         static const char* SourceNames[] = { config.UseChinese ? u8"Gitee仓库源" : "Gitee Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
-                        static int SourceIndex = 0;
+                        static int SourceIndex = 1;
                         Text(config.UseChinese ? u8"下载源" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
@@ -3610,6 +3740,8 @@ void RenderGui(ImGuiIO& io)
 
                         if (IsRefushSuccess)
                         {
+                            // 修复：遍历期间加读锁，防止刷新线程 swap 导致迭代器/元素引用失效
+                            shared_lock<shared_mutex> shopLock(ScriptShopListMtx);
                             for (const ScriptInfo& script : ScriptShopList)
                             {
                                 PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
@@ -3621,81 +3753,115 @@ void RenderGui(ImGuiIO& io)
                                 {
                                     DisableAnimation(true);
                                     PopStyleColor(); // ImGuiCol_ChildBg
-                                    // 绘画脚本图片
-                                    Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
-                                    SetCursorPosY(GetCursorPosY() - 6 + 2);
-                                    ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
-                                    SameLine();
-                                    static ImVec2 pos2 = GetCursorPos();
-
-                                    Text(script.title.c_str());
-                                    SameLine();
+                                    // 脚本图片
                                     {
-                                        const string VersionStr = (config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver);
-                                        const ImVec2 SteSize = CalcTextSize(VersionStr.c_str());
-                                        SetCursorPosX(680 - 6 - SteSize.x);
-                                        Text(VersionStr.c_str());
+                                        Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
+                                        SetCursorPos(ImVec2(4.0f, 4.0f));
+                                        ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
                                     }
-                                    SameLine();
 
-                                    const bool HasLinkButtonShow = !script.link.empty();
-                                    const char* LinkText = config.UseChinese ? u8"教程" : "Guide";
-                                    const float LinkButtonWidth = CalcTextSize(LinkText).x + 12;
+                                    // 标题和信息文字
                                     {
-                                        float TagetX = pos2.x + 480;
-                                        if (script.IsHasUpdate)
-                                            TagetX -= 48 + 6;
+                                        const char* TitleText = script.title.c_str();
+                                        const float TitleHeight = CalcTextSize(TitleText).y;
+                                        const float PosX = 4.0f + 64.0f + 6.0f;
+                                        SetCursorPos(ImVec2(PosX, 4.0f));
+                                        Text(TitleText);
+                                        SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
+                                        TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
+                                    }
+
+                                    ImVec2 regionMin = GetWindowContentRegionMin();
+                                    ImVec2 regionMax = GetWindowContentRegionMax();
+                                    const float WindowWidth = regionMax.x - regionMin.x;
+                                    const float WindowHeight = regionMax.y - regionMin.y;
+
+                                    // 版本号文本
+                                    {
+                                        const string text = ((config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver));
+                                        float TextWidth = CalcTextSize(text.c_str()).x;
+                                        SetCursorPos(ImVec2(WindowWidth - TextWidth - 6.0f, 4));
+                                        TextColored((ImVec4)ImColor(150, 150, 150, 255), text.c_str());
+                                    }
+                                    // 按钮和其他的
+                                    {
+                                        const bool HasLinkButtonShow = !script.link.empty();
+                                        const string LinkText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程"s : "Guide"s));
+                                        const float LinkButtonWidth = CalcTextSize(LinkText.c_str()).x + 16;
+                                        const float ImageButtonWidth = 32.0f;
+                                        const float spacing = 6.0f;
+
+                                        float BeginPosX = WindowWidth - ImageButtonWidth - spacing;
                                         if (HasLinkButtonShow)
-                                            TagetX -= LinkButtonWidth + 6;
-                                        SetCursorPosX(TagetX);
-                                    }
+                                            BeginPosX -= LinkButtonWidth + spacing;
+                                        SetCursorPosX(BeginPosX);
 
-                                    if (HasLinkButtonShow)
-                                    {
-                                        SetCursorPosY(12);
-                                        if (Button(LinkText, ImVec2(LinkButtonWidth, 32)))
+                                        // 教程链接按钮
+                                        if (HasLinkButtonShow)
                                         {
-                                            thread th([=]() {
-                                                ShellExecute(NULL, NULL, script.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                                            });
-                                            th.detach();
+                                            SetCursorPosY(WindowHeight - 32);
+                                            if (Button(LinkText.c_str(), ImVec2(LinkButtonWidth, 32)))
+                                            {
+                                                // 值捕获：script 是 for 循环元素引用，线程执行时元素可能已失效
+                                                thread th([scriptCopy = script]()
+                                                {
+                                                    ShellExecute(NULL, NULL, scriptCopy.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                                                });
+                                                th.detach();
+                                            }
+                                            SameLine(0, spacing);
                                         }
-                                        SameLine();
-                                    }
 
-                                    SetCursorPosY(12);
-                                    static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Download);
-                                    if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(32, 32)))
-                                    {
-                                        thread FuncThread([=]() {
-                                            if (IsScriptUseGitee)
-                                            {
-                                                const string filename = ScriptShopDir + "\\" + script.name + ".gcdat";
-                                                const string target = ScriptPath + "\\" + script.name + ".zip";
-                                                if (!CopyFile(filename.c_str(), target.c_str(), false))
+                                        // 下载按钮 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
+                                        SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                        static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Download);
+                                        if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
+                                        {
+                                            thread FuncThread([scriptCopy = script]()
                                                 {
-                                                    RenderTip(config.UseChinese ? (script.name + u8"下载失败") : (script.title + " Download Failed"), 2.0f, PT_INFO);
-                                                    PrintLog("[ScriptMarket] 脚本下载失败：" + filename, PL_ERROR);
-                                                }
-                                            }
-                                            else
-                                            {
-                                                const string target = ScriptPath + "\\" + script.name + ".zip";
-                                                if (!DownloadURLFiles(script.file, target))
-                                                {
-                                                    RenderTip(config.UseChinese ? (script.name + u8"下载失败") : (script.title + " Download Failed"), 2.0f, PT_INFO);
-                                                    PrintLog("[ScriptMarket] 脚本下载失败，URL：" + script.file, PL_ERROR);
-                                                }
-                                            }
-                                            RenderTip(config.UseChinese ? (script.name + u8"下载成功") : (script.title + " Download Success"), 2.0f, PT_INFO);
-                                            RefushScriptList(); // 刷新
-                                            });
-                                        FuncThread.detach();
+                                                    bool IsDownloadSuccess = false;
+                                                    if (IsScriptUseGitee)
+                                                    {
+                                                        const string filename = ScriptShopDir + "\\" + scriptCopy.name + ".gcdat";
+                                                        const string target = ScriptPath + "\\" + scriptCopy.name + ".zip";
+                                                        if (!CopyFile(filename.c_str(), target.c_str(), false))
+                                                        {
+                                                            // 修复：打印具体错误码（如 ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND）便于定位编码/路径问题
+                                                            PrintLog("[ScriptMarket] 脚本下载失败：" + filename + "，错误：" + to_string(GetLastError()), PL_ERROR);
+                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
+                                                        }
+                                                        else
+                                                            IsDownloadSuccess = true;
+                                                    }
+                                                    else
+                                                    {
+                                                        // 修复：市场源脚本名为 UTF-8（可能含中文，如"我的刀附"），
+                                                        // 直接拼进窄字符路径会被 Windows 按 GBK 解释 → 乱码文件 + 错误 1113。
+                                                        // 改用下载链接末尾的 ID 作为 ASCII 文件名（显示名仍由解压后 info.ini 的 title 提供）。
+                                                        string id = scriptCopy.file.substr(scriptCopy.file.find_last_of('/') + 1);
+                                                        if (id.empty())
+                                                            id = "script";
+                                                        for (char& c : id)
+                                                            if (!isalnum((unsigned char)c)) c = '_';
+                                                        const string target = ScriptPath + "\\download_" + id + ".zip";
+                                                        if (!DownloadURLFiles(scriptCopy.file, target))
+                                                        {
+                                                            PrintLog("[ScriptMarket] 脚本下载失败，URL：" + scriptCopy.file, PL_ERROR);
+                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
+                                                        }
+                                                        else
+                                                            IsDownloadSuccess = true;
+                                                    }
+                                                    // 修复：原代码此处无条件弹"下载成功"，即使上面下载失败也会同时弹"失败+成功"两个提示。
+                                                    // 改为仅在成功时提示。
+                                                    if (IsDownloadSuccess)
+                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载成功") : (scriptCopy.title + " Download Success"), 2.0f, PT_INFO);
+                                                    RefushScriptList(); // 刷新
+                                                });
+                                            FuncThread.detach();
+                                        }
                                     }
-
-                                    SetCursorPos(ImVec2(pos2.x, pos2.y + 16));
-                                    TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
 
                                     DisableAnimation(false);
                                 }
@@ -3743,12 +3909,15 @@ void RenderGui(ImGuiIO& io)
                         static bool IsCheckUpdate = false;
                         if (!IsCheckUpdate)
                         {
-                            thread FuncThread([&]() {
+                            // 修复：lambda 无需捕获任何局部变量（只访问全局 AvaiableScripts 与全局函数），
+                            // 空捕获列表避免未来误用悬垂引用
+                            thread FuncThread([]() 
+                            {
                                 // 写入锁
                                 lock_guard<shared_mutex> write_lock(AvaiableScriptsMtx);
                                 for (ScriptInfo& script : AvaiableScripts)
                                     CheckUpdateScriptFromShop(script);
-                                });
+                            });
                             FuncThread.detach();
                             IsCheckUpdate = true;
                         }
@@ -3771,118 +3940,176 @@ void RenderGui(ImGuiIO& io)
                             {
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
-                                // 绘画脚本图片
-                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
-                                SetCursorPosY(GetCursorPosY() - 6 + 2);
-                                ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
-                                SameLine();
-                                static ImVec2 pos2 = GetCursorPos();
-
-                                Text(script.title.c_str());
-                                SameLine();
+                                // 脚本图片
                                 {
-                                    const string VersionStr = (config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver);
-                                    const ImVec2 SteSize = CalcTextSize(VersionStr.c_str());
-                                    SetCursorPosX(680 - 6 - SteSize.x);
-                                    Text(VersionStr.c_str());
+                                    Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
+                                    SetCursorPos(ImVec2(4.0f, 4.0f));
+                                    ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
                                 }
-                                SameLine();
-                                const bool IsLinkButtonShow = !script.link.empty();
-                                const char* LinkText = config.UseChinese ? u8"教程" : "Guide";
-                                const float LinkButtonWidth = CalcTextSize(LinkText).x + 12;
+
+                                // 标题、信息文字、权限显示、更新按钮
                                 {
-                                    float TagetX = pos2.x + 460;
+                                    const char* TitleText = script.title.c_str();
+                                    const float TitleHeight = CalcTextSize(TitleText).y;
+                                    const float PosX = 4.0f + 64.0f + 6.0f;
+                                    SetCursorPos(ImVec2(PosX, 4.0f));
+                                    Text(TitleText);
+                                    SameLine();
+                                    Text(ICON_FA_CIRCLE_INFO);
+                                    AttachTooltip((script.RestrictedFuncsStr.length() > 0) ? 
+                                        (((config.UseChinese ? u8"脚本请求的权限：\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) : 
+                                        (config.UseChinese ? u8"&7无风险" : "&7No Risks"));
+
+                                    SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
+                                    TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
+
                                     if (script.IsHasUpdate)
-                                        TagetX -= 48 + 6;
-                                    if (IsLinkButtonShow)
-                                        TagetX -= LinkButtonWidth + 6;
-                                    SetCursorPosX(TagetX);
-                                }
-
-                                if (!script.IsInstalled)
-                                {
-                                    if (IsLinkButtonShow)
                                     {
-                                        SetCursorPosY(16);
-                                        if (Button(config.UseChinese ? u8"教程" : "Guide", ImVec2(LinkButtonWidth, 32)))
-                                        {
-                                            thread th([=]() {
-                                                ShellExecute(NULL, NULL, script.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                                                });
-                                            th.detach();
-                                        }
                                         SameLine();
-                                    }
-
-                                    if (script.IsHasUpdate)
-                                    {
-                                        SetCursorPosY(16);
-                                        if (Button(config.UseChinese ? u8"更新" : "Update", ImVec2(48, 32)))
+                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"更新"s : "Update"s)).c_str(), ImVec2(60, 32)))
                                         {
-                                            thread FuncThread([=]() { // 不要使用&，因为script作为for的变量，会改变
-                                                const string filename = ScriptShopDir + "\\" + script.name + ".gcdat";
-                                                const string target = ScriptPath + "\\" + script.name + ".zip";
-                                                if (CopyFile(filename.c_str(), target.c_str(), false))
-                                                    RenderTip(config.UseChinese ? (script.name + u8"更新成功") : (script.title + " Update Success"), 2.0f, PT_INFO);
-                                                else
-                                                    RenderTip(config.UseChinese ? (script.name + u8"更新失败") : (script.title + " Update Failed"), 2.0f, PT_ERROR);
-                                                RefushScriptList(); // 刷新
-                                                });
-                                            FuncThread.detach();
-                                        }
-                                        SameLine(0, 10);
-                                    }
-
-                                    SetCursorPosY(16);
-                                    static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Add);
-                                    if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(32, 32)))// 安装
-                                    {
-                                        read_lock.unlock();
-                                        {
-                                            thread FuncThread([&]()
+                                            thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
                                                 {
-                                                    script.hThread = StartScript(script.file);
-                                                    script.IsInstalled = true;
+                                                    const string filename = ScriptShopDir + "\\" + ScriptCopy.name + ".gcdat";
+                                                    const string target = ScriptPath + "\\" + ScriptCopy.name + ".zip";
+                                                    if (CopyFile(filename.c_str(), target.c_str(), false))
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
+                                                    else
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
+                                                    RefushScriptList(); // 刷新
                                                 });
                                             FuncThread.detach();
-
-                                            // 写入锁
-                                            lock_guard<shared_mutex> write_lock(InstalledScriptsMtx);
-                                            InstalledScripts.push_back(script);
                                         }
-                                        read_lock.lock();
-                                    }
-                                    SameLine(0, 10);
-                                    SetCursorPosY(16);
-                                    static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
-                                    if (ImageButton("script_delete", (ImTextureID)image_texture2, ImVec2(32, 32))) // 删除文件
-                                    {
-                                        // 不要使用&，因为引用的count会因为for导致变化，count会++，所以count可能为末尾值
-                                        // 所以erase越界，修复办法：用=直接复制
-                                        thread FunThread([=]() {
-                                            DeleteDirectoryRecursively(ScriptTemp + "\\" + script.name);
-                                            DelFile(ScriptPath + "\\" + script.name + ".zip");
-                                            AvaiableScripts.erase(AvaiableScripts.begin() + count);
-                                            //RefushScriptList();
-                                            });
-                                        FunThread.detach();
                                     }
                                 }
-                                else
-                                    TextColored((ImVec4)ImColor(192, 51, 74, 255), config.UseChinese ? u8"已安装" : "Installed");
 
-                                SetCursorPos({ pos2.x, pos2.y + 16 });
-                                TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
+                                ImVec2 regionMin = GetWindowContentRegionMin();
+                                ImVec2 regionMax = GetWindowContentRegionMax();
+                                const float WindowWidth = regionMax.x - regionMin.x;
+                                const float WindowHeight = regionMax.y - regionMin.y;
 
-                                const bool HasUsedFunc = script.RestrictedFuncsStr.length() > 0;
-                                string str;
-                                if (HasUsedFunc)
-                                    str = (config.UseChinese ? u8"该脚本使用了：" : "The script used: ") + script.RestrictedFuncsStr;
-                                SetCursorPos(ImVec2(680 - 16 - 4, 72 - 16 - 4));
-                                static const Texture2D image_texture3 = LoadTextureFromFile(Pics_Info);
-                                Image((ImTextureID)image_texture3, ImVec2(16, 16));
-                                AttachTooltip(HasUsedFunc ? str.c_str() : (config.UseChinese ? u8"&7无风险" : "&7No Risks"));
+                                // 版本号文本
+                                {
+                                    const string text = ((config.UseChinese ? u8"版本:" : "Version:") + to_string(script.ver));
+                                    const float TextWidth = CalcTextSize(text.c_str()).x;
+                                    const float PosX = WindowWidth - TextWidth;
+                                    SetCursorPos(ImVec2(PosX, 4));
+                                    TextColored((ImVec4)ImColor(150, 150, 150, 255), text.c_str());
+                                }
+
+                                // 按钮和其他的
+                                {
+                                    const bool HasLinkButtonShow = !script.link.empty();
+                                    const string LinkText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程"s : "Guide"s));
+                                    const float LinkButtonWidth = CalcTextSize(LinkText.c_str()).x + 16;
+                                    const float ImageButtonWidth = 32.0f;
+                                    const float spacing = 6.0f;
+
+                                    float BeginPosX = WindowWidth - ((ImageButtonWidth + spacing) * 2);
+                                    if (HasLinkButtonShow)
+                                        BeginPosX -= LinkButtonWidth + spacing;
+                                    SetCursorPosX(BeginPosX);
+
+                                    if (!script.IsInstalled)
+                                    {
+                                        if (HasLinkButtonShow)
+                                        {
+                                            SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                            if (Button(LinkText.c_str(), ImVec2(LinkButtonWidth, 32)))
+                                            {
+                                                // 值捕获：script 是 for 循环元素引用，线程执行时元素可能已失效
+                                                thread th([scriptCopy = script]()
+                                                {
+                                                    ShellExecute(NULL, NULL, scriptCopy.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                                                });
+                                                th.detach();
+                                            }
+                                            SameLine(0, spacing);
+                                        }
+
+                                        // 安装 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
+                                        SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                        static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Add);
+                                        if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
+                                        {
+                                            // 修复：原代码 [&] 捕获 for 循环元素引用 script，解锁后后台线程写它，
+                                            // 而"删除"按钮的 detach 线程可能已 erase 该元素 → 悬垂引用写 → 0xC0000005。
+                                            // 修复2：原代码 read_lock.unlock() 后再 read_lock.lock() 重锁，重锁后 for 循环
+                                            // 继续使用的 script 引用/迭代器可能已失效（删除线程在解锁窗口 erase）。
+                                            // 现在持读锁期间按值拷贝 scriptCopy，安装动作（StartScript + 写入 InstalledScripts +
+                                            // 更新 AvaiableScripts）全部移入 detach 线程；线程内两次加锁互不嵌套，
+                                            // 避免与 ClearScriptCache（Installed→…→Avaiable 锁序）形成死锁环。
+                                            ScriptInfo scriptCopy = script; // 拷贝时仍持有 read_lock，引用有效
+                                            thread FuncThread([scriptCopy]() mutable
+                                            {
+                                                // 修复：删除"安装后自动启动脚本"功能（废弃）——安装后脚本不自动运行，
+                                                // 由用户在"已安装"列表的"启用"开关手动启动。
+                                                const HANDLE hThread = nullptr;
+                                                scriptCopy.hThread = hThread;
+                                                // 创建 ScriptState 条目（供"启用"开关/启动按键使用，IsRunning=false）
+                                                {
+                                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                                    ScriptStates[scriptCopy.file];
+                                                }
+                                                {
+                                                    lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                                                    InstalledScripts.push_back(scriptCopy);
+                                                }
+                                                {
+                                                    lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                    for (ScriptInfo& s : AvaiableScripts)
+                                                    {
+                                                        if (s.file == scriptCopy.file)
+                                                        {
+                                                            s.hThread = hThread;
+                                                            s.IsInstalled = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                            FuncThread.detach();
+                                        }
+                                        SameLine(0, spacing);
+
+                                        // 删除文件 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
+                                        SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                        static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
+                                        if (ImageButton("script_delete", (ImTextureID)image_texture2, ImVec2(ImageButtonWidth, ImageButtonWidth)))
+                                        {
+                                            thread FunThread([scriptCopy = script]()
+                                            {
+                                                DeleteDirectoryRecursively(ScriptTemp + "\\" + scriptCopy.name);
+                                                DelFile(ScriptPath + "\\" + scriptCopy.name + ".zip");
+                                                // 修复：原代码无锁 erase，与主线程（持读锁遍历 AvaiableScripts）并发 → 崩溃。
+                                                // 写入必须加写锁（主线程释放读锁后本线程才能执行）；
+                                                // 同时不用外部捕获的旧索引 count，改为按名称查找后删除。
+                                                {
+                                                    lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                    for (auto it = AvaiableScripts.begin(); it != AvaiableScripts.end(); ++it)
+                                                    {
+                                                        if (it->name == scriptCopy.name)
+                                                        {
+                                                            AvaiableScripts.erase(it);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                //RefushScriptList();
+                                            });
+                                            FunThread.detach();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // 已安装状态文字
+                                        const char* InstalledText = config.UseChinese ? u8"已安装" : "Installed";
+                                        const ImVec2 TextSize = CalcTextSize(InstalledText);
+                                        SetCursorPos(ImVec2(GetWindowWidth() - TextSize.x - 12.0f * 3, (GetWindowHeight() - TextSize.y) / 2));
+                                        Text(InstalledText);
+                                    }
+                                }
                                 DisableAnimation(false);
                             }
                             EndChild();
@@ -3896,11 +4123,11 @@ void RenderGui(ImGuiIO& io)
                     if (BeginTabItem((ICON_FA_BOLT + (config.UseChinese ? u8"已安装"s : "Installed"s)).c_str()))
                     {
                         IsShopTab = false;
+                        // 读取锁（提前到 size() 检查之前，原代码在锁外读 size() 与安装线程 push_back 并发 → 数据竞争）
+                        shared_lock<shared_mutex> read_lock(InstalledScriptsMtx);
                         if (InstalledScripts.size() == 0)
                             NothingsHereFunc();
                         int count = 0;
-                        // 读取锁
-                        shared_lock<shared_mutex> read_lock(InstalledScriptsMtx);
                         for (const ScriptInfo script : InstalledScripts)
                         {
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
@@ -3910,74 +4137,133 @@ void RenderGui(ImGuiIO& io)
                             SetNextWindowPos(AnimPos);
                             BeginChild("##InstalledScripts", ImVec2(680, 72), true, flags);
                             {
-                                // 边框颜色显示-是否启用
-                                //{
-                                    // 写入锁
-                                    //lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                    //const bool IsEnable = ScriptStates[script.file].e
-                                //}
-
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
-                                // 绘画脚本图片
-                                Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
-                                SetCursorPosY(GetCursorPosY() - 6 + 2);
-                                ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
 
-                                SameLine();
-                                ImVec2 pos = GetCursorPos();
-
-                                Text(script.title.c_str());
-                                SameLine();
+                                // 脚本图片
                                 {
-                                    const string VersionStr = to_string(script.ver);
-                                    const ImVec2 SteSize = CalcTextSize(VersionStr.c_str());
-                                    SetCursorPosX(680 - 6 - SteSize.x);
-                                    Text(VersionStr.c_str());
-                                }
-                                SetCursorPos({ pos.x, pos.y + 16 });
-                                TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
-
-                                const string KeyText = config.UseChinese ? u8"启动按键" : "Start Key";
-                                const float TextWidth = CalcTextSize(KeyText.c_str()).x;
-                                SetCursorPos(ImVec2(pos.x + 380 - TextWidth - 6, 26));
-                                Text(KeyText.c_str());
-                                SameLine();
-                                SetCursorPosY(26);
-                                SetNextItemWidth(100);
-                                {
-                                    // 写入锁
-                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                    InputKey("##script_key", &ScriptStates[script.file].key, config.UseChinese ? u8"请按下按键" : "Press a key");
+                                    Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
+                                    SetCursorPos(ImVec2(4.0f, 4.0f));
+                                    ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
                                 }
 
-                                SameLine(0, 10);
-                                SetCursorPosY(16);
+                                ImVec2 regionMin = GetWindowContentRegionMin();
+                                ImVec2 regionMax = GetWindowContentRegionMax();
+                                const float WindowWidth = regionMax.x - regionMin.x;
+                                const float WindowHeight = regionMax.y - regionMin.y;
 
-                                static const Texture2D image_texture1 = LoadTextureFromFile(Pics_FunSetting);
-                                // 脚本设置按键
-                                if (ImageButton("##script_settings", (ImTextureID)image_texture1, ImVec2(32, 32)))
+                                // 标题、信息文字、权限显示、更新按钮
                                 {
-                                    ScriptSelected = count;
-                                    // 写入锁
-                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                    ScriptStates[script.file].IsSuspend = true;
+                                    const char* TitleText = script.title.c_str();
+                                    const float TitleHeight = CalcTextSize(TitleText).y;
+                                    const float PosX = 4.0f + 64.0f + 6.0f;
+                                    SetCursorPos(ImVec2(PosX, 4.0f));
+                                    Text(TitleText);
+                                    SameLine();
+                                    Text(ICON_FA_CIRCLE_INFO);
+                                    AttachTooltip((script.RestrictedFuncsStr.length() > 0) ?
+                                        (((config.UseChinese ? u8"脚本请求的权限：\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) :
+                                        (config.UseChinese ? u8"&7无风险" : "&7No Risks"));
+
+                                    SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
+                                    TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
+
+                                    if (script.IsHasUpdate)
+                                    {
+                                        SameLine();
+                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"更新"s : "Update"s)).c_str(), ImVec2(60, 32)))
+                                        {
+                                            thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
+                                                {
+                                                    const string filename = ScriptShopDir + "\\" + ScriptCopy.name + ".gcdat";
+                                                    const string target = ScriptPath + "\\" + ScriptCopy.name + ".zip";
+                                                    if (CopyFile(filename.c_str(), target.c_str(), false))
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
+                                                    else
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
+                                                    RefushScriptList(); // 刷新
+                                                });
+                                            FuncThread.detach();
+                                        }
+                                    }
                                 }
-                                SameLine(0, 10);
-                                SetCursorPosY(16);
 
-                                static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
-                                // 删除脚本
-                                if (ImageButton("##script_delete", (ImTextureID)image_texture2, ImVec2(32, 32)))
                                 {
-                                    thread FuncThread([](const ScriptInfo& script)
+                                    const float ImageButtonWidth = 32.0f;
+                                    const float InputKeyWidth = 80.0f;
+                                    const float spacing = 6.0f;
+
+                                    float BeginPosX = WindowWidth - ((ImageButtonWidth + spacing) * 2) - (InputKeyWidth + spacing) - (40.0f + spacing); // 40.0f是toggle
+                                    SetCursorPosX(BeginPosX);
+
+                                    // 启动按键
+                                    SetNextItemWidth(InputKeyWidth);
+                                    {
+                                        // 写入锁
+                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        // 修复：find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
+                                        auto st = ScriptStates.find(script.file);
+                                        if (st != ScriptStates.end())
+                                        {
+                                            SetCursorPosY(WindowHeight - 26.0f);
+                                            InputKey("##script_key", &st->second.key, config.UseChinese ? u8"请按下按键" : "Press a key");
+                                        }
+                                    }
+                                    SameLine(0, spacing);
+
+                                    // 启用开关：关闭 -> IsSuspend = true -> 脚本线程安全睡眠（停止运行）
+                                    // 修复：删除自动启动后，开关从"关闭"拨到"开启"且脚本线程未运行时，手动启动脚本线程
+                                    SetCursorPosY(WindowHeight - 24.0f);
+                                    {
+                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        auto st = ScriptStates.find(script.file);
+                                        if (st != ScriptStates.end())
+                                        {
+                                            bool IsEnable = !st->second.IsSuspend;
+                                            if (Toggle("##script_enable", &IsEnable, ToggleFlags))
+                                            {
+                                                st->second.IsSuspend = !IsEnable;
+                                                // 开启时若脚本线程尚未运行（含正在启动中），启动它
+                                                if (IsEnable && !st->second.IsRunning)
+                                                {
+                                                    st->second.IsRunning = true;   // 乐观置位，防止重复启动
+                                                    thread th([file = script.file]() { StartScript(file); });
+                                                    th.detach();
+                                                }
+                                            }
+                                            AttachTooltip(config.UseChinese ? u8"关闭后：脚本停止运行\n开启时：若脚本未运行则启动脚本" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
+                                        }
+                                    }
+                                    SameLine(0, spacing);
+
+                                    // 脚本设置按键 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
+                                    SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                    static const Texture2D image_texture1 = LoadTextureFromFile(Pics_FunSetting);
+                                    if (ImageButton("##script_settings", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
+                                    {
+                                        ScriptSelected = count;
+                                        // 打开设置时暂停脚本，避免脚本与设置界面并发操作
+                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        auto st = ScriptStates.find(script.file);
+                                        if (st != ScriptStates.end())
+                                            st->second.IsSuspend = true;
+                                    }
+                                    SameLine(0, spacing);
+
+                                    // 删除脚本 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
+                                    SetCursorPosY(WindowHeight - ImageButtonWidth);
+                                    static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
+                                    if (ImageButton("##script_delete", (ImTextureID)image_texture2, ImVec2(ImageButtonWidth, ImageButtonWidth)))
+                                    {
+                                        thread FuncThread([](const ScriptInfo& script)
                                         {
                                             bool IsError = false;
                                             string errormsg;
                                             ScriptSelected = -1;
                                             {
-                                                // 读取锁
-                                                shared_lock<shared_mutex> lock666(AvaiableScriptsMtx);
+                                                // 修复：原代码用 shared_lock（读锁）却修改 s.IsInstalled 并调用
+                                                // CloseScriptThread（会写 s.hThread）→ 读锁内写的数据竞争。改为写锁。
+                                                lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
                                                 // 将可用脚本列表的IsInstalled改为false
                                                 for (ScriptInfo& s : AvaiableScripts)
                                                 {
@@ -3990,25 +4276,36 @@ void RenderGui(ImGuiIO& io)
                                                 }
                                             }
                                             const string file = ScriptPath + "\\" + script.file;
-                                            if (LuaStates.find(file) != LuaStates.end())
                                             {
-                                                // 写入锁
+                                                // 修复：原代码 LuaStates.find 在锁外执行，与下方锁内 erase 并发 → 竞争。移入锁内。
                                                 lock_guard<shared_mutex> lock(LuaStatesMtx);
-                                                LuaStates[file].release();
-                                                LuaStates.erase(file);
+                                                auto it = LuaStates.find(file);
+                                                if (it != LuaStates.end())
+                                                {
+                                                    it->second.release();
+                                                    LuaStates.erase(it);
+                                                }
                                             }
                                             PrintLog("[Script] 已删除脚本：" + script.file, PL_INFO);
+                                            {
+                                                // 修复：原代码在主线程 read_lock.unlock() 后 erase InstalledScripts 再重锁，
+                                                // 重锁后 range-for 迭代器失效 → 崩溃。改为在此 detach 线程内按 file 查找删除
+                                                // （独立加锁、不嵌套，避免与 ClearScriptCache 的锁序形成环）。
+                                                lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                                                for (auto it = InstalledScripts.begin(); it != InstalledScripts.end(); ++it)
+                                                {
+                                                    if (it->file == script.file)
+                                                    {
+                                                        InstalledScripts.erase(it);
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         }, script);
-                                    FuncThread.detach();
-
-                                    read_lock.unlock();
-                                    {
-                                        // 写入锁
-                                        lock_guard<shared_mutex> write_lock(InstalledScriptsMtx);
-                                        InstalledScripts.erase(InstalledScripts.begin() + count);
-                                    }// 一定要等待write_lock生命周期结束，否则会死锁
-                                    read_lock.lock();
+                                        FuncThread.detach();
+                                    }
                                 }
+
                                 DisableAnimation(false);
                             }
                             EndChild();
@@ -4033,7 +4330,9 @@ void RenderGui(ImGuiIO& io)
                                 ScriptEditor::editor.SetText(config.UseChinese ? ScriptEditor::DefaultScriptCodeChinese : ScriptEditor::DefaultScriptCodeEnglish);
                                 IsInit1 = true;
                             }
+                            // 修复：CodeContext 由 detach 线程写入、主线程读取/clear，原代码无锁 → 竞争。
                             static string CodeContext = "null";
+                            static mutex CodeContextMutex;
                             auto func = [&]()
                                 {
                                     if (_access(ScriptTestFile.c_str(), 0) == 0)
@@ -4044,7 +4343,10 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             stringstream buf;
                                             buf << file.rdbuf();
-                                            CodeContext = buf.str();
+                                            {
+                                                lock_guard<mutex> lock(CodeContextMutex);
+                                                CodeContext = buf.str();
+                                            }
                                             return;
                                         }
                                     }
@@ -4052,13 +4354,16 @@ void RenderGui(ImGuiIO& io)
                             thread th(func);
                             th.detach();
 
-                            if (CodeContext != "null")
                             {
-                                if (!CodeContext.empty())
-                                    ScriptEditor::editor.SetText(StringToUTF8(CodeContext));
-                               
-                                CodeContext.clear(); // 释放内存
-                                IsInit2 = true;
+                                lock_guard<mutex> lock(CodeContextMutex);
+                                if (CodeContext != "null")
+                                {
+                                    const string code = CodeContext;
+                                    CodeContext.clear(); // 释放内存
+                                    if (!code.empty())
+                                        ScriptEditor::editor.SetText(StringToUTF8(code));
+                                    IsInit2 = true;
+                                }
                             }
                         }
 
@@ -4072,8 +4377,12 @@ void RenderGui(ImGuiIO& io)
                     if (BeginTabItem((ICON_FA_LIST_UL + (config.UseChinese ? u8"日志"s : "Logs"s)).c_str(), NULL))
                     {
                         IsScriptCreatorTab = true; // 也算
-                        string log = StringToUTF8(LogContext, true);
-                        InputTextMultiline("##log_show", &log, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
+                        {
+                            // 修复：LogContext 由日志线程（Log.h 写端加 LogContextMtx）持续追加，主线程此处无锁读取 → 竞争。
+                            lock_guard<mutex> lock(LogContextMtx);
+                            string log = StringToUTF8(LogContext, true);
+                            InputTextMultiline("##log_show", &log, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
+                        }
                         EndTabItem();
                     }
 
@@ -4094,9 +4403,11 @@ void RenderGui(ImGuiIO& io)
                     SetCursorPos(ImVec2(PosX, pos.y - 2));
                     SetNextItemWidth(100);
                     {
-                        const bool IsNoState = !IsRunning || (ScriptStates.count(ScriptTestFile) == 0);
+                        // 修复：原代码 ScriptStates.count(ScriptTestFile) 在锁外执行（与 ScriptKeyControlThread
+                        // 的遍历、StartScript 线程的插入并发 → map 结构竞争）。移入写锁内。
                         // 写入锁
                         lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                        const bool IsNoState = !IsRunning || (ScriptStates.count(ScriptTestFile) == 0);
                         InputKey("##script_tset_key", &StartKey, config.UseChinese ? u8"请按下按键" : "Press a key");
                     }
 
@@ -4122,7 +4433,12 @@ void RenderGui(ImGuiIO& io)
                                     file.close(); // 不要忘记
 
                                     ThreadHandle = StartScript(ScriptTestFile); // 自动创建state在ScriptStates中
-                                    ScriptStates[ScriptTestFile].key = StartKey;  // 设置默认启动按键为End，方便一点，一定要在StartScript之后赋值（因为如果在StartScript之前，会导致ScriptStates[file]被创建，导致ScriptStates不初始化）
+                                    {
+                                        // 修复：原代码在 detach 线程中无锁 operator[] 插入/修改 ScriptStates，
+                                        // 与 ScriptKeyControlThread 的遍历并发 → map 结构竞争。加写锁。
+                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        ScriptStates[ScriptTestFile].key = StartKey;  // 设置默认启动按键为End，方便一点，一定要在StartScript之后赋值（因为如果在StartScript之前，会导致ScriptStates[file]被创建，导致ScriptStates不初始化）
+                                    }
                                     RenderTip(config.UseChinese ? u8"脚本开始运行" : "Script starts running", 3.0f, PT_INFO);
                                     IsRunning = true;
                                 };
@@ -4213,8 +4529,17 @@ void RenderGui(ImGuiIO& io)
                     {
                         // 读取锁
                         shared_lock<shared_mutex> lock(InstalledScriptsMtx);
-                        script = InstalledScripts[ScriptSelected];
+                        // 修复：ScriptSelected 是打开设置时的列表索引，若期间脚本被删除（列表变短）
+                        // 会越界访问 → 崩溃。加边界检查，越界则关闭设置。
+                        if (ScriptSelected >= (int)InstalledScripts.size())
+                        {
+                            ScriptSelected = -114514;
+                        }
+                        else
+                            script = InstalledScripts[ScriptSelected];
                     }
+                    if (IsTestScript || ScriptSelected > -1)
+                    {
                     const string title = IsTestScript ? (config.UseChinese ? u8"测试脚本设置" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
                     bool IsOpened = true;
                     if (BeginPopupWindow(title.c_str(), &IsOpened))
@@ -4233,12 +4558,17 @@ void RenderGui(ImGuiIO& io)
                             {
                                 // 写入锁
                                 lock_guard<shared_mutex> lock2(ScriptStatesMtx);
-                                ScriptStates[filename].IsSuspend = false;
+                                // 修复：find 替代 operator[]——脚本可能在弹窗期间被删除，
+                                // operator[] 会插入僵尸 ScriptState 条目
+                                auto st = ScriptStates.find(filename);
+                                if (st != ScriptStates.end())
+                                    st->second.IsSuspend = false;
                             }
                             PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
                         }
 
                         EndPopupWindow();
+                    }
                     }
                 }
             }
@@ -4369,7 +4699,7 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard(config.UseChinese ? u8"赞助列表(不分排名)" : "Sponsors (not ranked)", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (AdListMutex.try_lock_shared())
+                    if (SponsorListMutex.try_lock_shared())
                     {
                         int count = -1;
                         for (string name : SponsorList)
@@ -4382,7 +4712,7 @@ void RenderGui(ImGuiIO& io)
                                 SameLine(0, 10);
                             Text(name.c_str());
                         }
-                        AdListMutex.unlock_shared();
+                        SponsorListMutex.unlock_shared();
                     }
                 }
                 EndCard();

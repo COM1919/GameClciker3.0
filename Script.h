@@ -1,6 +1,7 @@
 #pragma once
 #include "Definitons.h"
 #include "ScriptAPI.h"
+#include <memory> // make_shared/shared_ptr（StartScript 线程句柄生命周期）
 
 lua_State* LuaInit();
 HANDLE StartScript(const string& file);
@@ -400,19 +401,23 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
 #define SKC_KEY_CLICK 3
     while (!GCExit)
     {
-        vector<pair<map<string, ScriptState>::iterator, int>> modifications;
+        // 修复：原代码在读锁内保存 map 迭代器到 modifications，读锁释放后再用写锁解引用这些迭代器。
+        // 期间其他线程（如 CloseScriptThread）可能 erase 元素 → 迭代器失效 → 0xC0000005。
+        // 改为保存 key（string），写锁内重新 find 并检查存在性。
+        vector<pair<string, int>> modifications;
         {
             // 读取锁
             shared_lock<shared_mutex> lock(ScriptStatesMtx);
-            for (auto it = ScriptStates.begin(); it != ScriptStates.end(); ++it)
+            for (const auto& entry : ScriptStates)
             {
-                const int key = it->second.key;
+                const string& file = entry.first;
+                const int key = entry.second.key;
                 if (GetKeyClick(key))
-                    modifications.emplace_back(it, SKC_KEY_CLICK);
+                    modifications.emplace_back(file, SKC_KEY_CLICK);
                 if (GetKeyDown(key))
-                    modifications.emplace_back(it, SKC_KEY_DOWN);
+                    modifications.emplace_back(file, SKC_KEY_DOWN);
                 if (GetKeyUp(key))
-                    modifications.emplace_back(it, SKC_KEY_UP);
+                    modifications.emplace_back(file, SKC_KEY_UP);
             }
         } // read_lock 在这里自动释放
 
@@ -421,18 +426,21 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
             lock_guard<shared_mutex> write_lock(ScriptStatesMtx);
             for (const auto& mod : modifications)
             {
-                // mod.first 是迭代器，mod.second 是要设置的值
+                auto it = ScriptStates.find(mod.first);
+                if (it == ScriptStates.end())
+                    continue; // 脚本已被关闭/删除，跳过
+                // mod.second 是要设置的值
                 switch (mod.second)
                 {
                 case SKC_KEY_CLICK:
-                    mod.first->second.IsClickedKey = true;
+                    it->second.IsClickedKey = true;
                     break;
                 case SKC_KEY_DOWN:
-                    mod.first->second.IsPressedKey = true;
+                    it->second.IsPressedKey = true;
                     break;
                 case SKC_KEY_UP:
-                    mod.first->second.IsPressedKey = false;
-                    mod.first->second.IsReleaseKey = true;
+                    it->second.IsPressedKey = false;
+                    it->second.IsReleaseKey = true;
                     break;
                 }
             }
@@ -452,22 +460,43 @@ HANDLE StartScript(const string& file)
     
     auto thread_func = [](HANDLE* hThread, const string& file)
     {
+        // 标记当前脚本线程的 file，供 ScriptAPI 定位自己的 ScriptState（无需遍历 LuaStates，避免死锁环）
+        CurrentScriptFile = file;
+        // 脚本线程运行标记（供"启用"开关判断）：所有退出路径（失败/崩溃/正常）都要复位
+        auto MarkNotRunning = [&file]()
+        {
+            lock_guard<shared_mutex> lock(ScriptStatesMtx);
+            auto it = ScriptStates.find(file);
+            if (it != ScriptStates.end())
+                it->second.IsRunning = false;
+        };
+        // 确保 ScriptStates 条目存在：原代码在循环头 ScriptStates[file]（operator[]）隐式创建，
+        // 改成 find 后必须显式创建，否则新安装的脚本首次运行会因 find 失败而立即退出。
+        {
+            lock_guard<shared_mutex> lock(ScriptStatesMtx);
+            ScriptStates[file].IsRunning = true;
+        }
         bool IsError = false;
         string errmsg;
         LuaState* lua = nullptr;
         {
+            // 写入锁：脚本线程的"所有者"角色，锁内 operator[] 可安全插入（CloseScriptThread 会等本线程退出才 erase）
             lock_guard<shared_mutex> lock(LuaStatesMtx);
             lua = &LuaStates[file];
-        }
-        if (!lua->lua)
-        {
-            lock_guard<shared_mutex> lock(LuaStatesMtx);
-            if (!InitLuaState(file, LuaStates[file]))
+            if (!lua->lua)
             {
-                *hThread = 0;
-                return;
+                // 修复：初始化也必须在 RunningMtx 内——RenderScriptGui/SaveScriptConfig 可能在其他线程
+                // 持 RunningMtx 调用 render/saveConfig，若此处不加 RunningMtx，两个线程会对同一 lua_State
+                // 同时调用 Lua API（Lua 非线程安全）→ 状态损坏/崩溃。
+                // 锁顺序全局统一：LuaStatesMtx → RunningMtx → Mtx。
+                lock_guard<mutex> run_lock(lua->RunningMtx);
+                if (!InitLuaState(file, *lua))
+                {
+                    *hThread = 0;
+                    MarkNotRunning();
+                    return;
+                }
             }
-            lua = &LuaStates[file];   // 重新获取
         }
         // 无论是否第一次运行，都需要复制线程句柄
         {
@@ -477,6 +506,7 @@ HANDLE StartScript(const string& file)
             {
                 PrintLog("[Script] 复制线程句柄失败(Error ID:1)", PL_ERROR);
                 *hThread = 0;
+                MarkNotRunning();
                 return;
             }
             *hThread = hRealHandle;
@@ -495,11 +525,16 @@ HANDLE StartScript(const string& file)
             {
                 // 读取锁
                 shared_lock<shared_mutex> lock(ScriptStatesMtx);
-                auto& it = ScriptStates[file];
-                if (it.IsExit)
+                // 修复：原代码在 shared_lock（读锁）下调用 ScriptStates[file]（operator[]），
+                // key 不存在时会插入元素（写操作却持读锁）→ 数据竞争。改为 find。
+                auto it = ScriptStates.find(file);
+                if (it == ScriptStates.end())
+                    break; // 状态已被清除（脚本被关闭），退出脚本
+                const ScriptState& state = it->second;
+                if (state.IsExit)
                     break; // 退出脚本
-                IsSuspend = it.IsSuspend;
-                LoopDelay = it.LoopDelay;
+                IsSuspend = state.IsSuspend;
+                LoopDelay = state.LoopDelay;
             }
 
             if (IsSuspend)
@@ -522,62 +557,98 @@ HANDLE StartScript(const string& file)
                     // 脚本崩溃了，在 已安装 中，删除当前脚本
                     // 写入锁
                     lock_guard<shared_mutex> lock(InstalledScriptsMtx);
-                    int count = 0;
-                    for (const ScriptInfo& s : InstalledScripts)
+                    // 修复：range-for 内 erase 迭代器脆弱，改为索引循环（找到即删除并跳出）
+                    for (int i = 0; i < (int)InstalledScripts.size(); i++)
                     {
-                        if (s.file == file)
+                        if (InstalledScripts[i].file == file)
                         {
-                            InstalledScripts.erase(InstalledScripts.begin() + count);
+                            InstalledScripts.erase(InstalledScripts.begin() + i);
                             break;
                         }
-                        count++;
                     }
                 }
                 break; // 退出！
             }
             Sleep(LoopDelay);
         }
-        lua->release();
+        {
+            // 修复：lua_close 与 render/saveConfig/main 的 Lua 调用并发 → 同一 lua_State 双线程访问。
+            // release() 也必须在 RunningMtx 内串行化。
+            lock_guard<mutex> run_lock(lua->RunningMtx);
+            lua->release();
+        }
+        MarkNotRunning();   // 正常退出：复位运行标记（供"启用"开关下次启动）
         PrintLog("[Script] 脚本线程退出：" + file, PL_INFO);
     };
-    HANDLE hThread = nullptr;
-    thread t(thread_func, &hThread, file);
+    // 修复：原代码把局部变量 hThread 的地址传给 detach 线程（thread_func 会写入 *hThread），
+    // 若 StartScript 等待超时返回后线程才写入 → 写已销毁的栈内存（悬垂写）。
+    // 改为 shared_ptr 堆分配句柄，由线程持有副本保证生命周期。
+    auto hThread = make_shared<HANDLE>(nullptr);
+    thread t([hThread, file, thread_func]() { thread_func(hThread.get(), file); });
     t.detach();
 
     // 等待线程启动并且获得到线程句柄
     int try_count = 20; // 50 * 20 = 1000 = 1s
-    while (hThread == nullptr && try_count > 0)
+    while (*hThread == nullptr && try_count > 0)
     {
         Sleep(50);
         try_count--;
     }
-    return hThread;
+    return *hThread;
 }
 
 bool RenderScriptGui(const string& file)
 {
-    LuaState* lua = nullptr;
+    // 修复：必须在 LuaStatesMtx 锁内完成 RunningMtx 获取与全部 Lua 调用——
+    // 若先取指针再释放锁，CloseScriptThread 可在窗口期 release()+erase → LuaState 悬垂 UAF。
+    // 锁顺序全局统一：LuaStatesMtx → RunningMtx → Mtx（与 thread_func 初始化/CloseScriptThread 一致）。
+    lock_guard<shared_mutex> lock(LuaStatesMtx);
+    auto it = LuaStates.find(file);
+    if (it == LuaStates.end())
+        return true;   // 尚未初始化（脚本线程可能正在初始化）：不视为错误，设置弹窗保持打开
+    // 修复：RunningMtx 用 try_lock——脚本 main 正在执行（长 Sleep/耗时迭代）时，
+    // 主线程渲染不阻塞等待（否则渲染循环卡死 = 点击设置后 UI 卡住），本帧跳过 render，下一帧再试。
+    unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
+    if (!run_lock.owns_lock())
+        return true;   // 脚本 main 忙：本帧跳过 render（不误关设置弹窗）
+    // 设置 CurrentScriptFile，让脚本 render 内的 IsScriptKeyDown/SetScriptLoopDelay 等能定位自己的状态
+    const string PrevScript = CurrentScriptFile;
+    CurrentScriptFile = file;
+    if (!InitLuaState(file, it->second))
     {
-        // 写入锁
-        lock_guard<shared_mutex> lock(LuaStatesMtx);
-        lua = &LuaStates[file];
-    }
-    if (!InitLuaState(file, *lua))
+        CurrentScriptFile = PrevScript;
         return 0;
-    // 写入锁
-    lock_guard<mutex> lock(lua->RunningMtx);
-    const int ret = CalledScriptFunction(lua->lua, "render") == 0;
+    }
+    const int ret = CalledScriptFunction(it->second.lua, "render") == 0;
+    CurrentScriptFile = PrevScript;
     return ret;
 }
 
 int SaveScriptConfig(const string& file)
 {
-    auto& lua = LuaStates[file];
-    if (!InitLuaState(file, lua))
+    // 修复：SaveScriptConfig 在 detach 线程运行，应用退出时（GCExit）CloseAllLua 已清空 LuaStates，
+    // 残留线程访问会 UAF → 崩溃。入口检查退出标志。
+    if (GCExit)
         return 0;
-    // 写入锁
-    lock_guard<mutex> lock(lua.RunningMtx);
-    const int ret = CalledScriptFunction(lua.lua, "saveConfig") == 0;
+    // 修复：原代码无锁 LuaStates[file]（operator[]）→ map 竞争；且取指针后释放锁 → UAF。
+    // 与 RenderScriptGui 同样在 LuaStatesMtx 锁内完成全部访问。
+    lock_guard<shared_mutex> lock(LuaStatesMtx);
+    auto it = LuaStates.find(file);
+    if (it == LuaStates.end())
+        return 0;
+    // 修复：与 RenderScriptGui 一致，RunningMtx 用 try_lock，脚本忙时跳过保存（避免后台线程堆积）
+    unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
+    if (!run_lock.owns_lock())
+        return 0;
+    const string PrevScript = CurrentScriptFile;
+    CurrentScriptFile = file;
+    if (!InitLuaState(file, it->second))
+    {
+        CurrentScriptFile = PrevScript;
+        return 0;
+    }
+    const int ret = CalledScriptFunction(it->second.lua, "saveConfig") == 0;
+    CurrentScriptFile = PrevScript;
     return ret;
 }
 
@@ -614,11 +685,21 @@ void CloseScriptThread(const string& filename, ScriptInfo& info)
     }
     // 清理 LuaStates，以便下次运行时重新加载脚本
     {
+        // 写入锁
         lock_guard<shared_mutex> lock(LuaStatesMtx);
         auto it = LuaStates.find(filename);
         if (it != LuaStates.end())
         {
-            it->second.release();
+            // 修复：lua_close 必须与 render/saveConfig/main 的 Lua 调用串行化（Lua 非线程安全）。
+            // 仅在线程正常退出（WAIT_OBJECT_0）时等待 RunningMtx——若走 TerminateThread 强杀，
+            // 线程可能持有 RunningMtx，此时获取该锁会永久卡死本线程。
+            if (ret == WAIT_OBJECT_0)
+            {
+                lock_guard<mutex> run_lock(it->second.RunningMtx);
+                it->second.release();
+            }
+            else
+                it->second.release();
             LuaStates.erase(it);
         }
     }
@@ -648,8 +729,9 @@ void ClearScriptCache()
                 lua.second.IsLoaded = false;
                 lua.second.release();
             }
+            // 修复：原代码 LuaStates.clear() 在锁外执行，与锁内 find/operator[] 并发 → map 竞争
+            LuaStates.clear();
         }
-        LuaStates.clear();
         {
             // 写入锁
             lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
@@ -699,6 +781,7 @@ void CloseAllLua()
             lua.second.IsLoaded = false;
             lua.second.release();
         }
+        // 修复：原代码 LuaStates.clear() 在锁外执行，与锁内 find/operator[] 并发 → map 竞争
+        LuaStates.clear();
     }
-    LuaStates.clear();
 }

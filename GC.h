@@ -795,14 +795,18 @@ void RenderControl()
         mb_message.clear();
 #endif // GC_NO_MSGBOX
     //=======================提示框===========================
-    int count = 0;
-    for (PopTipMsg& pt : pt_message)
     {
-        // 写入锁
+        // 修复：原代码 for 遍历在锁外、erase 在锁内，且写端 RenderTip 完全无锁。
+        // 任意线程 push_back 触发 vector 扩容 → 正在遍历的迭代器失效 → 0xC0000005。
+        // 现在整个遍历+删除在写锁内完成，并用迭代器 erase 代替索引 erase。
         lock_guard<shared_mutex> lock(PTChangeMutex);
-        if (!PopTip(pt.message, pt.timeout, pt.type))
-            pt_message.erase(pt_message.begin() + count);
-        count++;
+        for (auto it = pt_message.begin(); it != pt_message.end();)
+        {
+            if (!PopTip(it->message, it->timeout, it->type))
+                it = pt_message.erase(it);
+            else
+                ++it;
+        }
     }
 }
 
@@ -1351,12 +1355,12 @@ struct TextureInfo
 };
 shared_mutex TextureMutex;
 map<string, TextureInfo> TextureMap;
-map<string, bool> TextureErrorMap;
 Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled, int* w, int* h)
 {
-    // 检查缓存
+    // 检查缓存（读锁：与 GetInfo 等线程的写入、主线程的读取并发安全）
     if (!CacheDisabled)
     {
+        shared_lock<shared_mutex> lock(TextureMutex);
         auto it = TextureMap.find(id);
         if (it != TextureMap.end())
         {
@@ -1383,9 +1387,10 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
     // 释放图片数据
     stbi_image_free(image_data);
 
-    // 添加到缓存
+    // 添加到缓存（写锁：防止与并发读取/写入互相破坏 map 结构）
     if (!CacheDisabled && textureSRV != nullptr)
     {
+        lock_guard<shared_mutex> lock(TextureMutex);
         TextureMap[id].texture = textureSRV;
         TextureMap[id].width = image_width;
         TextureMap[id].height = image_height;
@@ -1400,6 +1405,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
     // 检查缓存
     if (!CacheDisabled)
     {
+        shared_lock<shared_mutex> lock(TextureMutex);
         auto it = TextureMap.find(filename);
         if (it != TextureMap.end())
         {
@@ -1409,21 +1415,8 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
         }
     }
     // 检查文件是否存在，
-    try
+    if (_access(filename.c_str(), 0) != 0)
     {
-        if (_access(filename.c_str(), 0) != 0)
-        {
-            if (!TextureErrorMap[filename])
-                PrintLog("[Render] 无效的图片路径: " + filename, PL_ERROR);
-            TextureErrorMap[filename] = true;
-            return nullptr;
-        }
-    }
-    catch (...)
-    {
-        if (!TextureErrorMap[filename])
-            PrintLog("[Render] 无效的图片路径: " + filename, PL_ERROR);
-        TextureErrorMap[filename] = true;
         return nullptr;
     }
 
@@ -1447,6 +1440,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
     // 添加到缓存
     if (!CacheDisabled && textureSRV != nullptr)
     {
+        lock_guard<shared_mutex> lock(TextureMutex);
         TextureMap[filename].texture = textureSRV;
         TextureMap[filename].width = image_width;
         TextureMap[filename].height = image_height;
@@ -1458,43 +1452,19 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
 // 清理纹理缓存的函数
 void ClearTextureCache()
 {
+    lock_guard<shared_mutex> lock(TextureMutex);
     for (auto& pair : TextureMap)
     {
         if (pair.second.texture != nullptr)
             pair.second.texture->Release();
     }
-    TextureErrorMap.clear();
     TextureMap.clear();
 }
 
 auto GetGuiColor(ImGuiStyle& Style, float alpha)
 {
     static auto Colors = Style.Colors;
-    /*Colors[ImGuiCol_Button] = ImColor(37, 37, 38, 255);
-    Colors[ImGuiCol_ButtonHovered]     =  ImColor(46, 42, 50, 255);
-    Colors[ImGuiCol_ButtonActive]      =  ImColor(39, 35, 43, 255);
-
-    Colors[ImGuiCol_FrameBg]           =  ImColor(39, 35, 43, 255);
-    Colors[ImGuiCol_FrameBgActive]     =  ImColor(46, 42, 50, 255);
-    Colors[ImGuiCol_FrameBgHovered]    =  ImColor(74, 69, 78, 255);
-
-    Colors[ImGuiCol_CheckMark]         =  ImColor(192, 51, 74, 255);
-
-    Colors[ImGuiCol_SliderGrab]        =  ImColor(192, 51, 74, 255);
-    Colors[ImGuiCol_SliderGrabActive]  =  ImColor(172, 31, 54, 255);
-
-    Colors[ImGuiCol_Header]            =  ImColor(39, 35, 43, 255);
-    Colors[ImGuiCol_HeaderHovered]     =  ImColor(74, 69, 78, 255);
-    Colors[ImGuiCol_HeaderActive]      =  ImColor(46, 42, 50, 255);
-
-    Colors[ImGuiCol_WindowBg]          =  ImColor(14, 14, 14, 255);
-    Colors[ImGuiCol_TitleBgCollapsed]  =  ImColor(128, 10, 128, 255);
-    Colors[ImGuiCol_TitleBg]           =  ImColor(128, 10, 128, 255);
-    Colors[ImGuiCol_TitleBgActive]     =  ImColor(128, 10, 128, 255);
-    Colors[ImGuiCol_Text]              =  ImColor(255, 255, 255, 255);
     
-    Colors[ImGuiCol_Border]            =  ImColor(51, 26, 33, 255);
-    return Colors;*/
     Colors[ImGuiCol_WindowBg] = ImVec4{ 0.06f, 0.05f, 0.09f, alpha };
     Colors[ImGuiCol_MenuBarBg] = ImVec4{ 0.12f, 0.10f, 0.16f, alpha };
     Colors[ImGuiCol_ChildBg] = ImVec4{ 0.15f, 0.13f, 0.20f, alpha };
@@ -1566,7 +1536,6 @@ auto GetGuiColor(ImGuiStyle& Style, float alpha)
 
     // Modal
     Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
-
     return Colors;
 }
 

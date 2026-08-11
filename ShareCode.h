@@ -10,10 +10,18 @@
 #include <iomanip>
 #include <sstream>
 #include <psapi.h>
+#include <pdh.h>
+// PDH 错误码（如 PDH_MORE_DATA）定义在 pdhmsg.h，pdh.h 不包含它；__has_include 防御缺失该头的工具链
+#if defined(__has_include)
+#if __has_include(<pdhmsg.h>)
+#include <pdhmsg.h>
+#endif
+#endif
 #include <algorithm>
 #include <TlHelp32.h>
 #include <malloc.h>
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "pdh.lib")
 
 #define PT_INFO 1
 #define PT_WARNING 2
@@ -68,6 +76,9 @@ string GetProcessPathFromPID(DWORD processId);
 
 void CheckUpdateScriptFromShop(ScriptInfo& script)
 {
+	// 修复：此函数在 detach 线程中执行，与脚本商店刷新线程（GC.cpp 中 clear/重填 ScriptShopList）
+	// 及主线程遍历并发。原代码无锁，vector 扩容导致迭代器失效 -> 0xC0000005。加读锁。
+	shared_lock<shared_mutex> lock(ScriptShopListMtx);
 	for (const ScriptInfo& NewScript : ScriptShopList)
 	{
 		if (NewScript.name == script.name)
@@ -283,13 +294,29 @@ bool DownloadURLFiles(const string& url, const string& filename)
 
 	const int bufferSize = 4096;
 	char buffer[bufferSize]{};
-	DWORD bytesRead;
+	DWORD bytesRead = 0;
+	bool ok = true;
 	while (internet.InternetReadFile(buffer, bufferSize, &bytesRead) && bytesRead > 0)
-		fwrite(buffer, 1, bytesRead, file);
+	{
+		if (fwrite(buffer, 1, bytesRead, file) != bytesRead)
+		{
+			ok = false;
+			break;
+		}
+	}
+	if (ferror(file) != 0)
+		ok = false;
 	fclose(file);
 
-	PrintLog("[Download] 已下载" + url + " 到 " + filename, PL_INFO);
-	return true;
+	// 修复：原代码无条件 return true——网络读取失败/写入失败也会报"已下载"，产生空或不完整的文件，
+	// 后续 CopyFile/解压会在错误文件上继续。改为真实反映读取结果。
+	if (ok)
+	{
+		PrintLog("[Download] 已下载" + url + " 到 " + filename, PL_INFO);
+		return true;
+	}
+	PrintLog("[Download] 下载失败: " + url, PL_ERROR);
+	return false;
 }
 
 bool ReadURLDatas(const string& url, string& datas)
@@ -326,6 +353,12 @@ struct MarketScriptMeta {
 };
 int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
 {
+	// 修复：static 缓存向量（GiteeScriptList/MarketScriptList）可能被多个 detach 线程
+	//（快速切换下载源/翻页）并发访问 → 数据竞争（UB）。整个函数串行化；
+	// 网络请求期间持锁会阻塞其他调用，但商场刷新是用户显式操作，可接受。
+	static mutex ShopListMtx;
+	lock_guard<mutex> lock(ShopListMtx);
+
 	const int PaperSize = 10;
 	const string baseUrl = "https://scripts.mcgc.top";
 
@@ -872,8 +905,10 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 		script.name = filename;
 
 		string dir = TempPath + "\\" + filename;
-		if (_access(dir.c_str(), 0) != 0)
-			CreateDirectory(dir.c_str(), NULL);
+		// 修复：解压前先清理旧目录，避免上次运行残留的文件（多个 lua / 旧图标）导致
+		// "发现多个lua文件"误报或图标互相覆盖。
+		DeleteDirectoryRecursively(dir.c_str());
+		CreateDirectory(dir.c_str(), NULL);
 		int ret = UnZipFile(info.file.c_str(), dir.c_str());
 		if (ret != 0)
 		{
@@ -956,8 +991,10 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 		const int count = script.RestrictedFuncs.size();
 		for (int i = 0; i < count; i++) // 不能是<=，因为size比实际大1
 		{
-			if (i != 0) // 直接使用=，相当于开头就清空了RestrictedFuncsStr
-				script.RestrictedFuncsStr = ", ";
+			// 修复：原代码 i!=0 时用 "=" 覆盖整个字符串（把之前拼接的权限全部丢掉，只剩最后一个），
+			// 应为追加分隔符
+			if (i != 0)
+				script.RestrictedFuncsStr += ", ";
 			script.RestrictedFuncsStr += script.RestrictedFuncs[i];
 		}
 	}
@@ -1090,7 +1127,11 @@ void GetStringFileName(string& str, bool KeepSuffix)
 {
 	if (!KeepSuffix)
 	{
-		size_t dotPosition = str.find('.');
+		// 修复：原代码 str.find('.') 取的是【第一个】点号，若路径中目录名含点
+		// （如 D:\...\GameClciker3.0\...\AuxScaffold.gcdat），会在 GameClciker3.0 处错误截断，
+		// 导致所有脚本名都变成 "GameClciker3"、全部解压到同一目录（互相覆盖 → 图标错乱、
+		// 多个 lua 误报、脚本无法识别）。改用 rfind('.') 取最后一个点（真正的扩展名前）。
+		size_t dotPosition = str.rfind('.');
 		if (dotPosition != string::npos)
 			str.erase(dotPosition);
 	}
@@ -1418,10 +1459,80 @@ int GetMemUsageRate(int sleep)
 	return nMemoryUseRate;
 }
 
+// GPU使用率获取：使用 Windows PDH 性能计数器 \GPU Engine(*)\Utilization Percentage。
+// 该计数器 Windows 10 1709+ 可用，NVIDIA/AMD/Intel 显卡通用，无需厂商 SDK（NVML/ADL）。
+// 任务管理器的"GPU 利用率"即各 GPU 引擎（3D/复制/视频等）利用率之和，这里累加全部实例。
 int GetGpuUsageRate(int sleep)
 {
-	Sleep(sleep);
-	return 0;
+    // 静态初始化 PDH 查询（仅首次调用时初始化；RecordsPCRate 单线程调用，无需加锁）
+    static PDH_HQUERY hQuery = NULL;
+    static PDH_HCOUNTER hCounter = NULL;
+    static bool IsInit = false;
+    static bool IsFailed = false;
+
+    if (!IsInit && !IsFailed)
+    {
+        if (PdhOpenQueryW(NULL, 0, &hQuery) == ERROR_SUCCESS)
+        {
+            // 必须使用英文计数器名：PDH 默认走本地化路径，中文系统无法解析中文计数器名
+            if (PdhAddEnglishCounterW(hQuery, L"\\GPU Engine(*)\\Utilization Percentage", 0, &hCounter) == ERROR_SUCCESS)
+                IsInit = true;
+            else
+            {
+                PdhCloseQuery(hQuery);
+                hQuery = NULL;
+                IsFailed = true; // 系统不支持 GPU 计数器（如 Win7/精简系统），不再反复重试
+            }
+        }
+        else
+            IsFailed = true;
+
+        if (IsFailed)
+            PrintLog("[Perf] 无法初始化 GPU 使用率计数器（需要 Windows 10 1709+）", PL_WARNING);
+    }
+
+    if (!IsInit)
+    {
+        Sleep(sleep);
+        return 0;
+    }
+
+    // 第一次采样作为起点
+    if (PdhCollectQueryData(hQuery) != ERROR_SUCCESS)
+    {
+        Sleep(sleep);
+        return 0;
+    }
+    Sleep(sleep);
+    // 第二次采样作为终点，两次采样的差值即 sleep 间隔内的平均利用率
+    if (PdhCollectQueryData(hQuery) != ERROR_SUCCESS)
+        return 0;
+
+    // 枚举所有 GPU 引擎实例（通配符 * 对应多个实例），累加利用率。
+    // 使用固定大小缓冲区（GPU 引擎实例数通常 < 20），避免依赖 PDH_MORE_DATA 错误码宏。
+    const DWORD MaxInstances = 128;
+    DWORD bufferSize = sizeof(PDH_FMT_COUNTERVALUE_ITEM_W) * MaxInstances;
+    DWORD itemCount = 0;
+    PDH_FMT_COUNTERVALUE_ITEM_W* items = (PDH_FMT_COUNTERVALUE_ITEM_W*)malloc(bufferSize);
+    if (items != NULL)
+    {
+        DWORD err = PdhGetFormattedCounterArrayW(hCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount, items);
+        if (err == ERROR_SUCCESS)
+        {
+            double total = 0.0;
+            for (DWORD i = 0; i < itemCount; i++)
+            {
+                if (items[i].FmtValue.CStatus == ERROR_SUCCESS)
+                    total += items[i].FmtValue.doubleValue;
+            }
+            free(items);
+            // 各引擎之和可能轻微超过 100%，clamp 到 0~100
+            int rate = (int)(total + 0.5);
+            return max(0, min(100, rate));
+        }
+        free(items);
+    }
+    return 0;
 }
 
 int GetCpuUsageRate(int sleep)
@@ -1787,6 +1898,10 @@ string GetOpenFileName()
 //timeout单位为秒
 void RenderTip(string msg, float timeout, UINT type)
 {
+	// 修复：原代码无锁 find_if/push_back。RenderTip 被 GetInfo/Network/ClickSound 等
+	// 多个后台线程以及主线程调用，与渲染线程遍历 pt_message 并发时 vector 扩容，
+	// 导致迭代器失效与访问已释放内存 → 0xC0000005。加写锁保护。
+	lock_guard<shared_mutex> lock(PTChangeMutex);
 	auto pos = find_if(pt_message.begin(), pt_message.end(), [&msg](PopTipMsg a)
 		{
 			return a.message == msg;
@@ -1826,8 +1941,10 @@ int RenderMessageBox(string message, const char* title, UINT type, bool wating =
 		};
 	if (!wating)
 	{
-		thread th(func);
-		th.detach();
+		// 修复：原代码 detach 一个 [&] 捕获栈局部变量 ret 的线程，函数返回后该线程仍写
+		// 已销毁的栈内存 → 悬垂写（0xC0000005 隐患）。弹窗本体由主线程渲染循环
+		// （RenderControl 中的 MessageBox 处理）负责显示与设置 ret_code，非阻塞场景无需等待线程。
+		return 0;
 	}
 	else
 		func();
@@ -1860,8 +1977,8 @@ int RenderMessageBoxEx(string message, const char* title, map<string, UINT> butt
 		};
 	if (!wating)
 	{
-		thread th(func);
-		th.detach();
+		// 修复：同 RenderMessageBox，不再 detach 写栈变量的等待线程
+		return 0;
 	}
 	else
 		func();

@@ -42,13 +42,13 @@ struct SoundRange
 };
 array<SoundRange, 256> VkToSoundRange;
 unordered_map<string, array<ALuint, 256>> KeybdSoundSourceList;
-vector<ALuint*> KeybdSoundBufferList;
+vector<ALuint> KeybdSoundBufferList;    // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 array<ALuint, 256> CurrentKeybdSource;
 ALCcontext* g_pALContext = nullptr;   // 保存全局 context
 
 unordered_map<string, unordered_map<string, ALuint>> MouseSoundSourceList;
 unordered_map<string, ALuint> CurrentMouseSource;
-vector<ALuint*> MouseSoundBufferList;
+vector<ALuint> MouseSoundBufferList;    // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 
 // 函数定义
 LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam);
@@ -98,7 +98,7 @@ void LoadSounds()
 			CreateSouce(&source, false);
 			BindSouce(&source, &buffer, false);
 			MouseSoundSourceList[name][pair.first] = source;
-			MouseSoundBufferList.push_back(&buffer);
+			MouseSoundBufferList.push_back(buffer); // 修复：存值而非 &buffer（buffer 为循环局部变量，地址每轮复用且函数返回后悬垂）
 			PrintLog("[Sound] 已加载wav文件:" + SoundFile, PL_INFO);
 		}
 		MouseSoundList.push_back(name);
@@ -159,7 +159,7 @@ void LoadSounds()
 			CreateSouce(&source, false);
 			BindSouce(&source, &buffer, false);
 			KeybdSoundSourceList[name][vk] = source;
-			KeybdSoundBufferList.push_back(&buffer);
+			KeybdSoundBufferList.push_back(buffer); // 修复：存值而非 &buffer（buffer 为循环局部变量，函数返回后悬垂）
 		}
 		KeybdSoundList.push_back(name);
 	}
@@ -504,6 +504,8 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 	while (!GCExit)
 	{
+		// 修复：循环内持续读取 config（UseMouseSound/NoiseVolume/音量/类型等），持读锁与主线程 config 重置互斥
+		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		if (VarHasChanged(config.UseMouseSound, "EnableUseMouseSound"))
 		{
 			if(config.UseMouseSound)
@@ -561,11 +563,17 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		for (auto& source : sources.second)
 			alDeleteSources(1, &source.second);
 	}
-	for (auto& buffer : MouseSoundBufferList)
-		alDeleteBuffers(1, buffer);
+	for (ALuint buffer : MouseSoundBufferList)
+	{
+		if (buffer != 0)
+			alDeleteBuffers(1, &buffer);
+	}
 
-	for (auto& buffer : KeybdSoundBufferList)
-		alDeleteBuffers(1, buffer);
+	for (ALuint buffer : KeybdSoundBufferList)
+	{
+		if (buffer != 0)
+			alDeleteBuffers(1, &buffer);
+	}
 
 	for (auto& sources : KeybdSoundSourceList)
 	{
@@ -591,6 +599,8 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 	srand(time(NULL));
 	while (!GCExit)
 	{
+		// 修复：循环内读取 config（UseMouseSound/音量/Sleep 间隔），持读锁与主线程 config 重置互斥
+		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		if (!config.UseMouseSound || !SoundIsOpen)
 		{
 			Sleep(100);

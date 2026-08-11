@@ -275,7 +275,6 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
             if (ip == "0")
             {
                 PrintLog("[Server] 服务器域名解析失败", PL_ERROR);
-                RenderTip(u8"服务器域名解析失败，请检查网络连接或域名是否正确", 4.5f, PT_ERROR);
                 return 1;
             }
             
@@ -332,7 +331,6 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 if (tokens[0] == "hb")
                 {
                     client.Send("online");
-                    client.Send("online"); // 发2次保险
                     LastHBTime = GetNowMs();
                     continue;
                 }
@@ -344,24 +342,18 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                     continue;
                 }
 
-                if (!tokens.empty())
+                if (tokens[0] == "msg")
                 {
-                    if (tokens[0] == "msg")
+                    if (tokens.size() >= 2)
                     {
-                        if (tokens.size() >= 2)
-                        {
-                            PrintLog("[Server] 服务器发来消息:" + tokens[1], PL_WARNING);
-                            RenderMessageBox(tokens[1], u8"服务器发来消息", MB_OK, false);
-                            MessageBeep(MB_OK);
-                        }
+                        RenderMessageBox(tokens[1], u8"服务器发来消息", MB_OK, false);
+                        MessageBeep(MB_OK);
                     }
-                    else if (tokens[0] == "abort")
-                    {
-                        PrintLog("[Server] 服务器要求强制退出", PL_WARNING);
-                        MessageBeep(MB_ICONERROR);
-                        GCExit = true;
-                        break;
-                    }
+                }
+                else if (tokens[0] == "abort")
+                {
+                    GCExit = true;
+                    break;
                 }
             }
             else

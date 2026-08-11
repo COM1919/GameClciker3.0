@@ -15,6 +15,12 @@ extern "C"
 
 #undef DrawText
 
+// 当前脚本线程正在执行的脚本 file（thread_local：每个脚本线程/主线程各自独立）。
+// 用途：让 ScriptAPI（IsScriptKeyDown/Up/Click、SetScriptLoopDelay）无需遍历 LuaStates 即可
+// 定位自己的 ScriptState，避免"在 RunningMtx 内获取 LuaStatesMtx"与 RenderScriptGui 的
+// "LuaStatesMtx→RunningMtx"形成死锁环（LuaJIT 同一 lua_State 不可跨线程并发调用）。
+thread_local string CurrentScriptFile;
+
 typedef struct LuaState
 {
     lua_State* lua;
@@ -694,18 +700,18 @@ namespace ScriptAPI
     {
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyDown的参数太多");
-        
-        for (const auto& it : LuaStates)
+
+        // 修复：不再遍历 LuaStates（避免 RunningMtx 内获取 LuaStatesMtx 形成死锁环），
+        // 用 thread_local 的 CurrentScriptFile 直接定位；find 替代 operator[]（避免读锁下插入/复活僵尸条目）
+        if (CurrentScriptFile.empty())
         {
-            if (it.second.lua == L)
-            {
-                // 读取锁
-                shared_lock<shared_mutex> lock(ScriptStatesMtx);
-                lua_pushboolean(L, ScriptStates[it.first].IsPressedKey);
-                return 1;
-            }
+            lua_pushboolean(L, false);
+            return 1;
         }
-        lua_pushboolean(L, false);
+        // 读取锁
+        shared_lock<shared_mutex> lock(ScriptStatesMtx);
+        auto st = ScriptStates.find(CurrentScriptFile);
+        lua_pushboolean(L, st != ScriptStates.end() ? st->second.IsPressedKey : false);
         return 1;
     }
 
@@ -714,19 +720,21 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyUp的参数太多");
 
-        for (const auto& it : LuaStates)
+        if (CurrentScriptFile.empty())
         {
-            if (it.second.lua == L)
-            {
-                // 写入锁
-                lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                auto& kc = ScriptStates[it.first];
-                lua_pushboolean(L, kc.IsReleaseKey);
-                kc.IsReleaseKey = false;
-                return 1;
-            }
+            lua_pushboolean(L, false);
+            return 1;
         }
-        lua_pushboolean(L, false);
+        // 写入锁
+        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+        auto st = ScriptStates.find(CurrentScriptFile);
+        if (st == ScriptStates.end())
+        {
+            lua_pushboolean(L, false);
+            return 1;
+        }
+        lua_pushboolean(L, st->second.IsReleaseKey);
+        st->second.IsReleaseKey = false;
         return 1;
     }
 
@@ -735,19 +743,21 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsScriptKeyClick的参数太多");
 
-        for (const auto& it : LuaStates)
+        if (CurrentScriptFile.empty())
         {
-            if (it.second.lua == L)
-            {
-                // 写入锁
-                lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                auto& kc = ScriptStates[it.first];
-                lua_pushboolean(L, kc.IsClickedKey);
-                kc.IsClickedKey = false;
-                return 1;
-            }
+            lua_pushboolean(L, false);
+            return 1;
         }
-        lua_pushboolean(L, false);
+        // 写入锁
+        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+        auto st = ScriptStates.find(CurrentScriptFile);
+        if (st == ScriptStates.end())
+        {
+            lua_pushboolean(L, false);
+            return 1;
+        }
+        lua_pushboolean(L, st->second.IsClickedKey);
+        st->second.IsClickedKey = false;
         return 1;
     }
 
@@ -774,17 +784,15 @@ namespace ScriptAPI
         int delay = 5;
         if (ParamNumber == 1)
             delay = luaL_checkinteger(L, 1);
-        
-        for (const auto& it : LuaStates)
-        {
-            if (it.second.lua == L)
-            {
-                // 写入锁
-                lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                ScriptStates[it.first].LoopDelay = delay;
-                return 0;
-            }
-        }
+
+        // 修复：同 IsScriptKeyDown，用 thread_local CurrentScriptFile 定位，避免死锁环与 LuaStates 遍历竞争
+        if (CurrentScriptFile.empty())
+            return 0;
+        // 写入锁
+        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+        auto st = ScriptStates.find(CurrentScriptFile);
+        if (st != ScriptStates.end())
+            st->second.LoopDelay = delay;
         return 0;
     }
 

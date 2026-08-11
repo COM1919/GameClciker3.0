@@ -50,6 +50,8 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 
 	while (!GCExit)
 	{
+		// 修复：循环体持续读取 config（快捷键/CPS/模式等），持读锁保证与主线程 config 重置（写锁）互斥
+		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		{
 			static ULONGLONG LastTime = GetTickCount64() + 3000;
 
@@ -362,6 +364,39 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				ClickerDynamicDelay.left = int(1000.0f / max(config.LCPS, 0));
 		}
 
+		// ===== 过热降频：连点持续达到过热点后，CPS 线性下降直到最低限制（停止连点即恢复）=====
+		// 参考 CPS 波动的写法在 ClickerControl 主循环统一计算（连点线程只负责消费 ClickerDynamicDelay）。
+		{
+			// 用"最近点击时间"判断连点会话：IsClickering 是瞬时点击状态（空刀时为 false），
+			// 不能直接用它计时，超过 IdleThreshold 无点击才视为会话结束。
+			static ULONGLONG LastClickTime = 0;      // 最近一次实际点击的时间
+			static ULONGLONG OverheatStartTime = 0;  // 当前连点会话的开始时间
+			static const ULONGLONG IdleThreshold = 500;   // 超过该时长无点击 = 连点结束
+
+			const bool IsClicking = IsClickering.right || IsClickering.left;
+			if (IsClicking)
+			{
+				const ULONGLONG Now = GetTickCount64();
+				if (Now - LastClickTime > IdleThreshold)   // 新的连点会话开始
+					OverheatStartTime = Now;
+				LastClickTime = Now;
+
+				if (config.UseOverheatThrottle && config.Overheat_Time > 0.0f)
+				{
+					const float ElapsedSec = (Now - OverheatStartTime) / 1000.0f;
+					if (ElapsedSec >= config.Overheat_Time)   // 到达过热点后才开始降频
+					{
+						// 在 Overheat_ThrottleTime 秒内线性降到 MinCPS（过热时优先于 CPS 波动）
+						const float Throttle = min(1.0f, (ElapsedSec - config.Overheat_Time) / max(config.Overheat_ThrottleTime, 0.1f));
+						const float RCurCPS = config.RCPS - (config.RCPS - config.Overheat_MinCPS) * Throttle;
+						const float LCurCPS = config.LCPS - (config.LCPS - config.Overheat_MinCPS) * Throttle;
+						ClickerDynamicDelay.right = 1000.0f / max(RCurCPS, 1.0f);
+						ClickerDynamicDelay.left = 1000.0f / max(LCurCPS, 1.0f);
+					}
+				}
+			}
+		}
+
 		{
 			static ULONGLONG LastTime = GetTickCount64();
 			// RecordTime为1小时
@@ -416,8 +451,8 @@ POINT MouseShakeAlgorithm(POINT& view, POINT center)
 
 		// 设置随机后的坐标
 		points = {
-			Random(min.x, max.x, config.MouseShake_RandomGen, config.MouseShake_RandomDist),
-			Random(min.y, max.y, config.MouseShake_RandomGen, config.MouseShake_RandomDist)
+			Random(min.x, max.x, GenerateGen_mersenne_twister, config.MouseShake_RandomDist),
+			Random(min.y, max.y, GenerateGen_mersenne_twister, config.MouseShake_RandomDist)
 		};
 		MousePos = { center.x + points.x, center.y + points.y };
 		// 设置视角，加上偏移
@@ -428,8 +463,8 @@ POINT MouseShakeAlgorithm(POINT& view, POINT center)
 	{
 		// 设置随机后的坐标
 		MousePos = {
-			Random(ShakeRect.left, ShakeRect.right, config.MouseShake_RandomGen, config.MouseShake_RandomDist),
-			Random(ShakeRect.top, ShakeRect.bottom, config.MouseShake_RandomGen, config.MouseShake_RandomDist)
+			Random(ShakeRect.left, ShakeRect.right, GenerateGen_mersenne_twister, config.MouseShake_RandomDist),
+			Random(ShakeRect.top, ShakeRect.bottom, GenerateGen_mersenne_twister, config.MouseShake_RandomDist)
 		};
 	}
 
@@ -647,7 +682,13 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 		while (!IsClickerSuccess || StopClicker)
 			Sleep(20);
 
-		float ClickRates = (100 - (config.UseREmptyRate ? config.REmptyRateValue : 0)) / 100.0f;
+		RandomBoolManager rbm;
+		if (config.UseREmptyRate)
+		{
+			rbm.SetErrorRate(config.REmptyRateValue / 100.0f);
+			rbm.SetMode((RandomBoolMode)config.EmptyRate_RandomMode);
+			rbm.SetDistribution(config.EmptyRate_RandomDist);
+		}
 		ULONGLONG EndTime = GetTickCount64() + config.RCTime;
 		ULONGLONG SlepTime = EndTime + config.RCSleep;
 		bool IsEndTime = false;
@@ -656,6 +697,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
+			// 修复：点击循环内持续读取 config（模式/CPS/延迟等），持读锁与主线程 config 重置（写锁）互斥。
+			// 注意：不能把锁放在外层循环入口——StopClicker 时线程会长期停在等待循环（Sleep(20)），
+			// 会把读锁占死导致重置线程饿死。因此只覆盖真正读 config 的点击循环。
+			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
+
 			// 优先级处理
 			if (config.ClickerPriorityMode == CP_LC && IsClickering.left)
 			{
@@ -674,7 +720,12 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					LastTime = 0;
 
 				if (!IsKeyPressed)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（按键释放）时重置 RandomBoolManager 疲劳/马尔可夫状态，模拟休息恢复。
+					// 用触发源（按键）而非 IsClickering 判断——空刀时 IsClickering 也为 false，会误重置。
+					rbm.ResetFatigue();
+				}
 
 				if (config.UseRClickTime && IsDelayEnd)
 				{
@@ -689,7 +740,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				if (config.EnableRightClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate && rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -719,7 +770,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					LastTime = 0;
 
 				if (!IsKeyPressed)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（鼠标键释放）时重置疲劳状态（同按钮模式）
+					rbm.ResetFatigue();
+				}
 
 				if (config.UseRClickTime && IsDelayEnd)
 				{
@@ -740,7 +795,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					IsDownMouse = false;
 				}
 
-				if (config.EnableRightClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate && rbm.rand()))
 				{
 					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
@@ -752,8 +807,10 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						IsClickering.right = true;
 						if (config.UseRClickPressTime)
 							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
-						if (config.UseItemWithClicker)
+						if (config.UseRClickerTrigInter)
 						{
+							if (config.UseOldMethodToTrigInter)
+								SetKeyUp(Click::Right, config.SimulateClickMode);
 							SetKeyDown(Click::Right, config.SimulateClickMode);
 							IsDownMouse = true;
 						}
@@ -778,7 +835,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					LastTime = 0;
 
 				if (!IsTrigger)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（开关关闭）时重置疲劳状态（同按钮模式）
+					rbm.ResetFatigue();
+				}
 
 				if (config.UseRClickTime && IsDelayEnd)
 				{
@@ -795,7 +856,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				}
 				if (GetKeyClick(config.RKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode))
 					SwitchMode_RClick = !SwitchMode_RClick;
-				if (SwitchMode_RClick && config.EnableRightClicker && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (SwitchMode_RClick && config.EnableRightClicker && (!config.UseREmptyRate || rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -863,7 +924,15 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 		while (!IsClickerSuccess || StopClicker)
 			Sleep(10);
 
-		float ClickRates = (100 - (config.UseLEmptyRate ? config.LEmptyRateValue : 0)) / 100.0f;
+		RandomBoolManager rbm;
+		if (config.UseLEmptyRate)
+		{
+			// 修复：原代码误用 config.REmptyRateValue（右键空刀概率）——左键连点应使用左键空刀概率
+			rbm.SetErrorRate(config.LEmptyRateValue / 100.0f);
+			rbm.SetMode((RandomBoolMode)config.EmptyRate_RandomMode);
+			rbm.SetDistribution(config.EmptyRate_RandomDist);
+		}
+
 		ULONGLONG EndTime = GetTickCount64() + config.LCTime;
 		ULONGLONG SlepTime = EndTime + config.LCSleep;
 		bool IsEndTime = false;
@@ -872,6 +941,9 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
 		{
+			// 修复：点击循环内持续读取 config，持读锁与主线程 config 重置（写锁）互斥（同 RClickRun）
+			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
+
 			// 优先级处理
 			if (config.ClickerPriorityMode == CP_RC && IsClickering.right)
 			{
@@ -886,7 +958,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
 				if (!IsKeyPressed)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（按键释放）时重置疲劳状态（同 RClickRun）
+					rbm.ResetFatigue();
+				}
 
 				if (!IsKeyPressed && LastTime != 0)
 					LastTime = 0;
@@ -904,7 +980,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				if (config.EnableLeftClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate && rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -930,7 +1006,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
 				if (!IsKeyPressed)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（鼠标键释放）时重置疲劳状态（同 RClickRun）
+					rbm.ResetFatigue();
+				}
 
 				if (!IsKeyPressed && LastTime != 0)
 					LastTime = 0;
@@ -955,7 +1035,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					IsDownMouse = false;
 				}
 
-				if (config.EnableLeftClicker && IsKeyPressed && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate && rbm.rand()))
 				{
 					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
@@ -967,8 +1047,10 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						IsClickering.left = true;
 						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickerDynamicDelay.left / 2) : (ClickerDynamicDelay.left - config.LPressDuration);
-						if (config.UseBreakBlocksWithClicker)
+						if (config.UseLClickerTrigInter)
 						{
+							if (config.UseOldMethodToTrigInter)
+								SetKeyUp(Click::Left, config.SimulateClickMode);
 							SetKeyDown(Click::Left, config.SimulateClickMode);
 							IsDownMouse = true;
 						}
@@ -989,7 +1071,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsTrigger;
 				bool IsDelayEnd = false;
 				if (!IsTrigger)
+				{
 					IsDelayEnd = false;
+					// 修复：连点结束（开关关闭）时重置疲劳状态（同 RClickRun）
+					rbm.ResetFatigue();
+				}
 				else if ((!config.UseLStartClickerDelay || LastTime + config.LStartClickerDelay <= GetTickCount64()) && !IsDelayEnd)
 					IsDelayEnd = true;
 
@@ -1011,7 +1097,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				}
 				if (GetKeyClick(config.LKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode))
 					SwitchMode_LClick = !SwitchMode_LClick;
-				if (SwitchMode_LClick && config.EnableLeftClicker && RandomBool(ClickRates, config.EmptyRate_RandomGen, config.EmptyRate_RandomDist))
+				if (SwitchMode_LClick && config.EnableLeftClicker && (!config.UseLEmptyRate && rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();

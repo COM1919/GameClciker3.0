@@ -60,11 +60,15 @@ DWORD WINAPI GameGuiThread(LPVOID lpParam)
 					data.StartTime = StartTime;
 					data.RRecordsCPS = RRecordsCPS;
 					data.LRecordsCPS = LRecordsCPS;
-					data.CpuRates = CpuRates;
-					data.GpuRates = GpuRates;
+					{
+						// 修复：防御性加读锁，避免与 RecordsPCRate 线程的写入并发
+						shared_lock<shared_mutex> lock(PerformanceMutex);
+						data.CpuRates = CpuRates;
+						data.GpuRates = GpuRates;
+						data.MemRates = MemRates;
+					}
 					data.RCPS = CurrentCPS.right;
 					data.LCPS = CurrentCPS.left;
-					data.MemRates = MemRates;
 					data.IsClickering = IsClickering;
 					data.version = version;
 

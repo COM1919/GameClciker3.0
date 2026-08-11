@@ -136,6 +136,13 @@ enum GenerateGen
     GenerateGen_subtract_with_carry_engine,      //减去余数算法
 };
 
+enum RandomBoolMode
+{
+    RandomBoolMode_UNIFORM,   // 普通随机：标准均匀浮点分布（正统随机）
+    RandomBoolMode_FATIGUE,   // 疲劳效应：随时间推移失误率上升
+    RandomBoolMode_BIONIC     // 仿生幽灵：疲劳 + 手抖 + 马尔可夫纠错
+};
+
 // CPS波动
 struct WaveParam
 {
@@ -193,19 +200,17 @@ public:
         };
     int MouseShake_RandomDist =             //鼠标抖动随机数生成分布
     GenerateDis_uniform_int_distribution;
-    int MouseShake_RandomGen =              //鼠标抖动随机数生成器
-    GenerateGen_mersenne_twister;
     int EmptyRate_RandomDist =              //空刀概率随机数生成分布
     GenerateDis_bernoulli_distribution;
-    int EmptyRate_RandomGen =               //空刀概率随机数生成器
-    GenerateGen_mersenne_twister;
-    int Fluctuation_RandomDist =            //CPS波动随机数生成分布
-    GenerateDis_uniform_int_distribution;
-    int Fluctuation_RandomGen =             //CPS波动随机数生成器
-    GenerateGen_mersenne_twister;
+    int EmptyRate_RandomMode =              //CPS波动随机数生成模式
+    RandomBoolMode_UNIFORM;
     int MemSearchSleep = 20;                //内存搜索延迟(毫秒)
     int MouseSoundSleep = 1;                //鼠标点击声音的循环延迟
     int AssistModeCPSThreshold = 4;         //辅助模式的CPS门限
+    bool UseOverheatThrottle = false;       //过热降频开关
+    int Overheat_MinCPS = 10;               //过热降频的CPS最低限制（不能低于此值）
+    float Overheat_Time = 5.0f;             //过热速度：连点持续多少秒后达到过热点
+    float Overheat_ThrottleTime = 5.0f;     //降频速度：到达过热点后，多少秒内降到CPS最低限制
     int SelfDestructionKey = 0;             //自毁快捷键
     int UseLFluctuationRandMode = FRM_SL;   //左键CPS波动随机模式
     int UseRFluctuationRandMode = FRM_SL;   //右键CPS波动随机模式
@@ -278,8 +283,9 @@ public:
     bool UseLOnlyJumpClicker = false;       //开关跳跃时启用左键连点
     bool UseRestTimeOnStopClicker = true;   //开关停止连点时，重置连点间隔的时间
     bool UseBrutalMode = false;             //开关暴力模式
-    bool UseBreakBlocksWithClicker = false; //开关连点时可以挖掘方块
-    bool UseItemWithClicker = false;        //开关连点时可以使用物品
+    bool UseLClickerTrigInter = false;      //开关连点时可以挖掘方块
+    bool UseRClickerTrigInter = false;      //开关连点时可以使用物品
+    bool UseOldMethodToTrigInter = false;   //开关使用老办法实现破坏方块/使用物品
     bool UseRStartClickerDelay = false;     //开关右键启动延迟
     bool UseLStartClickerDelay = false;     //开关左键启动延迟
     bool UseFilterRSingleClick = false;     //开关过滤右键单次点击
@@ -293,6 +299,14 @@ public:
     bool UseItembarSwitch = false;          //物品栏开关
     bool UseHumanOnlyTrigger = false;       //仅限人类触发连点器
 }config;
+// 修复：config 重建标记。原代码在 detach 线程中执行 config.~Config() + placement new，
+// 与其他线程并发读写 config 各字段 -> 对象生命周期中断（0xC0000005）。
+// 改为后台线程只做用户确认，确认后置位此标记，由主渲染线程在帧边界执行重建。
+atomic<bool> IsNeedResetConfig = false;
+// 修复：config 访问互斥锁。重置时主线程持写锁重建 config，
+// 高频消费 config 的后台线程（ClickerControl/连点线程/声音线程）在循环体内持读锁，
+// 保证重建瞬间没有任何后台线程在读取 config 的 string/vector 成员（对象析构期间的并发读是 0xC0000005 来源）。
+shared_mutex ConfigAccessMutex;
 
 //--------------------个性化设置------------------------------
 int BgOffsetX = 0;                      //背景偏移X
@@ -302,16 +316,6 @@ int BgLightness = 75;                   //背景亮度百分比
 int GuiItemAlpha = 40;                  //控件的透明度百分比（仅有背景图片时才能使用）
 bool BgAutoResize = true;               //自动调整背景大小
 
-static const array<const char*, 8> RandomGenList = {
-    (config.UseChinese ? u8"梅森旋转算法"       :  "Mersenne Twister"           ),
-    (config.UseChinese ? u8"Ranlux24基础算法"   :  "Ranlux24 Base"              ),
-    (config.UseChinese ? u8"最小标准随机数算法" :  "Minstd Rand"                ),
-    (config.UseChinese ? u8"丢弃块算法"         :  "Discard Block Engine"       ),
-    (config.UseChinese ? u8"独立位算法"         :  "Independent Bits Engine"    ),
-    (config.UseChinese ? u8"洗牌顺序算法"       :  "Shuffle Order Engine"       ),
-    (config.UseChinese ? u8"线性同余算法"       :  "Linear Congruential Engine" ),
-    (config.UseChinese ? u8"带进位减法算法"     :  "Subtract With Carry Engine" )
-};
 static const array<const char*, 2> RandomDistList = {
     (config.UseChinese ? u8"均匀整数分布"       : "Uniform Int Distribution"    ),
     (config.UseChinese ? u8"二项分布"           : "Binomial Distribution"       )
@@ -320,6 +324,11 @@ static const array<const char*, 3> BoolRandomDistList = {
     (config.UseChinese ? u8"Bool类型分布"       : "Bernoulli Distribution"      ),
     (config.UseChinese ? u8"均匀整数分布"       : "Uniform Int Distribution"    ),
     (config.UseChinese ? u8"二项分布"           : "Binomial Distribution"       )
+};
+static const array<const char*, 3> RandomBoolModeList = {
+    (config.UseChinese ? u8"普通随机：使用自定义随机分布" : "Normal: Use custom random dist"                            ),
+    (config.UseChinese ? u8"疲劳效应：随时间推移失误率上升" : "Fatigue: error rate increases over time"                 ),
+    (config.UseChinese ? u8"仿生幽灵：疲劳、手抖、马尔可夫纠错" : "Ghost: Fatigue / Hand Shaking / Markov Error Correction" )
 };
 
 //--------------------其他------------------------------
@@ -333,7 +342,8 @@ vector<float> CpuRates;                 //CPU占用率记录
 vector<float> GpuRates;                 //GPU占用率记录
 vector<float> MemRates;                 //内存占用率记录
 vector<vector<float>> ScriptCpuRates;   //脚本CPU占用率记录
-mutex RecordsCPSMutex;                  //以上变量的互斥锁
+mutex RecordsCPSMutex;                  //RRecordsCPS/LRecordsCPS 的互斥锁
+shared_mutex PerformanceMutex;          //CpuRates/GpuRates/MemRates 的互斥锁（RecordsPCRate 线程写、主渲染线程读）
 atomic<bool> ThreadExitFlag(false);     //线程退出标志
 
 const vector<string> ScriptRestrictedFuncs = {
@@ -367,30 +377,23 @@ struct ScriptState
     int LoopDelay = 0;
     bool IsExit = false;
     bool IsSuspend = false;
+    bool IsRunning = false;    // 脚本线程是否已启动（供"启用"开关判断是否需要启动脚本）
 };
 
 shared_mutex InstalledScriptsMtx;       //已安装的脚本锁
 shared_mutex AvaiableScriptsMtx;        //可用的脚本锁
 shared_mutex ScriptStatesMtx;           //脚本状态的锁
+shared_mutex ScriptShopListMtx;         //脚本商店列表的锁（刷新线程 clear/重填、主线程遍历、检查更新线程遍历）
 vector<ScriptInfo> InstalledScripts;    //已安装的脚本
 vector<ScriptInfo> AvaiableScripts;     //可用的脚本
-vector<ScriptInfo> ScriptShopList;      //脚本商店的脚本列表（几乎没有持续的其他线程，没必要lock）
+vector<ScriptInfo> ScriptShopList;      //脚本商店的脚本列表
 map<string, ScriptState> ScriptStates;  //脚本相关状态控制
-
-struct AdStruct
-{
-    string text;
-    string link;
-    Texture2D texture;
-};
-shared_mutex AdListMutex;
-vector<AdStruct> AdList;                //广告列表
 
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.47";          //版本号
-string title = "GAMECLICKER 3.47";      //标题名字
+const string version = "3.49";          //版本号
+string title = "GAMECLICKER 3.49";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
 const int AgreementVersion = 3;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比

@@ -188,6 +188,10 @@ void SaveConfig()
 	WritePrivateProfileString("BasicSettings", "mouseShakeRect", to_string(config.MouseShakeRect).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "quickSwitchTotal", to_string(config.QuickSwitchTotal).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "assistModeCpsThreshold", to_string(config.AssistModeCPSThreshold).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "useOverheatThrottle", to_string(config.UseOverheatThrottle).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "overheatMinCps", to_string(config.Overheat_MinCPS).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), CIniPos);
+	WritePrivateProfileString("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "selfDestructionKey", to_string(config.SelfDestructionKey).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "leftFluctuationRandMode", to_string(config.UseLFluctuationRandMode).c_str(), CIniPos);
 	WritePrivateProfileString("BasicSettings", "rightFluctuationRandMode", to_string(config.UseRFluctuationRandMode).c_str(), CIniPos);
@@ -262,8 +266,9 @@ void SaveConfig()
 	WritePrivateProfileString("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useRestTimeOnStopClicker", config.UseRestTimeOnStopClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useBreakBlocksWithClicker", config.UseBreakBlocksWithClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useItemWithClicker", config.UseItemWithClicker ? "TRUE" : "FALSE", CIniPos);
+	WritePrivateProfileString("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE", CIniPos);
+	WritePrivateProfileString("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE", CIniPos);
+	WritePrivateProfileString("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useLeftStartClickerDelay", config.UseLStartClickerDelay ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useFilterRightSingleClick", config.UseFilterRSingleClick ? "TRUE" : "FALSE", CIniPos);
@@ -333,11 +338,8 @@ void SaveConfig()
 
 	// RandomSettings section
 	WritePrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "mouseShakeRandomGen", to_string(config.MouseShake_RandomGen).c_str(), CIniPos);
 	WritePrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "emptyRateRandomGen", to_string(config.EmptyRate_RandomGen).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "fluctuationRandomDist", to_string(config.Fluctuation_RandomDist).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), CIniPos);
+	WritePrivateProfileString("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), CIniPos);
 
 	// Vector保存
 	string rCpsTrendStr, lCpsTrendStr;
@@ -401,7 +403,7 @@ void SaveConfig()
 	WritePrivateProfileString("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), CIniPos);
 	WritePrivateProfileString("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", CIniPos);
 
-	//--------------------脚本自启动------------------------------
+	//--------------------已安装脚本列表持久化（原"脚本自启动"，已废弃自动运行，仅保留列表保存）--------------------
 	if (_access(ScriptInstallList.c_str(), 0) != 0)
 		CreateFile(ScriptInstallList);
 	// 创建或清空
@@ -413,7 +415,8 @@ void SaveConfig()
 		for (const auto& script : InstalledScripts)
 			ScriptFile << script.name << endl;
 		ScriptFile.close();
-		PrintLog("[Config] 已保存 " + to_string(InstalledScripts.size() - 1) + " 个脚本到自启动列表", PL_INFO);
+		// 修复：原代码 size()-1 在空列表时无符号下溢 → 日志显示天文数字（"int 极限"）
+		PrintLog("[Config] 已保存 " + to_string(InstalledScripts.size()) + " 个已安装脚本", PL_INFO);
 	}
 }
 
@@ -469,6 +472,15 @@ void LoadConfig()
 		config.MouseShakeRect           = GetPrivateProfileInt("BasicSettings", "mouseShakeRect", config.MouseShakeRect, CIniPos);
 		config.QuickSwitchTotal         = GetPrivateProfileInt("BasicSettings", "quickSwitchTotal", config.QuickSwitchTotal, CIniPos);
 		config.AssistModeCPSThreshold   = GetPrivateProfileInt("BasicSettings", "assistModeCpsThreshold", config.AssistModeCPSThreshold, CIniPos);
+		config.UseOverheatThrottle      = GetPrivateProfileInt("BasicSettings", "useOverheatThrottle", config.UseOverheatThrottle, CIniPos) != 0;
+		config.Overheat_MinCPS          = GetPrivateProfileInt("BasicSettings", "overheatMinCps", config.Overheat_MinCPS, CIniPos);
+		{
+			// 注意：键名用 overheatReachTime，避免与既有"过热保护"功能的 overheatTime 键冲突
+			GetPrivateProfileString("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), buffer, MAX_BUF, CIniPos);
+			config.Overheat_Time = stof(buffer);
+			GetPrivateProfileString("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), buffer, MAX_BUF, CIniPos);
+			config.Overheat_ThrottleTime = stof(buffer);
+		}
 		config.SelfDestructionKey       = GetPrivateProfileInt("BasicSettings", "selfDestructionKey", config.SelfDestructionKey, CIniPos);
 		config.UseLFluctuationRandMode  = GetPrivateProfileInt("BasicSettings", "leftFluctuationRandMode", config.UseLFluctuationRandMode, CIniPos);
 		config.UseRFluctuationRandMode  = GetPrivateProfileInt("BasicSettings", "rightFluctuationRandMode", config.UseRFluctuationRandMode, CIniPos);
@@ -672,12 +684,15 @@ void LoadConfig()
 		GetPrivateProfileString("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseBrutalMode = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useBreakBlocksWithClicker", config.UseBreakBlocksWithClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		GetPrivateProfileString("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
-		config.UseBreakBlocksWithClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useItemWithClicker", config.UseItemWithClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		config.UseLClickerTrigInter = st.find("TRUE") != string::npos;
+		GetPrivateProfileString("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
-		config.UseItemWithClicker = st.find("TRUE") != string::npos;
+		config.UseRClickerTrigInter = st.find("TRUE") != string::npos;
+		GetPrivateProfileString("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		st = buffer;
+		config.UseOldMethodToTrigInter = st.find("TRUE") != string::npos;
 		GetPrivateProfileString("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseRStartClickerDelay = st.find("TRUE") != string::npos;
@@ -822,16 +837,13 @@ void LoadConfig()
 		//==================================================RandomSettings section==================================================
 		GetPrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
 		config.MouseShake_RandomDist = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "mouseShakeRandomGen", to_string(config.MouseShake_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-		config.MouseShake_RandomGen = stoi(buffer);
 		GetPrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
 		config.EmptyRate_RandomDist = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "emptyRateRandomGen", to_string(config.EmptyRate_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-		config.EmptyRate_RandomGen = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "fluctuationRandomDist", to_string(config.Fluctuation_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
-		config.Fluctuation_RandomDist = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "fluctuationRandomGen", to_string(config.Fluctuation_RandomGen).c_str(), buffer, MAX_BUF, CIniPos);
-		config.Fluctuation_RandomGen = stoi(buffer);
+		GetPrivateProfileString("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), buffer, MAX_BUF, CIniPos);
+		config.EmptyRate_RandomMode = stoi(buffer);
+		// 修复：移除 STIFF 模式后仅 0~2 有效；旧配置文件里的 1(STIFF)/2(FATIGUE)/3(BIONIC) 数值错位，越界时重置
+		if (config.EmptyRate_RandomMode < 0 || config.EmptyRate_RandomMode >= 3)
+			config.EmptyRate_RandomMode = RandomBoolMode_UNIFORM;
 
 		//==================================================Vector读取==================================================
 		GetPrivateProfileString("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
@@ -923,8 +935,17 @@ void LoadConfig()
 		BgAutoResize = st.find("TRUE") != string::npos;
 	}
 
-	//--------------------脚本自启动------------------------------
-	PrintLog("[Config] 找到 " + to_string(AvaiableScripts.size() - 1) + " 个可用脚本", PL_INFO);
+	delete[] buffer;
+	buffer = nullptr;
+}
+
+// 从已安装脚本列表文件恢复 InstalledScripts。
+// 修复：原逻辑放在 LoadConfig() 中，但 LoadConfig 运行时 AvaiableScripts 尚未填充
+//（RefushScriptList 在 InitGC 线程执行）→ 恢复块恒被跳过，已安装列表每次启动丢失。
+// 现在改为独立函数，由 InitGC 在 RefushScriptList() 之后调用。
+void RestoreInstalledScripts()
+{
+	PrintLog("[Config] 已恢复 " + to_string(InstalledScripts.size()) + " 个已安装脚本", PL_INFO);
 	if (!AvaiableScripts.empty())
 	{
 		ifstream ScriptFile(ScriptInstallList.c_str());
@@ -936,16 +957,18 @@ void LoadConfig()
 				// 写入锁
 				lock_guard<shared_mutex> lock1(AvaiableScriptsMtx);
 				lock_guard<shared_mutex> lock2(InstalledScriptsMtx);
+				// 修复：原代码对每一行把【所有】可用脚本都标记 IsInstalled 且重复 push 同名脚本
+				//（导致已安装列表错乱、无法正常工作）；改为只恢复名字匹配的脚本。
 				for (auto& asc : AvaiableScripts)
 				{
-					asc.IsInstalled = true;
 					if (asc.name == line)
+					{
+						asc.IsInstalled = true;
 						InstalledScripts.push_back(asc);
+						break;
+					}
 				}
 			}
 		}
 	}
-
-	delete[] buffer;
-	buffer = nullptr;
 }

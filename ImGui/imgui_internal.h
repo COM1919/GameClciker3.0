@@ -3837,7 +3837,7 @@ namespace ImGui
             window->DC.CursorPos.y - window->Pos.y + window->Scroll.y
         };
         float PosYRate = 1.0f - (pos.y / ImGui::GetIO().DisplaySize.y);
-        float speed = 0.4f * ImMax(0.2f, PosYRate) * (1.0f - ImGui::GetIO().DeltaTime);
+        float speed = 0.5f * ImMax(0.2f, PosYRate) * (1.0f - ImGui::GetIO().DeltaTime);
         it_anim->second = ImLerp(it_anim->second, pos.x, speed);
         if (ImAbs(it_anim->second - pos.x) <= 2)
         {

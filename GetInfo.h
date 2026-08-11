@@ -38,36 +38,13 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
     {
         if (!ReadURLDatas(URL_GITEE_INFO, content))
         {
-            PrintLog("[Init] Gitee: 获取 广告/赞助 列表失败", PL_ERROR);
+            PrintLog("[Init] Gitee: 获取 赞助 列表失败", PL_ERROR);
             return 0;
         }
         else
         {
             string SpoonsText = ExtractString(content, "=spoons=", "=spoons-end=");
             SplitString(SpoonsText, "\n", SponsorList);
-
-            // 写入锁
-            lock_guard<shared_mutex> lock(AdListMutex);
-            for (int i = 1; i <= 4; i++)
-            {
-                const string begin = "=ad" + to_string(i) + "=";
-                const string end = "=ad" + to_string(i) + "-end=";
-                const string data = ExtractString(content, begin, end);
-                const string url = ExtractString(data, "<iconurl>", "</iconurl>");
-                AdStruct ad;
-                ad.texture = NULL;
-                if (!url.empty())
-                {
-                    vector<char> temp;
-                    if (!ReadURLDatas(url, temp))
-                        PrintLog("[Init] 下载广告图片失败，index=" + to_string(i), PL_WARNING);
-                    else
-                        ad.texture = LoadTextureFromMemory((unsigned char*)temp.data(), temp.size(), begin.c_str());
-                }
-                ad.text = ReplaceSubString(ExtractString(data, "<text>", "</text>"), "\\n", "\n");
-                ad.link = ExtractString(data, "<link>", "</link>");
-                AdList.push_back(ad);
-            }
         }
         if (!ReadURLDatas(URL_GITEE_NOTICE, NoticeStr))
         {
@@ -118,48 +95,6 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
             SplitString(content, "\n", SponsorList);
         }
 
-        {
-            const array<string, 5> ad_url = { URL_LZY_ADINFO1, URL_LZY_ADINFO2, URL_LZY_ADINFO3, URL_LZY_ADINFO4 };
-            for (int i = 0; i < 4; i++)
-            {
-                if (ReadURLDatas(ad_url.at(i), content) <= 0)
-                {
-                    PrintLog("[Init] Lzy: 获取广告信息失败", PL_ERROR);
-                    return 0;
-                }
-                string text = ExtractString(content, "=ad=", "=adend=");
-                text = RemoveSubString(text, "<br />");
-                text = RemoveSubString(text, "</span>");
-                text = RemoveSubString(text, "<span style=\"color:#81bf7e\">");
-                ReplaceString(text, "&amp;", "&");
-
-                if (text != "empyt" && !text.empty())
-                {
-                    AdStruct ad;
-                    ad.text = StringToUTF8(text);
-                    ad.link = ExtractString(content, "=link=", "=linkend=");
-
-                    string url = ExtractString(content, "=url=", "=urlend=");
-                    url = RemoveSubString(url, "\n");
-                    url = RemoveSubString(url, "<br />");
-                    url = RemoveSubString(url, "</span>");
-                    url = RemoveSubString(url, "<span style=\"color:#81bf7e\">");
-                    ReplaceString(url, "&amp;", "&");
-
-                    if (!url.empty())
-                    {
-                        vector<char> temp;
-                        if (!ReadURLDatas(url, temp))
-                            PrintLog("[Init] 下载广告图片失败，index=" + to_string(i), PL_WARNING);
-                        else
-                            ad.texture = LoadTextureFromMemory((unsigned char*)temp.data(), temp.size(), "lzy_ad");
-                    }
-                    // 写入锁
-                    lock_guard<shared_mutex> lock(AdListMutex);
-                    AdList.push_back(ad);
-                }
-            }
-        }
         if (ReadURLDatas(URL_LZY_POPUP, content) <= 0)
         {
             PrintLog("[Init] Lzy: 获取弹窗信息失败", PL_ERROR);
