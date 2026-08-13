@@ -133,21 +133,28 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::IsCloseUI);          lua_setglobal(L, "IsCloseUI");
         lua_pushcfunction(L, ScriptAPI::Button);             lua_setglobal(L, "Button");
         lua_pushcfunction(L, ScriptAPI::Checkbox);           lua_setglobal(L, "Checkbox");
+        lua_pushcfunction(L, ScriptAPI::Toggle);             lua_setglobal(L, "Toggle");
         lua_pushcfunction(L, ScriptAPI::Text);               lua_setglobal(L, "Text");
         lua_pushcfunction(L, ScriptAPI::InputText);          lua_setglobal(L, "InputText");
         lua_pushcfunction(L, ScriptAPI::SliderInt);          lua_setglobal(L, "SliderInt");
         lua_pushcfunction(L, ScriptAPI::SliderFloat);        lua_setglobal(L, "SliderFloat");
+        lua_pushcfunction(L, ScriptAPI::RangeSliderInt);     lua_setglobal(L, "RangeSliderInt");
+        lua_pushcfunction(L, ScriptAPI::RangeSliderFloat);   lua_setglobal(L, "RangeSliderFloat");
+        lua_pushcfunction(L, ScriptAPI::Combo);              lua_setglobal(L, "Combo");
         lua_pushcfunction(L, ScriptAPI::SameLine);           lua_setglobal(L, "SameLine");
         lua_pushcfunction(L, ScriptAPI::InputKey);           lua_setglobal(L, "InputKey");
         lua_pushcfunction(L, ScriptAPI::MessageBox);         lua_setglobal(L, "MessageBox");
         lua_pushcfunction(L, ScriptAPI::AttachTooltip);      lua_setglobal(L, "AttachTooltip");
-        lua_pushcfunction(L, ScriptAPI::PopTip);             lua_setglobal(L, "PopTip");
         lua_pushcfunction(L, ScriptAPI::RadioButton);        lua_setglobal(L, "RadioButton");
         lua_pushcfunction(L, ScriptAPI::GetCursorPos);       lua_setglobal(L, "GetCursorPos");
         lua_pushcfunction(L, ScriptAPI::SetCursorPos);       lua_setglobal(L, "SetCursorPos");
         lua_pushcfunction(L, ScriptAPI::GetScreenSize);      lua_setglobal(L, "GetScreenSize");
         lua_pushcfunction(L, ScriptAPI::DrawSpiltLine);      lua_setglobal(L, "DrawSpiltLine");
         lua_pushcfunction(L, ScriptAPI::SetNextItemWidth);   lua_setglobal(L, "SetNextItemWidth");
+        lua_pushcfunction(L, ScriptAPI::BeginChild);         lua_setglobal(L, "BeginChild");
+        lua_pushcfunction(L, ScriptAPI::EndChild);           lua_setglobal(L, "EndChild");
+        lua_pushcfunction(L, ScriptAPI::BeginGroup);         lua_setglobal(L, "BeginGroup");
+        lua_pushcfunction(L, ScriptAPI::EndGroup);           lua_setglobal(L, "EndGroup");
         lua_pushcfunction(L, ScriptAPI::SetCurentColor);     lua_setglobal(L, "SetCurentColor");
         lua_pushcfunction(L, ScriptAPI::SetDrawOverAll);     lua_setglobal(L, "SetDrawOverAll");
         lua_pushcfunction(L, ScriptAPI::DrawLine);           lua_setglobal(L, "DrawLine");
@@ -605,7 +612,13 @@ bool RenderScriptGui(const string& file)
     lock_guard<shared_mutex> lock(LuaStatesMtx);
     auto it = LuaStates.find(file);
     if (it == LuaStates.end())
-        return true;   // 尚未初始化（脚本线程可能正在初始化）：不视为错误，设置弹窗保持打开
+    {
+        // 修复：删除自动启动后脚本线程可能未运行（LuaStates 无条目），
+        // 但设置界面仍需渲染——主动创建 LuaState 条目并初始化，供 render 绘制。
+        // 注意：LuaState 含 mutex 成员（不可移动/拷贝），不能用 emplace 传值，需 operator[] 就地默认构造。
+        LuaStates[file];
+        it = LuaStates.find(file);
+    }
     // 修复：RunningMtx 用 try_lock——脚本 main 正在执行（长 Sleep/耗时迭代）时，
     // 主线程渲染不阻塞等待（否则渲染循环卡死 = 点击设置后 UI 卡住），本帧跳过 render，下一帧再试。
     unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
@@ -635,7 +648,12 @@ int SaveScriptConfig(const string& file)
     lock_guard<shared_mutex> lock(LuaStatesMtx);
     auto it = LuaStates.find(file);
     if (it == LuaStates.end())
-        return 0;
+    {
+        // 修复：脚本线程未运行时同样创建 LuaState 条目，保证 saveConfig 可被调用（保存默认配置）。
+        // LuaState 含 mutex（不可移动），用 operator[] 就地默认构造。
+        LuaStates[file];
+        it = LuaStates.find(file);
+    }
     // 修复：与 RenderScriptGui 一致，RunningMtx 用 try_lock，脚本忙时跳过保存（避免后台线程堆积）
     unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
     if (!run_lock.owns_lock())
@@ -715,7 +733,7 @@ void ClearScriptCache()
             // 写入锁
             lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
             for (ScriptInfo& script : InstalledScripts)
-                CloseScriptThread(script.name, script);
+                CloseScriptThread(script.file, script);
             InstalledScripts.clear();
         }
         {
@@ -769,7 +787,7 @@ void CloseAllLua()
         // 写入锁
         lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
         for (ScriptInfo script : InstalledScripts)
-            CloseScriptThread(script.name, script);
+            CloseScriptThread(script.file, script);
         InstalledScripts.clear();
         ScriptStates.clear();
     }

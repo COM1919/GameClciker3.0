@@ -61,9 +61,19 @@ void CleanupRenderTarget();
 // GC.cpp定义
 void RenderGui(ImGuiIO& io);
 int GCMainLoop();
+int StartUpGC(HINSTANCE hInstance);
 DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam);
 DWORD WINAPI RecordsPCRate(LPVOID lpParam);
 DWORD WINAPI InitGC(LPVOID lpParam);
+namespace ScrollAnim
+{
+    // 滑动条动画的全局变量，用于累积滚动能量
+    float EnergyX = 0.0f;
+    float EnergyY = 0.0f;
+    const float SCROLL_MULTIPLIER = 2.0f;  // 速度倍率
+    const float SMOOTHING = 18.5f;         // 平滑系数
+    void HandleScrolling();
+}
 
 // 本文件定义
 DWORD WINAPI WindowProcessMessagesThread(LPVOID lpParam);
@@ -81,6 +91,7 @@ void EndPopupWindow();
 void NoticeFlag(const char* msg, UINT type = 0);
 bool InputKey(const char* label, int* key, const char* press_tip);
 void RenderLoadingAnimation(float speed = 6.5f, float radius = 25.0f, float thickness = 4.0f, ImU32 color = IM_COL32(240, 240, 240, 200));
+void RenderSkeletonList(int count);
 void AttachTooltip(const char* desc, float delay = 0.1f, float maxwidth = 0.5f);
 int MessageBoxEx(const char* message, const char* title, map<string, UINT> button, map<string, ImVec4> colors);
 int MessageBox(const char* message, const char* title, UINT type);
@@ -246,6 +257,95 @@ void RenderLoadingAnimation(float speed, float radius, float thickness, ImU32 co
         drawList->PathStroke(color, ImDrawFlags_RoundCornersAll, thickness);
     }
     EndChild();
+}
+
+
+static void RenderSkeletonShine(const ImVec2& p0, const ImVec2& p1, float phase)
+{
+    ImDrawList* draw_list = GetWindowDrawList();
+    const float time = (float)GetTime() + phase;
+    const float period = 2.4f;
+    const float width = p1.x - p0.x;
+    const float shineWidth = width * 0.4f;
+    const float travel = width + shineWidth * 2.0f;
+    const float progress = fmodf(time / period, 1.0f);
+    const float left = p0.x - shineWidth + progress * travel;
+    const float right = left + shineWidth;
+
+    // 裁剪到卡片范围内
+    const float clipL = ImMax(left, p0.x);
+    const float clipR = ImMin(right, p1.x);
+    if (clipR <= clipL)
+        return;
+
+    const float mid = (left + right) * 0.5f;
+    const int peak = 48;
+
+    // 用 AddRectFilledMultiColor 做平滑的钟形高光带（无分界线）
+    const float mL = ImMin(mid, clipR);
+    if (mL > clipL)
+    {
+        const float tL = (clipL - left) / shineWidth;
+        const int aL = (int)(peak * (1.0f - fabsf(2.0f * tL - 1.0f)));
+        draw_list->AddRectFilledMultiColor(
+            ImVec2(clipL, p0.y), ImVec2(mL, p1.y),
+            IM_COL32(255, 255, 255, aL), IM_COL32(255, 255, 255, peak),
+            IM_COL32(255, 255, 255, peak), IM_COL32(255, 255, 255, aL));
+    }
+    const float mR = ImMax(mid, clipL);
+    if (mR < clipR)
+    {
+        const float tR = (clipR - left) / shineWidth;
+        const int aR = (int)(peak * (1.0f - fabsf(2.0f * tR - 1.0f)));
+        draw_list->AddRectFilledMultiColor(
+            ImVec2(mR, p0.y), ImVec2(clipR, p1.y),
+            IM_COL32(255, 255, 255, peak), IM_COL32(255, 255, 255, aR),
+            IM_COL32(255, 255, 255, aR), IM_COL32(255, 255, 255, peak));
+    }
+}
+
+void RenderSkeletonList(int count)
+{
+    const ImVec2 CardSize(673, 72);
+    const static ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+
+    // 与背景图片一致的透明度（有背景图时半透明，避免突兀）
+    const bool HasBg = _access(Pics_Background.c_str(), 0) == 0;
+    int Alpha = HasBg ? GuiItemAlpha : 100;
+    if (Alpha > 100) Alpha = 100;
+    if (Alpha < 12) Alpha = 12;
+    const int a = Alpha * 255 / 100;
+
+    for (int i = 0; i < count; i++)
+    {
+        PushID(i);
+        BeginChild("##SkeletonShopCard", CardSize, true, flags);
+        {
+            ImDrawList* draw_list = GetWindowDrawList();
+            const ImVec2 p0 = GetWindowPos();
+            const ImVec2 p1 = ImVec2(p0.x + GetWindowSize().x, p0.y + GetWindowSize().y);
+
+            // 灰色渐变背景（带透明度）
+            draw_list->AddRectFilledMultiColor(p0, p1,
+                IM_COL32(52, 52, 57, a), IM_COL32(44, 44, 49, a),
+                IM_COL32(44, 44, 49, a), IM_COL32(52, 52, 57, a));
+
+            // 图标占位（64x64 圆角）
+            draw_list->AddRectFilled(ImVec2(p0.x + 4, p0.y + 4), ImVec2(p0.x + 72 - 4, p0.y + 72 - 4), IM_COL32(74, 74, 80, a), 8.0f);
+
+            // 标题条 / 信息条占位
+            draw_list->AddRectFilled(ImVec2(p0.x + 86, p0.y + 14), ImVec2(p0.x + 86 + 190, p0.y + 14 + 16), IM_COL32(74, 74, 80, a), 4.0f);
+            draw_list->AddRectFilled(ImVec2(p0.x + 86, p0.y + 38), ImVec2(p0.x + 86 + 300, p0.y + 38 + 12), IM_COL32(63, 63, 68, a), 4.0f);
+
+            // 右侧按钮占位
+            draw_list->AddRectFilled(ImVec2(p1.x - 46, p1.y - 40), ImVec2(p1.x - 14, p1.y - 8), IM_COL32(63, 63, 68, a), 6.0f);
+
+            // 反光扫过（每个卡片相位错开，形成波纹）
+            RenderSkeletonShine(p0, p1, i * 0.12f);
+        }
+        EndChild();
+        PopID();
+    }
 }
 
 int ImGuiKeyToVirtualKey(ImGuiKey key)
@@ -542,10 +642,11 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     const ImGuiIO& io = GetIO();
     const ImGuiID id = GetID(name);
 
-    const bool IsClose = p_open && !*p_open;
     static map <ImGuiID, PopupWindow_element> anim;
     static map <ImGuiID, bool> end_anim;
-    if (IsClose && !end_anim[id])
+    const bool IsClose = p_open && !*p_open;
+    const bool IsPlayingEndAnim = end_anim[id];
+    if (IsClose && !IsPlayingEndAnim)
         return false;
     
     const ImVec2 WindowPos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
@@ -565,52 +666,71 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
 
     const ImVec2 RenderPos(WindowPos.x, it_anim->second.pos);
 
-    // 背景阴影渲染
+    static bool IsOpen = false;
+    if (!IsOpen)
     {
-        ImDrawList* draw_list = GetForegroundDrawList();
-        const int alpha = (it_anim->second.alpha / 255.0f) * 100; // 将0-255映射到0-100范围
-        const ImRect WindowRect = ImRect(RenderPos, ImVec2(RenderPos.x + size.x, RenderPos.y + size.y));
-        const ImU32 BgColor = GetColorU32((ImVec4)ImColor(5, 5, 5, alpha));
-        // 弹窗上方
-        draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, WindowRect.Min.y), BgColor);
-        // 弹窗下方
-        draw_list->AddRectFilled(ImVec2(0, WindowRect.Max.y), io.DisplaySize, BgColor);
-        // 弹窗左边
-        draw_list->AddRectFilled(ImVec2(0, WindowRect.Min.y), ImVec2(WindowRect.Min.x, WindowRect.Max.y), BgColor);
-        // 弹窗右边
-        draw_list->AddRectFilled(ImVec2(WindowRect.Max.x, WindowRect.Min.y), ImVec2(io.DisplaySize.x, WindowRect.Max.y), BgColor);
+        OpenPopup(name);
+        IsOpen = true;
     }
 
-    ImVec4 WindowColor = style.Colors[ImGuiCol_WindowBg];
-    WindowColor.w = it_anim->second.alpha / 255.0f;
-    PushStyleColor(ImGuiCol_WindowBg, WindowColor);
-    ImVec4 BorderColor = style.Colors[ImGuiCol_Border];
-    BorderColor.w = it_anim->second.alpha / 255.0f;
-    PushStyleColor(ImGuiCol_Border, BorderColor);
-    PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
+    SetNextWindowPos(RenderPos);
+    SetNextWindowSize(size);
 
-    static const ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse;
-    Begin(name, p_open, flags);
-    if (p_open && !*p_open)
-        end_anim[id] = true;
-
-    PopStyleColor(2);
-    PopStyleVar();//ImGuiStyleVar_WindowRounding
-
-    SetWindowPos(RenderPos);
-    SetWindowSize(size);
-
-    if (IsClose && abs(it_anim->second.pos - TagerPos) < 35.0f)
     {
-        anim.erase(it_anim);
-        end_anim[id] = false;
+        if (!IsPopupOpen(id, ImGuiPopupFlags_None))
+        {
+            g.NextWindowData.ClearFlags(); // We behave like Begin() and need to consume those values
+            if (p_open && *p_open)
+                *p_open = false;
+            end_anim[id] = true;
+        }
+        {
+            ImVec4 color;
+
+            color = style.Colors[ImGuiCol_PopupBg];
+            color.w = it_anim->second.alpha / 255.0f;
+            PushStyleColor(ImGuiCol_PopupBg, color);
+
+            color = style.Colors[ImGuiCol_Border];
+            color.w = it_anim->second.alpha / 255.0f;
+            PushStyleColor(ImGuiCol_Border, color);
+
+            color = style.Colors[ImGuiCol_ModalWindowDimBg];
+            color.w *= (it_anim->second.alpha / 255.0f); // 使用*=，实现最大透明度就是原先的透明度
+            PushStyleColor(ImGuiCol_ModalWindowDimBg, color);
+
+            color = style.Colors[ImGuiCol_TitleBgActive];
+            color.w = 1.0f;
+            PushStyleColor(ImGuiCol_TitleBgActive, color);
+        }
+        PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
+
+        const bool is_open = Begin(name, p_open, ImGuiWindowFlags_Popup | ImGuiWindowFlags_Modal | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+
+        PopStyleColor(4); // ImGuiCol_PopupBg, ImGuiCol_Border, ImGuiCol_ModalWindowDimBg, ImGuiCol_TitleBgActive
+        PopStyleVar(); // ImGuiStyleVar_WindowRounding
+
+        if (!is_open || (p_open && !*p_open))
+            end_anim[id] = true;
+
+        if (IsClose && abs(it_anim->second.pos - TagerPos) < 35.0f)
+        {
+            anim.erase(it_anim);
+            end_anim[id] = false;
+            IsOpen = false; // 保证下次可以打开
+            EndPopup();
+            if (is_open)
+                ClosePopupToLevel(g.BeginPopupStack.Size, true);
+            return false;
+        }
     }
+  
     return true;
 }
 
 void EndPopupWindow()
 {
-    End();
+    EndPopup();
 }
 
 #define NF_WARNING 0
@@ -1159,23 +1279,6 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     // 使用动画后的WindowSize，而不是WindowSize变量
     const ImVec2 RenderPos((io.DisplaySize.x - it_anim->second.size.x) / 2, (io.DisplaySize.y - it_anim->second.size.y) / 2);
     const ImVec2 RenderSize = it_anim->second.size;
-
-    /*
-    // 背景阴影渲染
-    {
-        ImDrawList* draw_list = GetForegroundDrawList();
-        const int alpha = (it_anim->second.alpha / 255.0f) * 100; // 将0-255映射到0-100范围
-        const ImRect WindowRect = ImRect(RenderPos, ImVec2(RenderPos.x + RenderSize.x, RenderPos.y + RenderSize.y));
-        const ImU32 BgColor = GetColorU32((ImVec4)ImColor(5, 5, 5, alpha));
-        // 弹窗上方
-        draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(io.DisplaySize.x, WindowRect.Min.y), BgColor);
-        // 弹窗下方
-        draw_list->AddRectFilled(ImVec2(0, WindowRect.Max.y), io.DisplaySize, BgColor);
-        // 弹窗左边
-        draw_list->AddRectFilled(ImVec2(0, WindowRect.Min.y), ImVec2(WindowRect.Min.x, WindowRect.Max.y), BgColor);
-        // 弹窗右边
-        draw_list->AddRectFilled(ImVec2(WindowRect.Max.x, WindowRect.Min.y), ImVec2(io.DisplaySize.x, WindowRect.Max.y), BgColor);
-    }*/
 
     const float alpha = it_anim->second.alpha / 255.0f;
     PushStyleColor(ImGuiCol_WindowBg, GetColorU32(ImGuiCol_WindowBg, 0)); // 这里不需要，使用下面的弹窗的背景
@@ -2102,38 +2205,52 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     static bool IsActiveDrag = false;
     switch (msg)
     {
-    case WM_LBUTTONDOWN:
-    {
-        POINT pt;
-        GetCursorPos(&pt);
-        POINT client = pt;
-        ScreenToClient(GCHWND, &client);
-        if (client.x >= 0 && client.x <= WindowWidth && client.y >= 0 && client.y <= 32)
-        {
-            IsActiveDrag = true;
-            DragDeviation = client;
-        }
-        return 0;
-    }
-    case WM_MOUSEMOVE:
-    {
-        if (IsActiveDrag)
+        case WM_LBUTTONDOWN:
         {
             POINT pt;
             GetCursorPos(&pt);
-            SetWindowPos(GCHWND, NULL,
-                pt.x - DragDeviation.x, pt.y - DragDeviation.y,
-                0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+            POINT client = pt;
+            ScreenToClient(GCHWND, &client);
+            if (client.x >= 0 && client.x <= WindowWidth && client.y >= 0 && client.y <= 32)
+            {
+                IsActiveDrag = true;
+                DragDeviation = client;
+            }
+            return 0;
         }
-        return 0;
-    }
-    case WM_CAPTURECHANGED: // 防止捕获被外部窗口夺走时，还在跟随拖拽
-    case WM_LBUTTONUP:
-    {
-        IsActiveDrag = false;
-        DragDeviation = { -1, -1 };
-        return 0;
-    }
+        case WM_MOUSEMOVE:
+        {
+            if (IsActiveDrag)
+            {
+                POINT pt;
+                GetCursorPos(&pt);
+                SetWindowPos(GCHWND, NULL,
+                    pt.x - DragDeviation.x, pt.y - DragDeviation.y,
+                    0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+            }
+            return 0;
+        }
+        case WM_CAPTURECHANGED: // 防止捕获被外部窗口夺走时，还在跟随拖拽
+        case WM_LBUTTONUP:
+        {
+            IsActiveDrag = false;
+            DragDeviation = { -1, -1 };
+            return 0;
+        }
+        case WM_MOUSEWHEEL:
+        {
+            // 获取滚轮增量（通常是120的倍数）
+            short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
+            // 转换为浮点数，并累加（注意方向：正值表示向上滚动）
+            float delta = (float)zDelta / 120.0f; // 归一化到“格”
+            delta *= ScrollAnim::SCROLL_MULTIPLIER;
+
+            // 如果滚动方向改变，清零能量，防止卡顿
+            if (ScrollAnim::EnergyY * delta < 0.0f) ScrollAnim::EnergyY = 0.0f;
+            ScrollAnim::EnergyY += delta;
+            // 可选：横向滚动（需要WM_MOUSEHWHEEL）
+            return 0; // 表示已处理
+        }
     }
     
     return DefWindowProc(hWnd, msg, wParam, lParam);

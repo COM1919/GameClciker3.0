@@ -790,15 +790,15 @@ void RenderTickMarks(ImDrawList* draw_list, const ImPlot3DPlot& plot, const ImPl
         ImPlot3DPoint tick_dir;
         if (chosen_plane == 0) {
             // YZ plane
-            // proj_dir=(0,py,pz), rotate 90Â°: (py,pz) -> (-pz,py)
+            // proj_dir=(0,py,pz), rotate 90¡ã: (py,pz) -> (-pz,py)
             tick_dir = ImPlot3DPoint(0, -proj_dir.z, proj_dir.y);
         } else if (chosen_plane == 1) {
             // XZ plane (plane=1)
-            // proj_dir=(px,0,pz), rotate 90Â°: (px,pz) -> (-pz,px)
+            // proj_dir=(px,0,pz), rotate 90¡ã: (px,pz) -> (-pz,px)
             tick_dir = ImPlot3DPoint(-proj_dir.z, 0, proj_dir.x);
         } else {
             // XY plane
-            // proj_dir=(px,py,0), rotate by 90Â°: (px,py) -> (-py,px)
+            // proj_dir=(px,py,0), rotate by 90¡ã: (px,py) -> (-py,px)
             tick_dir = ImPlot3DPoint(-proj_dir.y, proj_dir.x, 0);
         }
         tick_dir.Normalize();
@@ -885,7 +885,7 @@ void RenderTickLabels(ImDrawList* draw_list, const ImPlot3DPlot& plot, const ImP
         // Compute angle perpendicular to axis in screen space
         float angle = atan2f(-axis_screen_dir.y, axis_screen_dir.x) + IM_PI * 0.5f;
 
-        // Normalize angle to be between -Ï€ and Ï€
+        // Normalize angle to be between -¦Ð and ¦Ð
         if (angle > IM_PI)
             angle -= 2 * IM_PI;
         if (angle < -IM_PI)

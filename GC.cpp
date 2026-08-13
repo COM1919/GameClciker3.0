@@ -9,10 +9,28 @@
 #include <ctime>
 
 //#include "CodeEditor.h"
+#include <cstring>   // strstr（命令行 debug 参数检测）
 
 typedef HRESULT(WINAPI* PFNSETPROCESSDESCRIPTION)(HANDLE, PCSTR);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+{
+    // 调试模式：命令行带 "debug" 参数（如 "GC.exe debug"）→ 同步 cout 日志。
+    // GUI 程序默认无控制台：先从父进程（cmd）附加控制台，失败则创建独立控制台，
+    // 并重定向 stdout，使 PrintLog 里的 cout 能显示在终端里（崩溃前可立即看到日志）。
+    if (lpCmdLine && strstr(lpCmdLine, "debug"))
+    {
+        LogDebugCout = true;
+        if (!AttachConsole(ATTACH_PARENT_PROCESS))
+            AllocConsole();
+        FILE* fp = nullptr;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+    }
+    int ret = StartUpGC(hInstance);
+    cout << "程序退出，返回值：" << ret << endl;
+}
+
+int StartUpGC(HINSTANCE hInstance)
 {
     StartTime = GetNowMs();
 
@@ -30,7 +48,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (AntiMultiOpenMutex)
             CloseHandle(AntiMultiOpenMutex);
         MessageBox(NULL, config.UseChinese ? "你已经打开了一个GC连点器了!" : "You can only run one instance of GC at a time.", config.UseChinese ? "提示" : "Warning", MB_OK | MB_ICONQUESTION);
-        return -1145;
+        return -1;
     }
 
 #ifdef GC_DEBUG_CMD
@@ -58,7 +76,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (WorkPath.empty())
     {
         MessageBox(NULL, ((config.UseChinese ? "无法获取工作目录：" : "Oops!\nFailed to obtain the working directory:") + to_string(GetLastError())).c_str(), config.UseChinese ? "错误" : "Error", MB_OK | MB_ICONERROR);
-        return -1;
+        return -3;
     }
     {
         char TempPath[MAX_PATH] = { 0 };
@@ -70,7 +88,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (exe.find(temp) == 0)
         {
             MessageBox(NULL, config.UseChinese ? "请解压文件后使用！" : "Please unzip the program file,\nand then you can run it.", "错误", MB_OK | MB_ICONERROR);
-            return -2;
+            return -4;
         }
     }
 
@@ -111,19 +129,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     try
     {
         //_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-        GCMainLoop();
+        cout << "进入GCMainLoop" << endl;
+        int ret = GCMainLoop();
+        cout << "GCMainLoop退出，返回值：" << ret << endl;
     }
     catch (exception& e)
     {
         ExceptionHandling(GetLastError(), e.what() + " - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因："s + e.what(), PL_ERROR);
-        return -1919;
+        client.Send("exit");
+        return -5;
     }
     catch (...)
     {
         ExceptionHandling(GetLastError(), "未知原因 - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因很神秘", PL_ERROR);
-        return -1919;
+        client.Send("exit");
+        return -6;
     }
 
     //===============================结束===============================
@@ -152,7 +174,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
     Sleep(450);
     PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
-    return 1919;
+    return 7;
 }
 
 DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
@@ -226,11 +248,38 @@ retry:
     return 0;
 }
 
+void ScrollAnim::HandleScrolling()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    // 处理垂直滚动
+    float scroll_now_y = 0.0f;
+    if (fabs(ScrollAnim::EnergyY) > 0.001f)
+    {
+        scroll_now_y = ScrollAnim::EnergyY * io.DeltaTime * ScrollAnim::SMOOTHING;
+        ScrollAnim::EnergyY -= scroll_now_y;
+    }
+    else
+        ScrollAnim::EnergyY = 0.0f;
+
+    // 处理水平滚动（如果有）
+    float scroll_now_x = 0.0f;
+    if (fabs(ScrollAnim::EnergyX) > 0.001f)
+    {
+        scroll_now_x = ScrollAnim::EnergyX * io.DeltaTime * ScrollAnim::SMOOTHING;
+        ScrollAnim::EnergyX -= scroll_now_x;
+    }
+    else
+        ScrollAnim::EnergyX = 0.0f;
+
+    // 将平滑值赋给 IO（注意符号：ImGui 的正方向与 Win32 可能相反）
+    io.MouseWheel = scroll_now_y / 2.0f;   // 垂直（除以2来减少滑动距离）
+    io.MouseWheelH = -scroll_now_x;        // 水平（可能需要负号）
+}
+
 int GCMainLoop()
 {
     thread th2(DeleteOldLog); // 删除和清理old日志
     th2.detach();
-    cout << "[彩蛋] 你是怎么看到我的呢，好难猜啊\n这么闲的吗？" << endl;
 
     // 一定要在下面文件初始化前面
 #ifdef GC_DEBUG_GUIDE_UI
@@ -360,6 +409,9 @@ int GCMainLoop()
             CreateRenderTarget();
         }
         
+        // 平滑滚动条
+        ScrollAnim::HandleScrolling();
+
         //===============================处理渲染===============================
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -509,7 +561,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         // 改为由用户在"已安装"列表的"启用"开关手动启动。
         for (const ScriptInfo& script : InstalledScripts)
         {
-            // 确保 ScriptState 条目存在（供"启用"开关/启动按键显示，IsRunning=false → 显示"关闭"）
+            // 确保 ScriptState 条目存在（供"启用"开关/启动按键显示，IsRunning=false -> 显示"关闭"）
             lock_guard<shared_mutex> lock2(ScriptStatesMtx);
             ScriptStates[script.file];
         }
@@ -3679,6 +3731,7 @@ void RenderGui(ImGuiIO& io)
 
                 static bool IsNeedRefushShopList = false;
                 static bool IsShopTab = false;
+                static bool IsShopListLoaded = false;
                 bool IsScriptCreatorTab = false; // 切换到对应tab时，才设置为true，所以不用static
                 const ImVec2 pos = GetCursorPos();
                 if (BeginTabBar("##Script"))
@@ -3718,6 +3771,7 @@ void RenderGui(ImGuiIO& io)
                                     ScriptShopList.swap(tmpList);
                                     TotalPaper = papers;
                                     IsRefushSuccess = true;
+                                    IsShopListLoaded = true;
                                 }
                             });
                             FuncThread.detach();
@@ -3725,8 +3779,8 @@ void RenderGui(ImGuiIO& io)
                             IsNeedRefushShopList = false;
                         }
 
-                        static const char* SourceNames[] = { config.UseChinese ? u8"Gitee仓库源" : "Gitee Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
-                        static int SourceIndex = 1;
+                        static const char* SourceNames[] = { config.UseChinese ? u8"稳定仓库源" : "Stable Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
+                        static int SourceIndex = 0;
                         Text(config.UseChinese ? u8"下载源" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
@@ -3749,7 +3803,7 @@ void RenderGui(ImGuiIO& io)
                                 PushID(count);
                                 ImVec2 AnimPos = CalcWidgetsAnimHoriz(GetID(label.c_str()));
                                 SetNextWindowPos(AnimPos);
-                                BeginChild("##ScriptShopList", ImVec2(680, 72), true, flags);
+                                BeginChild("##ScriptShopList", ImVec2(673, 72), true, flags);
                                 {
                                     DisableAnimation(true);
                                     PopStyleColor(); // ImGuiCol_ChildBg
@@ -3845,7 +3899,7 @@ void RenderGui(ImGuiIO& io)
                                                         for (char& c : id)
                                                             if (!isalnum((unsigned char)c)) c = '_';
                                                         const string target = ScriptPath + "\\download_" + id + ".zip";
-                                                        if (!DownloadURLFiles(scriptCopy.file, target))
+                                                        if (!DownloadURLFilesRetry(scriptCopy.file, target))
                                                         {
                                                             PrintLog("[ScriptMarket] 脚本下载失败，URL：" + scriptCopy.file, PL_ERROR);
                                                             RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
@@ -3899,7 +3953,7 @@ void RenderGui(ImGuiIO& io)
 
                         }
                         else
-                            RenderLoadingAnimation();
+                            RenderSkeletonList(10);
                         EndTabItem();
                     }
 
@@ -3907,16 +3961,24 @@ void RenderGui(ImGuiIO& io)
                     {
                         IsShopTab = false;
                         static bool IsCheckUpdate = false;
-                        if (!IsCheckUpdate)
+                        if (!IsCheckUpdate && IsShopListLoaded)
                         {
                             // 修复：lambda 无需捕获任何局部变量（只访问全局 AvaiableScripts 与全局函数），
                             // 空捕获列表避免未来误用悬垂引用
                             thread FuncThread([]() 
                             {
                                 // 写入锁
-                                lock_guard<shared_mutex> write_lock(AvaiableScriptsMtx);
-                                for (ScriptInfo& script : AvaiableScripts)
-                                    CheckUpdateScriptFromShop(script);
+                                {
+                                    lock_guard<shared_mutex> write_lock(AvaiableScriptsMtx);
+                                    for (ScriptInfo& script : AvaiableScripts)
+                                        CheckUpdateScriptFromShop(script);
+                                }
+                                // 同步检测已安装列表，使已安装页也能显示更新按钮
+                                {
+                                    lock_guard<shared_mutex> write_lock2(InstalledScriptsMtx);
+                                    for (ScriptInfo& script : InstalledScripts)
+                                        CheckUpdateScriptFromShop(script);
+                                }
                             });
                             FuncThread.detach();
                             IsCheckUpdate = true;
@@ -3971,9 +4033,7 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
                                                 {
-                                                    const string filename = ScriptShopDir + "\\" + ScriptCopy.name + ".gcdat";
-                                                    const string target = ScriptPath + "\\" + ScriptCopy.name + ".zip";
-                                                    if (CopyFile(filename.c_str(), target.c_str(), false))
+                                                    if (UpdateScriptFromShop(ScriptCopy))
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
                                                     else
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
@@ -4068,7 +4128,33 @@ void RenderGui(ImGuiIO& io)
                                                         }
                                                     }
                                                 }
-                                            });
+                                                // 修复：安装后默认运行脚本（与"已安装"列表的"开关"逻辑一致）
+                                                {
+                                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                                    if (!ScriptStates[scriptCopy.file].IsRunning)
+                                                    {
+                                                        ScriptStates[scriptCopy.file].IsRunning = true;
+                                                        thread th([file = scriptCopy.file]()
+                                                        {
+                                                            // 保存线程句柄，删除脚本时才能正确终止线程
+                                                            const HANDLE hThread = StartScript(file);
+                                                            if (hThread != NULL)
+                                                            {
+                                                                lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                                for (ScriptInfo& s : AvaiableScripts)
+                                                                {
+                                                                    if (s.file == file)
+                                                                    {
+                                                                        s.hThread = hThread;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            }
+                                                        });
+                                                        th.detach();
+                                                    }
+                                                }
+});
                                             FuncThread.detach();
                                         }
                                         SameLine(0, spacing);
@@ -4175,9 +4261,7 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
                                                 {
-                                                    const string filename = ScriptShopDir + "\\" + ScriptCopy.name + ".gcdat";
-                                                    const string target = ScriptPath + "\\" + ScriptCopy.name + ".zip";
-                                                    if (CopyFile(filename.c_str(), target.c_str(), false))
+                                                    if (UpdateScriptFromShop(ScriptCopy))
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
                                                     else
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
@@ -4227,7 +4311,34 @@ void RenderGui(ImGuiIO& io)
                                                 if (IsEnable && !st->second.IsRunning)
                                                 {
                                                     st->second.IsRunning = true;   // 乐观置位，防止重复启动
-                                                    thread th([file = script.file]() { StartScript(file); });
+                                                    thread th([file = script.file]()
+                                                    {
+                                                        // 保存线程句柄，删除脚本时才能正确终止线程
+                                                        const HANDLE hThread = StartScript(file);
+                                                        if (hThread != NULL)
+                                                        {
+                                                            lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                            for (ScriptInfo& s : AvaiableScripts)
+                                                            {
+                                                                if (s.file == file)
+                                                                {
+                                                                    s.hThread = hThread;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                        {
+                                                            lock_guard<shared_mutex> lock2(InstalledScriptsMtx);
+                                                            for (ScriptInfo& s : InstalledScripts)
+                                                            {
+                                                                if (s.file == file)
+                                                                {
+                                                                    s.hThread = hThread;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                    });
                                                     th.detach();
                                                 }
                                             }
@@ -4270,12 +4381,12 @@ void RenderGui(ImGuiIO& io)
                                                     if (s.file == script.file)
                                                     {
                                                         s.IsInstalled = false;
-                                                        CloseScriptThread(s.name, s);
+                                                        CloseScriptThread(s.file, s);
                                                         break;
                                                     }
                                                 }
                                             }
-                                            const string file = ScriptPath + "\\" + script.file;
+                                            const string file = script.file;
                                             {
                                                 // 修复：原代码 LuaStates.find 在锁外执行，与下方锁内 erase 并发 → 竞争。移入锁内。
                                                 lock_guard<shared_mutex> lock(LuaStatesMtx);
@@ -4532,43 +4643,41 @@ void RenderGui(ImGuiIO& io)
                         // 修复：ScriptSelected 是打开设置时的列表索引，若期间脚本被删除（列表变短）
                         // 会越界访问 → 崩溃。加边界检查，越界则关闭设置。
                         if (ScriptSelected >= (int)InstalledScripts.size())
-                        {
                             ScriptSelected = -114514;
-                        }
                         else
                             script = InstalledScripts[ScriptSelected];
                     }
                     if (IsTestScript || ScriptSelected > -1)
                     {
-                    const string title = IsTestScript ? (config.UseChinese ? u8"测试脚本设置" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
-                    bool IsOpened = true;
-                    if (BeginPopupWindow(title.c_str(), &IsOpened))
-                    {
-                        const string& filename = IsTestScript ? ScriptTestFile : script.file;
-                        unsigned int result = 0;
-                        if (!RenderScriptGui(filename))
-                            result = 1;
-
-                        // 是否关闭或者崩溃
-                        if (!IsOpened || result == 1)
+                        const string title = IsTestScript ? (config.UseChinese ? u8"测试脚本设置" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
+                        bool IsOpened = true;
+                        if (BeginPopupWindow(title.c_str(), &IsOpened))
                         {
-                            ScriptSelected = -114514;
-                            thread FuncThread(SaveScriptConfig, filename);
-                            FuncThread.detach();
-                            {
-                                // 写入锁
-                                lock_guard<shared_mutex> lock2(ScriptStatesMtx);
-                                // 修复：find 替代 operator[]——脚本可能在弹窗期间被删除，
-                                // operator[] 会插入僵尸 ScriptState 条目
-                                auto st = ScriptStates.find(filename);
-                                if (st != ScriptStates.end())
-                                    st->second.IsSuspend = false;
-                            }
-                            PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
-                        }
+                            const string& filename = IsTestScript ? ScriptTestFile : script.file;
+                            unsigned int result = 0;
+                            if (!RenderScriptGui(filename))
+                                result = 1;
 
-                        EndPopupWindow();
-                    }
+                            // 是否关闭或者崩溃
+                            if (!IsOpened || result == 1)
+                            {
+                                ScriptSelected = -114514;
+                                thread FuncThread(SaveScriptConfig, filename);
+                                FuncThread.detach();
+                                {
+                                    // 写入锁
+                                    lock_guard<shared_mutex> lock2(ScriptStatesMtx);
+                                    // 修复：find 替代 operator[]——脚本可能在弹窗期间被删除，
+                                    // operator[] 会插入僵尸 ScriptState 条目
+                                    auto st = ScriptStates.find(filename);
+                                    if (st != ScriptStates.end())
+                                        st->second.IsSuspend = false;
+                                }
+                                PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
+                            }
+
+                            EndPopupWindow();
+                        }
                     }
                 }
             }
@@ -5181,7 +5290,13 @@ void RenderGui(ImGuiIO& io)
 
     RenderControl();
 
-    ImVec2 TextSize = CalcTextSize(client_id.c_str());
-    GetForegroundDrawList()->AddText(ImVec2((WindowWidth - TextSize.x) / 2, 6), GetColorU32((ImVec4)ImColor(128, 255, 0, 5)), client_id.c_str());
+    // 修复：client_id 由网络线程写，此处每帧读取——锁内拷贝后使用，避免 string 并发读写的数据竞争
+    string CurClientID;
+    {
+        lock_guard<mutex> lock(ClientIDMtx);
+        CurClientID = client_id;
+    }
+    ImVec2 TextSize = CalcTextSize(CurClientID.c_str());
+    GetForegroundDrawList()->AddText(ImVec2((WindowWidth - TextSize.x) / 2, 6), GetColorU32((ImVec4)ImColor(128, 255, 0, 5)), CurClientID.c_str());
 }
 // 哎~ 这代码写的真的好烂啊...

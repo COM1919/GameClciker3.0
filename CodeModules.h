@@ -276,6 +276,8 @@ LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo)
         default:
             err = "未知异常";
     }
+    if (!client_id.size() > 2)
+        client.Send("exit");
     ExceptionHandling(pExceptionInfo->ExceptionRecord->ExceptionCode, err);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -292,6 +294,7 @@ void ExceptionHandling(DWORD code, string what)
         msg += "你可以前往 GC连点器论坛 反馈此问题，我们会尽快修复。\n";
         msg += "GC论坛：bbs.mcgc.top\n";
         msg += "或者必应搜索“GC连点器论坛”\n";
+        msg += "是否上报此问题？";
     }
     else
     {
@@ -301,13 +304,18 @@ void ExceptionHandling(DWORD code, string what)
         msg += "You can report this issue to the GC Clicker Forum, \nwe will fix it as soon as possible.\n";
         msg += "GC Forum: bbs.mcgc.top\n";
         msg += "Or Bing search \"GameClicker\"";
+        msg += "Do you want to report this issue?";
     }
 
     // 强制用记事本打开
     ShellExecute(NULL, "open", "notepad.exe", LogFile.c_str(), NULL, SW_SHOWNORMAL);
 
-    MessageBox(NULL, msg.c_str(), config.UseChinese ? "GC连点器错误" : "GC Error", MB_OK | MB_ICONERROR);
+    int ret = MessageBox(NULL, msg.c_str(), config.UseChinese ? "GC连点器错误" : "GC Error", MB_YESNO | MB_ICONERROR);
     PrintLog("[Exception] GC发生了致命错误 - 错误代码" + to_string(code) + "原因：" + what, PL_ERROR);
+
+    if (ret == IDYES) // 上报
+        client.Send("error " + to_string(code) + " " + what);
+
     // 关闭互斥量，关闭防止双开
     if (AntiMultiOpenMutex)
         CloseHandle(AntiMultiOpenMutex);

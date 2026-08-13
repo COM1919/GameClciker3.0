@@ -389,7 +389,7 @@ void ImGuiToggleRenderer::UpdateAnimationPercent()
      if (IsAnimated() && _isLastActive)
     {
         float raw = ImSaturate(ImInvLerp(0.0f, _config.AnimationDuration, _lastActiveTimer));
-        // åº”ç”¨ç¼“åŠ¨ï¼šè¿™é‡Œä½¿ç”¨ ease-in-out cubicï¼Œä½ ä¹Ÿå¯ä»¥æ¢æˆå…¶ä»–
+        // Ó¦ÓÃ»º¶¯£ºÕâÀïÊ¹ÓÃ ease-in-out cubic£¬ÄãÒ²¿ÉÒÔ»»³ÉÆäËû
         raw = raw < 0.5f ? 4.0f * raw * raw * raw : 1.0f - pow(-2.0f * raw + 2.0f, 3.0f) / 2.0f;
         t = *_value ? raw : (1.0f - raw);
     }
@@ -411,84 +411,84 @@ void ImGuiToggleRenderer::UpdateStateConfig()
     _state.KnobOffset = ImLerp(_config.Off.KnobOffset, _config.On.KnobOffset, _animationPercent);
 }
 
-#include <map>   // æ–°æ·»åŠ 
+#include <map>   // ĞÂÌí¼Ó
 struct ToggleColorAnim
 {
     ImVec4 CurrentColor;
 };
-static std::map<ImGuiID, ToggleColorAnim> g_toggleColorAnimMap;  // æ¯ä¸ªIDç‹¬ç«‹å­˜å‚¨
+static std::map<ImGuiID, ToggleColorAnim> g_toggleColorAnimMap;  // Ã¿¸öID¶ÀÁ¢´æ´¢
 void ImGuiToggleRenderer::UpdatePalette()
 {
-    // 1. è®¡ç®—å¼€å¯/å…³é—­çŠ¶æ€çš„è°ƒè‰²æ¿ï¼ˆåº”ç”¨ä¸»é¢˜é¢œè‰²ï¼Œå¿½ç•¥è‡ªå®šä¹‰Paletteï¼‰
+    // 1. ¼ÆËã¿ªÆô/¹Ø±Õ×´Ì¬µÄµ÷É«°å£¨Ó¦ÓÃÖ÷ÌâÑÕÉ«£¬ºöÂÔ×Ô¶¨ÒåPalette£©
     ImGuiTogglePalette off_unioned;
     ImGuiTogglePalette on_unioned;
     ImGui::UnionPalette(&off_unioned, _config.Off.Palette, _style->Colors, false);
     ImGui::UnionPalette(&on_unioned, _config.On.Palette, _style->Colors, true);
 
     /*
-    // 2. å¦‚æœå¯ç”¨ç»¿è‰²æ ‡å¿—ï¼Œå°†å¼€å¯çŠ¶æ€çš„ Frame å’Œ FrameHover æ”¹ä¸ºç»¿è‰²
+    // 2. Èç¹ûÆôÓÃÂÌÉ«±êÖ¾£¬½«¿ªÆô×´Ì¬µÄ Frame ºÍ FrameHover ¸ÄÎªÂÌÉ«
     if (_config.Flags & ImGuiToggleFlags_Green)
     {
-        on_unioned.Frame = ImVec4(0.2f, 0.8f, 0.2f, 1.0f);      // é²œç»¿è‰²
-        on_unioned.FrameHover = ImVec4(0.1f, 0.7f, 0.1f, 1.0f); // æ‚¬åœç¨æš—
+        on_unioned.Frame = ImVec4(0.2f, 0.8f, 0.2f, 1.0f);      // ÏÊÂÌÉ«
+        on_unioned.FrameHover = ImVec4(0.1f, 0.7f, 0.1f, 1.0f); // ĞüÍ£ÉÔ°µ
     }*/
 
-    // 3. æ ¹æ®å½“å‰å€¼é€‰æ‹©ç›®æ ‡è°ƒè‰²æ¿ï¼ˆå¼€å¯æˆ–å…³é—­ï¼‰
+    // 3. ¸ù¾İµ±Ç°ÖµÑ¡ÔñÄ¿±êµ÷É«°å£¨¿ªÆô»ò¹Ø±Õ£©
     ImGuiTogglePalette target = *_value ? on_unioned : off_unioned;
 
-    // 4. æ ¹æ®æ‚¬åœ/æŒ‰ä¸‹çŠ¶æ€é€‰æ‹©ç›®æ ‡é¢œè‰²
+    // 4. ¸ù¾İĞüÍ£/°´ÏÂ×´Ì¬Ñ¡ÔñÄ¿±êÑÕÉ«
     ImVec4 targetColor;
-    // æ¨¡ä»¿ ButtonEx çš„é€»è¾‘ï¼šheld && hovered -> æ¿€æ´»è‰²ï¼›hovered -> æ‚¬åœè‰²ï¼›å¦åˆ™ -> æ™®é€šè‰²
-    // è¿™é‡Œæˆ‘ä»¬ç”¨ _isHovered å’Œ g.LastActiveId == _id æ¥æ¨¡æ‹Ÿ held çŠ¶æ€ï¼ˆæŒ‰é’®æŒ‰ä¸‹æ—¶ï¼‰
+    // Ä£·Â ButtonEx µÄÂß¼­£ºheld && hovered -> ¼¤»îÉ«£»hovered -> ĞüÍ£É«£»·ñÔò -> ÆÕÍ¨É«
+    // ÕâÀïÎÒÃÇÓÃ _isHovered ºÍ g.LastActiveId == _id À´Ä£Äâ held ×´Ì¬£¨°´Å¥°´ÏÂÊ±£©
     ImGuiContext& g = *GImGui;
     bool held = (g.LastActiveId == _id);
     if (held && _isHovered)
-        targetColor = target.FrameHover;  // å¯æ¢æˆæ›´äº®çš„é¢œè‰²ï¼Œè¿™é‡Œç›´æ¥ç”¨æ‚¬åœè‰²
+        targetColor = target.FrameHover;  // ¿É»»³É¸üÁÁµÄÑÕÉ«£¬ÕâÀïÖ±½ÓÓÃĞüÍ£É«
     else if (_isHovered)
         targetColor = target.FrameHover;
     else
         targetColor = target.Frame;
 
-    // 5. ä»é™æ€mapä¸­è·å–å½“å‰IDçš„åŠ¨ç”»çŠ¶æ€
+    // 5. ´Ó¾²Ì¬mapÖĞ»ñÈ¡µ±Ç°IDµÄ¶¯»­×´Ì¬
     auto it = g_toggleColorAnimMap.find(_id);
     if (it == g_toggleColorAnimMap.end())
     {
-        // åˆæ¬¡ä½¿ç”¨ï¼Œç›´æ¥è®¾ç½®ä¸ºç›®æ ‡é¢œè‰²ï¼Œé¿å…ä»é»‘æ¸å˜
+        // ³õ´ÎÊ¹ÓÃ£¬Ö±½ÓÉèÖÃÎªÄ¿±êÑÕÉ«£¬±ÜÃâ´ÓºÚ½¥±ä
         g_toggleColorAnimMap[_id] = { targetColor };
         it = g_toggleColorAnimMap.find(_id);
     }
 
-    // 6. è®¡ç®—é€Ÿåº¦å› å­ï¼ˆä¸ ButtonEx ä¸€è‡´ï¼‰
+    // 6. ¼ÆËãËÙ¶ÈÒò×Ó£¨Óë ButtonEx Ò»ÖÂ£©
     float speed = 0.15f * (1.0f - g.IO.DeltaTime);
-    speed = ImClamp(speed, 0.01f, 0.9f); // é¿å…æç«¯å€¼
+    speed = ImClamp(speed, 0.01f, 0.9f); // ±ÜÃâ¼«¶ËÖµ
 
-    // 7. æŒ‡æ•°å¹³æ»‘ï¼šå½“å‰é¢œè‰²å‘ç›®æ ‡é¢œè‰²é€¼è¿‘
+    // 7. Ö¸ÊıÆ½»¬£ºµ±Ç°ÑÕÉ«ÏòÄ¿±êÑÕÉ«±Æ½ü
     it->second.CurrentColor = ImLerp(it->second.CurrentColor, targetColor, speed);
 
-    // 8. å°†å¹³æ»‘åçš„é¢œè‰²èµ‹ç»™è°ƒè‰²æ¿ï¼ˆåŒæ—¶è¦†ç›– Frame å’Œ FrameHoverï¼Œä½¿æ‚¬åœåˆ‡æ¢ä¹Ÿå¹³æ»‘ï¼‰
+    // 8. ½«Æ½»¬ºóµÄÑÕÉ«¸³¸øµ÷É«°å£¨Í¬Ê±¸²¸Ç Frame ºÍ FrameHover£¬Ê¹ĞüÍ£ÇĞ»»Ò²Æ½»¬£©
     _palette.Frame = it->second.CurrentColor;
     _palette.FrameHover = it->second.CurrentColor;
 
-    // 9. å¤„ç†å…¶ä»–è°ƒè‰²æ¿æˆå‘˜ï¼ˆKnob, Border, Shadow ç­‰ï¼‰
-    //    å¦‚æœå¯ç”¨åŠ¨ç”»ï¼Œå…¶ä»–æˆå‘˜ä»æŒ‰ _animationPercent æ··åˆï¼Œå¦åˆ™ç›´æ¥ä½¿ç”¨ç›®æ ‡è°ƒè‰²æ¿
+    // 9. ´¦ÀíÆäËûµ÷É«°å³ÉÔ±£¨Knob, Border, Shadow µÈ£©
+    //    Èç¹ûÆôÓÃ¶¯»­£¬ÆäËû³ÉÔ±ÈÔ°´ _animationPercent »ìºÏ£¬·ñÔòÖ±½ÓÊ¹ÓÃÄ¿±êµ÷É«°å
     if (IsAnimated())
     {
-        // æ··åˆ off å’Œ on çš„è°ƒè‰²æ¿ï¼Œä½†åªé’ˆå¯¹é Frame æˆå‘˜ï¼ˆå› ä¸º Frame å·²è¢«å¹³æ»‘è¦†ç›–ï¼‰
-        // æˆ‘ä»¬æ··åˆæ•´ä¸ªè°ƒè‰²æ¿ï¼Œç„¶åè¦†ç›– Frame
+        // »ìºÏ off ºÍ on µÄµ÷É«°å£¬µ«Ö»Õë¶Ô·Ç Frame ³ÉÔ±£¨ÒòÎª Frame ÒÑ±»Æ½»¬¸²¸Ç£©
+        // ÎÒÃÇ»ìºÏÕû¸öµ÷É«°å£¬È»ºó¸²¸Ç Frame
         ImGui::BlendPalettes(&_palette, off_unioned, on_unioned, _animationPercent);
-        // é‡æ–°è¦†ç›– Frame ä¸ºå¹³æ»‘é¢œè‰²
+        // ÖØĞÂ¸²¸Ç Frame ÎªÆ½»¬ÑÕÉ«
         _palette.Frame = it->second.CurrentColor;
         _palette.FrameHover = it->second.CurrentColor;
     }
     else
     {
-        // ä¸å¯ç”¨åŠ¨ç”»æ—¶ï¼Œç›´æ¥ä½¿ç”¨ç›®æ ‡è°ƒè‰²æ¿ï¼ˆä½† Frame ç”¨å¹³æ»‘é¢œè‰²ï¼‰
+        // ²»ÆôÓÃ¶¯»­Ê±£¬Ö±½ÓÊ¹ÓÃÄ¿±êµ÷É«°å£¨µ« Frame ÓÃÆ½»¬ÑÕÉ«£©
         _palette = target;
         _palette.Frame = it->second.CurrentColor;
         _palette.FrameHover = it->second.CurrentColor;
     }
 
-    // 10. ä¿å­˜æ— éšœç¢é¢œè‰²ï¼ˆç”¨äºæ–‡å­—/å›¾æ ‡ï¼‰
+    // 10. ±£´æÎŞÕÏ°­ÑÕÉ«£¨ÓÃÓÚÎÄ×Ö/Í¼±ê£©
     _colorA11yGlyphOff = off_unioned.A11yGlyph;
     _colorA11yGlyphOn = on_unioned.A11yGlyph;
 }

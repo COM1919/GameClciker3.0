@@ -61,9 +61,41 @@ string SelectFile(const char* filter);
 void UpdateScriptFromShop();
 void ShaderLog(string str);
 void CheckUpdateScriptFromShop(ScriptInfo& script);
+bool UpdateScriptFromShop(const ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
 bool AddFollowStartup(const string& file);
+
+// 脚本商店专用：带 3 次重试的 URL 读取 / 下载（失败后递增退避再试）
+static bool ReadURLDatasRetry(const string& url, string& content, int retry = 3)
+{
+	for (int i = 0; i < retry; i++)
+	{
+		if (ReadURLDatas(url, content))
+			return true;
+		if (i + 1 < retry)
+		{
+			PrintLog("[ScriptMarket] 读取失败，重试 " + to_string(i + 1) + "/" + to_string(retry) + ": " + url, PL_WARNING);
+			Sleep(400 * (i + 1));
+		}
+	}
+	return false;
+}
+
+static bool DownloadURLFilesRetry(const string& url, const string& filename, int retry = 3)
+{
+	for (int i = 0; i < retry; i++)
+	{
+		if (DownloadURLFiles(url, filename))
+			return true;
+		if (i + 1 < retry)
+		{
+			PrintLog("[ScriptMarket] 下载失败，重试 " + to_string(i + 1) + "/" + to_string(retry) + ": " + url, PL_WARNING);
+			Sleep(400 * (i + 1));
+		}
+	}
+	return false;
+}
 int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
 bool RemoveFollowStartup();
 bool DeleteDirectoryRecursively(const string& dirPath);
@@ -90,6 +122,31 @@ void CheckUpdateScriptFromShop(ScriptInfo& script)
 	}
 }
 
+bool UpdateScriptFromShop(const ScriptInfo& script)
+{
+	// 依据脚本商店列表判断更新来源：市场源（URL）重新下载，Gitee 源复制缓存
+	shared_lock<shared_mutex> lock(ScriptShopListMtx);
+	for (const ScriptInfo& NewScript : ScriptShopList)
+	{
+		if (NewScript.name == script.name)
+		{
+			if (NewScript.file.compare(0, 7, "http://") == 0 || NewScript.file.compare(0, 8, "https://") == 0)
+			{
+				// 市场源：重新下载最新版本
+				string id = NewScript.file.substr(NewScript.file.find_last_of('/') + 1);
+				for (char& c : id)
+					if (!isalnum((unsigned char)c)) c = '_';
+				const string target = ScriptPath + "\\download_" + id + ".zip";
+				return DownloadURLFilesRetry(NewScript.file, target);
+			}
+			// Gitee 源：复制缓存
+			const string filename = ScriptShopDir + "\\" + NewScript.name + ".gcdat";
+			const string target = ScriptPath + "\\" + NewScript.name + ".zip";
+			return CopyFile(filename.c_str(), target.c_str(), false) != 0;
+		}
+	}
+	return false;
+}
 void PlayEnableSound()
 {
 	PlaySound(Sound_Enable.c_str(), NULL, SND_FILENAME | SND_ASYNC);
@@ -383,7 +440,7 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 				string url = baseUrl + "/api/app/list?begin=" + to_string(begin) + "&end=" + to_string(end);
 				string content;
 
-				if (!ReadURLDatas(url, content))
+				if (!ReadURLDatasRetry(url, content))
 				{
 					PrintLog("[ScriptMarket] 获取列表失败", PL_ERROR);
 					return 0;
@@ -472,12 +529,15 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 		if (_access(ScriptIconTemp.c_str(), 0) != 0)
 			CreateDirectory(ScriptIconTemp.c_str(), NULL);
 
+		// 图标下载任务（先收集，循环结束后并行下载，提高整体速度）
+		struct IconDownloadTask { string url; string tempFile; string localPath; };
+		vector<IconDownloadTask> iconTasks;
 		for (int i = beginIdx; i < endIdx; ++i)
 		{
 			const auto& meta = MarketScriptList[i];
 
 			ScriptInfo info;
-			info.name = meta.title;
+			info.name = "download_" + to_string(meta.scriptid);
 			info.title = meta.title;
 			info.ver = meta.ver;
 			info.link = meta.bbsurl;
@@ -509,20 +569,9 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 				// 若图标文件不存在，则下载
 				if (_access(localIconPath.c_str(), 0) != 0)
 				{
-					// 先下载到临时文件，再重命名
+					// 收集图标下载任务，稍后并行下载
 					string tempFile = ScriptIconTemp + "\\" + to_string(meta.scriptid) + ".tmp";
-					if (DownloadURLFiles(meta.iconurl, tempFile))
-					{
-						// 重命名为正确的扩展名
-						if (rename(tempFile.c_str(), localIconPath.c_str()) != 0)
-						{
-							// 重命名失败则删除临时文件
-							_unlink(tempFile.c_str());
-							localIconPath.clear();
-						}
-					}
-					else
-						localIconPath.clear();
+					iconTasks.push_back({ meta.iconurl, tempFile, localIconPath });
 				}
 			}
 			info.texture = localIconPath; // 可能为空
@@ -531,6 +580,24 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 			scripts.push_back(info);
 		}
 		// 市场模式下 不调用 GetScriptsInfo，也不重命名
+		// 并行下载图标（带重试），提高整体下载速度
+		{
+			vector<thread> threads;
+			for (const auto& task : iconTasks)
+			{
+				threads.emplace_back([task]()
+				{
+					if (DownloadURLFilesRetry(task.url, task.tempFile))
+					{
+						if (rename(task.tempFile.c_str(), task.localPath.c_str()) != 0)
+							_unlink(task.tempFile.c_str());
+					}
+				});
+			}
+			for (auto& t : threads)
+				t.join();
+		}
+
 		return totalPages;
 	}
 
@@ -538,7 +605,7 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 	if (GiteeScriptList.empty() || clear)
 	{
 		string content;
-		if (!ReadURLDatas(URL_GITEE_SCRIPTS, content))
+		if (!ReadURLDatasRetry(URL_GITEE_SCRIPTS, content))
 		{
 			PrintLog("[Init] Gitee: 获取脚本列表失败", PL_ERROR);
 			return 0;
@@ -558,7 +625,7 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 		const string filename = ScriptShopDir + "\\" + script + ".gcdat";
 		if (_access(filename.c_str(), 0) != 0) {
 			const string url = URL_GITEE_SC_ROOT + script + ".zip";
-			if (!DownloadURLFiles(url, filename))
+			if (!DownloadURLFilesRetry(url, filename))
 			{
 				PrintLog("[Script] Gitee: 下载脚本失败: " + url, PL_WARNING);
 				continue;
@@ -956,7 +1023,7 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 			if (strlen(buffer) > 0)
 			{
 				script.link = buffer;
-				if (script.link.empty() || script.link.find("https://bbs.mcgc.top") == string::npos)
+				if (script.link.empty() || script.link.find("https://bbs.mcgc.top") == string::npos || script.link.find("https://scripts.mcgc.top") == string::npos)
 					script.link.clear();
 #ifdef GC_MORE_DEBUG_INFO
 				PrintLog("[Script] 脚本" + script.name + "的链接为：" + script.link, PL_INFO);

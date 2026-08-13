@@ -32,6 +32,10 @@ mutex LogQueueMtx; // 更轻量的互斥锁
 condition_variable LogQueueCv;  // 条件变量
 static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
 
+// 调试模式标志：命令行带 "debug" 参数时置 true（GC.exe debug）。
+// 开启后 PrintLog 同步 cout 输出原始日志（崩溃前可立即看到，不依赖异步写日志线程）。
+static bool LogDebugCout = false;
+
 void InitLogSystem(const string& filename);
 void PrintLog(const string& str, UINT type);
 static ULONGLONG GetFolderSize(const string& FolderPath);
@@ -138,10 +142,14 @@ static string FormatTime(time_t time, bool OnlyOneDay)
 
 void PrintLog(const string& str, UINT type)
 {
+    lock_guard<mutex> lock(LogQueueMtx);  // 独占锁（RAII）：同时串行化 cout（非线程安全）与队列
+    // 调试模式：第一行直接同步 cout 原始消息（程序崩溃前能立即看到，不依赖异步 WriteLogThread）
+    if (LogDebugCout)
     {
-        lock_guard<mutex> lock(LogQueueMtx);  // 独占锁（RAII）
-        LogQueue.push_back(LogItem(str, type, time(0)));
+        cout << str << endl;
+        cout.flush();
     }
+    LogQueue.push_back(LogItem(str, type, time(0)));
     LogQueueCv.notify_one();  // 唤醒一个消费者线程
 }
 

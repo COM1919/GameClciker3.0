@@ -167,7 +167,7 @@ bool ALFWGetWaveInfo(const char* szWaveFile, ALenum* format, ALsizei* freq, ALch
 	g_pWaveLoader->DeleteWaveFile(WaveID);
 	return success;
 }
-// åªè¿”å›infoï¼Œä¸ä¿å­˜å…¨å±€å˜é‡
+// Ö»·µ»Øinfo£¬²»±£´æÈ«¾Ö±äÁ¿
 ALboolean ALFWGetWaveInfo(const char* szWaveFile, WaveInfo& info)
 {
 	WAVEID WaveID;
@@ -184,7 +184,7 @@ ALboolean ALFWGetWaveInfo(const char* szWaveFile, WaveInfo& info)
 		SUCCEEDED(g_pWaveLoader->GetWaveFrequency(WaveID, (unsigned long*)&freq)) &&
 		SUCCEEDED(g_pWaveLoader->GetWaveALBufferFormat(WaveID, &alGetEnumValue, (unsigned long*)&format)))
 	{
-		// åœ¨åˆ é™¤WaveIDä¹‹å‰å¤åˆ¶æ•°æ®ï¼
+		// ÔÚÉ¾³ıWaveIDÖ®Ç°¸´ÖÆÊı¾İ£¡
 		info.format = format;
 		info.freq = freq;
 		info.data.assign(rawData, rawData + size);
@@ -192,14 +192,14 @@ ALboolean ALFWGetWaveInfo(const char* szWaveFile, WaveInfo& info)
 		success = AL_TRUE;
 	}
 
-	g_pWaveLoader->DeleteWaveFile(WaveID);  // åˆ é™¤årawDataå¤±æ•ˆ
+	g_pWaveLoader->DeleteWaveFile(WaveID);  // É¾³ıºórawDataÊ§Ğ§
 	return success;
 }
 
-// åˆ†å‰²å‡½æ•°ï¼Œä¼ å…¥info
+// ·Ö¸îº¯Êı£¬´«Èëinfo
 ALboolean ALFWSplitBuffer(ALuint dstBuffer, const WaveInfo& srcInfo, int startSample, int numSamples)
 {
-	// è®¡ç®—æ¯å¸§å­—èŠ‚æ•°
+	// ¼ÆËãÃ¿Ö¡×Ö½ÚÊı
 	int channels = (srcInfo.format == AL_FORMAT_STEREO16 || srcInfo.format == AL_FORMAT_STEREO8) ? 2 : 1;
 	int bytesPerSample = (srcInfo.format == AL_FORMAT_STEREO16 || srcInfo.format == AL_FORMAT_MONO16) ? 2 : 1;
 	int bytesPerFrame = channels * bytesPerSample;

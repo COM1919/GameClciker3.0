@@ -168,7 +168,7 @@ namespace ScriptAPI
 
     int RandomBool(lua_State* L)
     {
-        if (lua_gettop(L) != 2)
+        if (lua_gettop(L) != 1)
             luaL_error(L, "RandomBool的参数不足或太多");
         double rate = luaL_checknumber(L, 1);
         lua_pushinteger(L, ::RandomBool(rate));
@@ -206,7 +206,7 @@ namespace ScriptAPI
 
     int GetClickerSettings(lua_State* L)
     {
-        if (lua_gettop(L) != 2)
+        if (lua_gettop(L) != 3)
             luaL_error(L, "GetClickerSettings的参数不足或太多");
         const char* app = luaL_checkstring(L, 1);
         const char* key = luaL_checkstring(L, 2);
@@ -854,6 +854,17 @@ namespace ScriptAPI
             luaL_error(L, "Checkbox的参数不足或太多");
         string label = StringToUTF8(luaL_checkstring(L, 1));
         bool checked = lua_toboolean(L, 2);
+        ImGui::Checkbox(label.c_str(), &checked);
+        lua_pushboolean(L, checked);
+        return 1;
+    }
+
+    int Toggle(lua_State* L)
+    {
+        if (lua_gettop(L) != 2)
+            luaL_error(L, "Checkbox的参数不足或太多");
+        string label = StringToUTF8(luaL_checkstring(L, 1));
+        bool checked = lua_toboolean(L, 2);
         ImGui::Toggle(label.c_str(), &checked, ToggleFlags);
         lua_pushboolean(L, checked);
         return 1;
@@ -942,6 +953,74 @@ namespace ScriptAPI
         return 1;
     }
 
+    int RangeSliderInt(lua_State* L)
+    {
+        if (lua_gettop(L) != 6)
+            luaL_error(L, "RangeSliderInt的参数不足或太多");
+        string label = StringToUTF8(luaL_checkstring(L, 1));
+        int low = luaL_checkinteger(L, 2);
+        int high = luaL_checkinteger(L, 3);
+        int min = luaL_checkinteger(L, 4);
+        int max = luaL_checkinteger(L, 5);
+        string format = StringToUTF8(luaL_checkstring(L, 6));
+        ImGui::RangeSliderInt(label.c_str(), min, max, low, high, format.c_str());
+        lua_pushinteger(L, low);
+        lua_pushinteger(L, high);
+        return 2;
+    }
+
+    int RangeSliderFloat(lua_State* L)
+    {
+        if (lua_gettop(L) != 6)
+            luaL_error(L, "RangeSliderFloat的参数不足或太多");
+        string label = StringToUTF8(luaL_checkstring(L, 1));
+        float low = luaL_checknumber(L, 2);
+        float high = luaL_checknumber(L, 3);
+        float min = luaL_checknumber(L, 4);
+        float max = luaL_checknumber(L, 5);
+        string format = StringToUTF8(luaL_checkstring(L, 6));
+        ImGui::RangeSliderFloat(label.c_str(), min, max, low, high, format.c_str());
+        lua_pushnumber(L, (double)low);
+        lua_pushnumber(L, (double)high);
+        return 2;
+    }
+
+    int Combo(lua_State* L)
+    {
+        if (lua_gettop(L) != 3)
+            luaL_error(L, "Combo的参数不足或太多");
+        string label = StringToUTF8(luaL_checkstring(L, 1));
+        int current = luaL_checkinteger(L, 2);
+        if (lua_type(L, 3) != LUA_TTABLE)
+            luaL_error(L, "Combo的第3个参数必须是一个table数组");
+        // 依次读取table数组中的每个字符串选项
+        vector<string> items;
+        const int count = (int)lua_objlen(L, 3);
+        if (count <= 0)
+            luaL_error(L, "Combo的选项列表不能为空");
+        for (int i = 1; i <= count; i++)
+        {
+            lua_rawgeti(L, 3, i);
+            if (lua_type(L, -1) != LUA_TSTRING)
+                luaL_error(L, "Combo的选项必须是字符串");
+            items.push_back(StringToUTF8(lua_tostring(L, -1)));
+            lua_pop(L, 1);
+        }
+        // 构造 ImGui 需要的 const char* 指针数组
+        vector<const char*> item_ptrs;
+        item_ptrs.reserve(items.size());
+        for (const string& item : items)
+            item_ptrs.push_back(item.c_str());
+        // 修正当前选中项越界
+        if (current < 0)
+            current = 0;
+        if (current >= (int)items.size())
+            current = (int)items.size() - 1;
+        ImGui::Combo(label.c_str(), &current, item_ptrs.data(), (int)item_ptrs.size());
+        lua_pushinteger(L, current);
+        return 1;
+    }
+
     int SameLine(lua_State* L)
     {
         if (lua_gettop(L) != 0)
@@ -963,9 +1042,11 @@ namespace ScriptAPI
     
     int DrawSpiltLine(lua_State* L)
     {
-        if (lua_gettop(L) != 0)
+        int gt = lua_gettop(L);
+        if (gt != 1 && gt != 0)
             luaL_error(L, "DrawSpiltLine的参数太多");
-        ::DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
+        const int len = (gt == 1) ? luaL_checkinteger(L, 1) : 600;
+        ::DrawSpiltLine(len, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
         return 0;
     }
 
@@ -977,18 +1058,6 @@ namespace ScriptAPI
         const int delay = luaL_checkinteger(L, 2);
         ::AttachTooltip(msg.c_str(), delay);
         return 0;
-    }
-
-    int PopTip(lua_State* L)
-    {
-        if (lua_gettop(L) != 3)
-            luaL_error(L, "PopTip的参数不足或太多");
-        string msg = StringToUTF8(luaL_checkstring(L, 1));
-        const int timeout = luaL_checkinteger(L, 2);
-        const int type = luaL_checkinteger(L, 3);
-        bool result = ::PopTip(msg, timeout, type);
-        lua_pushboolean(L, result);
-        return 1;
     }
 
     int MessageBox(lua_State* L)
@@ -1050,6 +1119,44 @@ namespace ScriptAPI
             luaL_error(L, "SetNextWindowSize的参数不足或太多");
         int w = luaL_checkinteger(L, 1);
         ImGui::SetNextItemWidth(w);
+        return 0;
+    }
+
+    int BeginChild(lua_State* L)
+    {
+        int count = lua_gettop(L);
+        if (count != 3 && count != 4)
+            luaL_error(L, "BeginChild的参数不足或太多");
+        string name = StringToUTF8(luaL_checkstring(L, 1));
+        const float w = (float)luaL_checknumber(L, 2);
+        const float h = (float)luaL_checknumber(L, 3);
+        const bool border = (count == 4) ? lua_toboolean(L, 4) : false;
+        const bool result = ImGui::BeginChild(name.c_str(), ImVec2(w, h), border);
+        lua_pushboolean(L, result);
+        return 1;
+    }
+
+    int EndChild(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "EndChild的参数太多");
+        ImGui::EndChild();
+        return 0;
+    }
+
+    int BeginGroup(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "BeginGroup的参数太多");
+        ImGui::BeginGroup();
+        return 0;
+    }
+
+    int EndGroup(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "EndGroup的参数太多");
+        ImGui::EndGroup();
         return 0;
     }
 

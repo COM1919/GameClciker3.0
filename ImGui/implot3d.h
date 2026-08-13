@@ -529,7 +529,7 @@ IMPLOT3D_API void PlotMesh(const char* label_id, const ImPlot3DPoint* vtx, const
 // Plots a rectangular image in 3D defined by its center and two direction vectors (axes).
 // #center is the center of the rectangle in plot coordinates.
 // #axis_u and #axis_v define the local axes and half-extents of the rectangle in 3D space.
-// The rectangle is formed by moving from the center along Â±axis_u and Â±axis_v.
+// The rectangle is formed by moving from the center along ¡Àaxis_u and ¡Àaxis_v.
 // #uv0 and #uv1 define the texture mapping.
 // #tint_col can be used to tint the image.
 IMPLOT3D_API void PlotImage(const char* label_id, ImTextureRef tex_ref, const ImPlot3DPoint& center, const ImPlot3DPoint& axis_u,

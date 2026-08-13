@@ -1,6 +1,7 @@
 #pragma once
 #include "framework.h"
 #include "AgreementString.h"
+#include "UDPSocket.h"   // UDPSocket 类（自包含，不依赖本头，避免循环依赖）
 
 #define PI 3.14159265358979323846f
 
@@ -392,8 +393,8 @@ map<string, ScriptState> ScriptStates;  //脚本相关状态控制
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.49";          //版本号
-string title = "GAMECLICKER 3.49";      //标题名字
+const string version = "3.51";          //版本号
+string title = "GAMECLICKER 3.51";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
 const int AgreementVersion = 3;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
@@ -642,6 +643,8 @@ int MemSearchCount = 0;                         //内存搜索次数
 int GettingGameState = -1;                      //获取游戏窗口的状态
 float SystemScale = 1.0f;                       //DPI缩放率
 string client_id;                               //客户端的ID
+mutex ClientIDMtx;                              //client_id 的互斥锁（网络线程写、主渲染线程读）
+UDPSocket client;                               //UDP 客户端（全局，所有文件可访问；网络线程 + 主线程退出时使用）
 vector<string> MouseSoundList;                  //可用的鼠标声音列表
 vector<string> KeybdSoundList;                  //可用的键盘声音列表
 
@@ -720,3 +723,4 @@ typedef struct GameGuiPipeData
     LRPair<bool> IsClickerDown = {};             //连点器的键按下
     LRPair<bool> IsHumanDown = {};               //鼠标键是否按下
 };
+

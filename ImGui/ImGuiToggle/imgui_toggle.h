@@ -47,8 +47,8 @@ enum ImGuiToggleFlags_
     ImGuiToggleFlags_ShadowedKnob           = 1 << 6, // The toggle should have a shadow drawn under the knob.
                                                       // Bit 7 reserved.
     ImGuiToggleFlags_A11y                   = 1 << 8, // The toggle should draw on and off glyphs to help indicate its state.
-    // 鏂板缁胯壊鏍囧織
-    ImGuiToggleFlags_Green = 1 << 9,   // 浣跨敤缁胯壊涓婚锛堝紑鍚姸鎬侊級
+    // 新增绿色标志
+    ImGuiToggleFlags_Green = 1 << 9,   // 使用绿色主题（开启状态）
     ImGuiToggleFlags_Bordered               = ImGuiToggleFlags_BorderedFrame | ImGuiToggleFlags_BorderedKnob, // Shorthand for bordered frame and knob.
     ImGuiToggleFlags_Shadowed               = ImGuiToggleFlags_ShadowedFrame | ImGuiToggleFlags_ShadowedKnob, // Shorthand for shadowed frame and knob.
     ImGuiToggleFlags_Default                = ImGuiToggleFlags_None, // The default flags used when no ImGuiToggleFlags_ are specified.

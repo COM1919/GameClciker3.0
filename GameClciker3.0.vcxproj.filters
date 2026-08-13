@@ -279,6 +279,9 @@
     <ClInclude Include="ImGui\ImGuiMD\md4c.h">
       <Filter>ImGui\ImGuiMD</Filter>
     </ClInclude>
+    <ClInclude Include="UDPSocket.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GC.cpp">
