@@ -94,8 +94,8 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::SetKeyDown);         lua_setglobal(L, "SetKeyDown");
         lua_pushcfunction(L, ScriptAPI::SetKeyUp);           lua_setglobal(L, "SetKeyUp");
         lua_pushcfunction(L, ScriptAPI::SetKeyClick);        lua_setglobal(L, "SetKeyClick");
-        lua_pushcfunction(L, ScriptAPI::GetMousePos);        lua_setglobal(L, "GetMousePos");
-        lua_pushcfunction(L, ScriptAPI::SetMousePos);        lua_setglobal(L, "SetMousePos");
+        lua_pushcfunction(L, ScriptAPI::GetCursorPos);      lua_setglobal(L, "GetCursorPos");
+        lua_pushcfunction(L, ScriptAPI::SetCursorPos);      lua_setglobal(L, "SetCursorPos");
         lua_pushcfunction(L, ScriptAPI::GetCpsRight);        lua_setglobal(L, "GetCpsRight");
         lua_pushcfunction(L, ScriptAPI::GetCpsLeft);         lua_setglobal(L, "GetCpsLeft");
         lua_pushcfunction(L, ScriptAPI::GetHumanCpsLeft);    lua_setglobal(L, "GetHumanCpsLeft");
@@ -112,10 +112,10 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::GetTickCount);       lua_setglobal(L, "GetTickCount");
         lua_pushcfunction(L, ScriptAPI::SimulatedInputText); lua_setglobal(L, "SimulatedInputText");
         lua_pushcfunction(L, ScriptAPI::GetScreenSize);      lua_setglobal(L, "GetScreenSize");
-        lua_pushcfunction(L, ScriptAPI::ConnectNamedPipe);   lua_setglobal(L, "ConnectNamedPipe");
-        lua_pushcfunction(L, ScriptAPI::ReadNamedPipe);      lua_setglobal(L, "ReadNamedPipe");
-        lua_pushcfunction(L, ScriptAPI::WriteNamedPipe);     lua_setglobal(L, "WriteNamedPipe");
-        lua_pushcfunction(L, ScriptAPI::CloseNamedPipe);     lua_setglobal(L, "CloseNamedPipe");
+        lua_pushcfunction(L, ScriptAPI::ConnectNetwork);    lua_setglobal(L, "ConnectNetwork");
+        lua_pushcfunction(L, ScriptAPI::RecvNetwork);       lua_setglobal(L, "RecvNetwork");
+        lua_pushcfunction(L, ScriptAPI::SendNetwork);       lua_setglobal(L, "SendNetwork");
+        lua_pushcfunction(L, ScriptAPI::CloseNetwork);      lua_setglobal(L, "CloseNetwork");
         lua_pushcfunction(L, ScriptAPI::GetClipboardText);   lua_setglobal(L, "GetClipboardText");
         lua_pushcfunction(L, ScriptAPI::SetClipboardText);   lua_setglobal(L, "SetClipboardText");
         lua_pushcfunction(L, ScriptAPI::RenderMessageBox);   lua_setglobal(L, "RenderMessageBox");
@@ -129,6 +129,16 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::IsPlayerMoving);     lua_setglobal(L, "IsPlayerMoving");
         lua_pushcfunction(L, ScriptAPI::PlayEnableSound);    lua_setglobal(L, "PlayEnableSound");
         lua_pushcfunction(L, ScriptAPI::PlayDisableSound);   lua_setglobal(L, "PlayDisableSound");
+        lua_pushcfunction(L, ScriptAPI::PlayToggleSound);    lua_setglobal(L, "PlayToggleSound");
+        lua_pushcfunction(L, ScriptAPI::GetCurrentWindowPos);lua_setglobal(L, "GetCurrentWindowPos");
+        lua_pushcfunction(L, ScriptAPI::GetCurrentWindowRect);lua_setglobal(L, "GetCurrentWindowRect");
+        lua_pushcfunction(L, ScriptAPI::GetCurrentWindowSize);lua_setglobal(L, "GetCurrentWindowSize");
+        lua_pushcfunction(L, ScriptAPI::GetWindowsCenterPos);lua_setglobal(L, "GetWindowsCenterPos");
+        lua_pushcfunction(L, ScriptAPI::MoveCursor);         lua_setglobal(L, "MoveCursor");
+        lua_pushcfunction(L, ScriptAPI::MoveCursorX);        lua_setglobal(L, "MoveCursorX");
+        lua_pushcfunction(L, ScriptAPI::MoveCursorY);        lua_setglobal(L, "MoveCursorY");
+        lua_pushcfunction(L, ScriptAPI::GetItemBarKey);      lua_setglobal(L, "GetItemBarKey");
+        
         //=================================================GUIµÄAPI=================================================
         lua_pushcfunction(L, ScriptAPI::IsCloseUI);          lua_setglobal(L, "IsCloseUI");
         lua_pushcfunction(L, ScriptAPI::Button);             lua_setglobal(L, "Button");
@@ -146,8 +156,8 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::MessageBox);         lua_setglobal(L, "MessageBox");
         lua_pushcfunction(L, ScriptAPI::AttachTooltip);      lua_setglobal(L, "AttachTooltip");
         lua_pushcfunction(L, ScriptAPI::RadioButton);        lua_setglobal(L, "RadioButton");
-        lua_pushcfunction(L, ScriptAPI::GetCursorPos);       lua_setglobal(L, "GetCursorPos");
-        lua_pushcfunction(L, ScriptAPI::SetCursorPos);       lua_setglobal(L, "SetCursorPos");
+        lua_pushcfunction(L, ScriptAPI::GetNextItemPos);     lua_setglobal(L, "GetNextItemPos");
+        lua_pushcfunction(L, ScriptAPI::SetNextItemPos);     lua_setglobal(L, "SetNextItemPos");
         lua_pushcfunction(L, ScriptAPI::GetScreenSize);      lua_setglobal(L, "GetScreenSize");
         lua_pushcfunction(L, ScriptAPI::DrawSpiltLine);      lua_setglobal(L, "DrawSpiltLine");
         lua_pushcfunction(L, ScriptAPI::SetNextItemWidth);   lua_setglobal(L, "SetNextItemWidth");

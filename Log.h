@@ -7,13 +7,11 @@ using namespace std;
 #define PL_WARNING  1
 #define PL_ERROR    2
 
-#ifdef GC_DEBUG_CMD
 static void SetConsoleColor(WORD color)
 {
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(hConsole, color);
 }
-#endif // GC_DEBUG_CMD
 
 struct LogItem
 {
@@ -146,6 +144,18 @@ void PrintLog(const string& str, UINT type)
     // 调试模式：第一行直接同步 cout 原始消息（程序崩溃前能立即看到，不依赖异步 WriteLogThread）
     if (LogDebugCout)
     {
+        switch (type)
+        {
+        case PL_INFO:
+            SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+            break;
+        case PL_WARNING:
+            SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_RED);
+            break;
+        case PL_ERROR:
+            SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+            break;
+        }
         cout << str << endl;
         cout.flush();
     }

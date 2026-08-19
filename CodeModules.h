@@ -291,19 +291,19 @@ void ExceptionHandling(DWORD code, string what)
         msg += "GC发生了致命错误！\n";
         msg += "原因：" + what + "\n";
         msg += "系统错误代码：" + to_string(code) + "\n\n";
+        msg += "版本：" + version + "\n";
         msg += "你可以前往 GC连点器论坛 反馈此问题，我们会尽快修复。\n";
         msg += "GC论坛：bbs.mcgc.top\n";
-        msg += "或者必应搜索“GC连点器论坛”\n";
         msg += "是否上报此问题？";
     }
     else
     {
         msg += "GC has encountered a fatal error!\n";
         msg += "Reason: " + what + "\n";
+        msg += "version：" + version + "\n";
         msg += "System error code: " + to_string(code) + "\n\n";
         msg += "You can report this issue to the GC Clicker Forum, \nwe will fix it as soon as possible.\n";
         msg += "GC Forum: bbs.mcgc.top\n";
-        msg += "Or Bing search \"GameClicker\"";
         msg += "Do you want to report this issue?";
     }
 
@@ -319,7 +319,8 @@ void ExceptionHandling(DWORD code, string what)
     // 关闭互斥量，关闭防止双开
     if (AntiMultiOpenMutex)
         CloseHandle(AntiMultiOpenMutex);
-    GCExit = true;
+
+    ExitProcess(1919); // 强制结束进程
 }
 
 template <typename T>

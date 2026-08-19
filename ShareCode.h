@@ -59,12 +59,25 @@ bool CopyTextToClipboard(const string& text);
 void ClearProcessMemory();
 string SelectFile(const char* filter);
 void UpdateScriptFromShop();
+POINT GetGameWindowCenter(HWND hwnd);
 void ShaderLog(string str);
 void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool UpdateScriptFromShop(const ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
 bool AddFollowStartup(const string& file);
+
+POINT GetGameWindowCenter(HWND hwnd)
+{
+	RECT rc{};
+	GetClientRect(hwnd, &rc);
+	POINT pt = {
+		static_cast<int>((rc.right - rc.left) / 2),
+		static_cast<int>((rc.bottom - rc.top) / 2)
+	};
+	ClientToScreen(hwnd, &pt);
+	return pt;
+}
 
 // 脚本商店专用：带 3 次重试的 URL 读取 / 下载（失败后递增退避再试）
 static bool ReadURLDatasRetry(const string& url, string& content, int retry = 3)
@@ -1526,80 +1539,115 @@ int GetMemUsageRate(int sleep)
 	return nMemoryUseRate;
 }
 
-// GPU使用率获取：使用 Windows PDH 性能计数器 \GPU Engine(*)\Utilization Percentage。
-// 该计数器 Windows 10 1709+ 可用，NVIDIA/AMD/Intel 显卡通用，无需厂商 SDK（NVML/ADL）。
-// 任务管理器的"GPU 利用率"即各 GPU 引擎（3D/复制/视频等）利用率之和，这里累加全部实例。
+#include <Windows.h>
+#include <pdh.h>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
+#pragma comment(lib, "pdh.lib")
+
+#include <Windows.h>
+#include <pdh.h>
+#include <vector>
+#include <cmath>
+#include <string>
+#include <iostream>   // 用于调试输出，正式使用可删除
+
+#pragma comment(lib, "pdh.lib")
+
+/**
+ * 获取 GPU 3D 引擎占用率（%），与任务管理器的“3D”图表对齐。
+ * 采用双采样确保准确性。
+ * @param sleep 两次采样之间的间隔（毫秒），建议 200~500ms。
+ * @return 0~100 的占用百分比，失败返回 0。
+ */
 int GetGpuUsageRate(int sleep)
 {
-    // 静态初始化 PDH 查询（仅首次调用时初始化；RecordsPCRate 单线程调用，无需加锁）
-    static PDH_HQUERY hQuery = NULL;
-    static PDH_HCOUNTER hCounter = NULL;
-    static bool IsInit = false;
-    static bool IsFailed = false;
+	static bool gpuInitialized = false;
+	static PDH_HQUERY gpuQuery = nullptr;
+	static PDH_HCOUNTER gpuCounter = nullptr;
 
-    if (!IsInit && !IsFailed)
-    {
-        if (PdhOpenQueryW(NULL, 0, &hQuery) == ERROR_SUCCESS)
-        {
-            // 必须使用英文计数器名：PDH 默认走本地化路径，中文系统无法解析中文计数器名
-            if (PdhAddEnglishCounterW(hQuery, L"\\GPU Engine(*)\\Utilization Percentage", 0, &hCounter) == ERROR_SUCCESS)
-                IsInit = true;
-            else
-            {
-                PdhCloseQuery(hQuery);
-                hQuery = NULL;
-                IsFailed = true; // 系统不支持 GPU 计数器（如 Win7/精简系统），不再反复重试
-            }
-        }
-        else
-            IsFailed = true;
+	if (!gpuInitialized)
+	{
+		if (PdhOpenQuery(NULL, 0, &gpuQuery) != ERROR_SUCCESS)
+		{
+			gpuInitialized = true;
+			return 0;
+		}
 
-        if (IsFailed)
-            PrintLog("[Perf] 无法初始化 GPU 使用率计数器（需要 Windows 10 1709+）", PL_WARNING);
-    }
+		// 监控所有引擎，后续筛选 3D
+		if (PdhAddEnglishCounter(gpuQuery, "\\GPU Engine(*)\\Utilization Percentage", 0, &gpuCounter) != ERROR_SUCCESS)
+		{
+			PdhCloseQuery(gpuQuery);
+			gpuQuery = nullptr;
+			gpuCounter = nullptr;
+			gpuInitialized = true;
+			return 0;
+		}
 
-    if (!IsInit)
-    {
-        Sleep(sleep);
-        return 0;
-    }
+		gpuInitialized = true;
+		return 0;
+	}
 
-    // 第一次采样作为起点
-    if (PdhCollectQueryData(hQuery) != ERROR_SUCCESS)
-    {
-        Sleep(sleep);
-        return 0;
-    }
-    Sleep(sleep);
-    // 第二次采样作为终点，两次采样的差值即 sleep 间隔内的平均利用率
-    if (PdhCollectQueryData(hQuery) != ERROR_SUCCESS)
-        return 0;
+	// 常规调用
+	if (!gpuQuery || !gpuCounter)
+		return 0;
 
-    // 枚举所有 GPU 引擎实例（通配符 * 对应多个实例），累加利用率。
-    // 使用固定大小缓冲区（GPU 引擎实例数通常 < 20），避免依赖 PDH_MORE_DATA 错误码宏。
-    const DWORD MaxInstances = 128;
-    DWORD bufferSize = sizeof(PDH_FMT_COUNTERVALUE_ITEM_W) * MaxInstances;
-    DWORD itemCount = 0;
-    PDH_FMT_COUNTERVALUE_ITEM_W* items = (PDH_FMT_COUNTERVALUE_ITEM_W*)malloc(bufferSize);
-    if (items != NULL)
-    {
-        DWORD err = PdhGetFormattedCounterArrayW(hCounter, PDH_FMT_DOUBLE, &bufferSize, &itemCount, items);
-        if (err == ERROR_SUCCESS)
-        {
-            double total = 0.0;
-            for (DWORD i = 0; i < itemCount; i++)
-            {
-                if (items[i].FmtValue.CStatus == ERROR_SUCCESS)
-                    total += items[i].FmtValue.doubleValue;
-            }
-            free(items);
-            // 各引擎之和可能轻微超过 100%，clamp 到 0~100
-            int rate = (int)(total + 0.5);
-            return max(0, min(100, rate));
-        }
-        free(items);
-    }
-    return 0;
+	// 双采样：采集 -> 等待 -> 再采集（计算差值）
+	if (PdhCollectQueryData(gpuQuery) != ERROR_SUCCESS)
+		return 0;
+
+	Sleep(sleep);
+
+	if (PdhCollectQueryData(gpuQuery) != ERROR_SUCCESS)
+		return 0;
+
+	// 获取所有引擎的格式化数据
+	DWORD dwBufferSize = 0;
+	DWORD dwItemCount = 0;
+	PDH_STATUS status = PdhGetFormattedCounterArray(gpuCounter, PDH_FMT_DOUBLE, &dwBufferSize, &dwItemCount, nullptr);
+
+	if (status != ERROR_SUCCESS && status != PDH_MORE_DATA)
+		return 0;
+	if (dwBufferSize == 0 || dwItemCount == 0)
+		return 0;
+
+	vector<BYTE> buffer(dwBufferSize);
+	PDH_FMT_COUNTERVALUE_ITEM* items = reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM*>(buffer.data());
+
+	status = PdhGetFormattedCounterArray(gpuCounter, PDH_FMT_DOUBLE, &dwBufferSize, &dwItemCount, items);
+	if (status != ERROR_SUCCESS)
+		return 0;
+
+	// 筛选出 3D 引擎，取最大值（通常只有一个）
+	double max3D = 0.0;
+	bool found3D = false;
+
+	for (DWORD i = 0; i < dwItemCount; ++i)
+	{
+		// 检查数据有效性
+		if (items[i].FmtValue.CStatus != PDH_CSTATUS_VALID_DATA &&
+			items[i].FmtValue.CStatus != PDH_CSTATUS_NEW_DATA)
+			continue;
+
+		string name(items[i].szName);
+		// 只关心包含 "engtype_3D" 的引擎（不区分大小写，实际全小写）
+		if (name.find("engtype_3D") != string::npos)
+		{
+			double value = items[i].FmtValue.doubleValue;
+			if (value > max3D) max3D = value;
+			found3D = true;
+		}
+	}
+
+	// 如果没有找到任何 3D 引擎，返回 0
+	if (!found3D)
+		return 0;
+
+	int result = static_cast<int>(round(max3D));
+	result = (result < 0) ? 0 : (result > 100 ? 100 : result);
+	return result;
 }
 
 int GetCpuUsageRate(int sleep)

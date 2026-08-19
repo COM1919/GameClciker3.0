@@ -1,10 +1,14 @@
 #pragma once
 #include "maths.h"
 #include "MainClick.h"
-#include "ALFamework/Famewrok.h"
+
+#include <OpenAL/ALFamework/Famewrok.h>
 #include <Dbt.h>
 
-#include <unordered_map>
+// 部分 Windows SDK 的 mmdeviceapi.h 未导出 GUID_DEVINTERFACE_AUDIO 符号，这里显式提供其标准值
+// （{2FDEFC66-FA64-11D0-A5D6-28DB04C10000}），用于 RegisterDeviceNotification 监听声卡插拔；
+// GUID_DEVINTERFACE_VOLUME（耳机/扬声器端点）已由 <Dbt.h> 提供。
+static const GUID AudioDevInterfaceGuid = { 0x2fdafc66, 0xfa64, 0x11d0, { 0xa5, 0xd6, 0x28, 0xdb, 0x04, 0xc1, 0x00, 0x00 } };
 
 unordered_map<int, int> KeyScanToVk = {
 	// 主键盘区 (1-13, 15-41, 43-53, 57-68, 87-88)
@@ -19,22 +23,30 @@ unordered_map<int, int> KeyScanToVk = {
 	{26, VK_OEM_4}, {27, VK_OEM_6}, {43, VK_OEM_5},
 	{39, VK_OEM_1}, {40, VK_OEM_7}, {28, VK_RETURN},
 	{51, VK_OEM_COMMA}, {52, VK_OEM_PERIOD}, {53, VK_OEM_2}, {57, VK_SPACE},
-	// 功能键区
-	{3639, VK_SNAPSHOT}, {70, VK_SCROLL}, {3653, VK_PAUSE},
-	{3666, VK_INSERT}, {3667, VK_DELETE}, {3655, VK_HOME}, {3663, VK_END}, {3657, VK_PRIOR}, {3665, VK_NEXT},
+	// 功能键区（扩展扫描码统一为标准 16 位形式 0xE0xx；兼容旧声音包中的 0x0Exx 写法见 NormalizeScanCode）
+	{57399, VK_SNAPSHOT}, {70, VK_SCROLL}, {3653, VK_PAUSE},  // 0xE037=PrintScreen（旧值 3639）；Pause 无标准 0xE0 前缀，保留原值
+	{57426, VK_INSERT}, {57427, VK_DELETE}, {57415, VK_HOME}, {57423, VK_END}, {57417, VK_PRIOR}, {57425, VK_NEXT},
 	{57416, VK_UP}, {57419, VK_LEFT}, {57421, VK_RIGHT}, {57424, VK_DOWN},
-	// Shift/Ctrl/Alt
-	{42, VK_SHIFT}, {54, VK_SHIFT}, {29, VK_CONTROL}, {3613, VK_CONTROL}, {56, VK_MENU}, {3640, VK_MENU},
-	{3675, VK_LWIN}, {3676, VK_RWIN}, {3677, VK_APPS},
-	// 数字小键盘
-	{69, VK_NUMLOCK}, {3637, VK_DIVIDE}, {55, VK_MULTIPLY}, {74, VK_SUBTRACT},
-	{78, VK_ADD}, {3612, VK_RETURN}, {83, VK_DECIMAL},
+	// Shift/Ctrl/Alt（扩展键标准值：右Ctrl 0xE01D=57373、右Alt 0xE038=57400，旧包中曾写为 3613/3640）
+	{42, VK_SHIFT}, {54, VK_SHIFT}, {29, VK_CONTROL}, {57373, VK_CONTROL}, {56, VK_MENU}, {57400, VK_MENU},
+	{57435, VK_LWIN}, {57436, VK_RWIN}, {57437, VK_APPS},
+	// 数字小键盘（扩展键标准值：除号 0xE035=57397、小键盘回车 0xE01C=57372，旧包中曾写为 3637/3612）
+	{69, VK_NUMLOCK}, {57397, VK_DIVIDE}, {55, VK_MULTIPLY}, {74, VK_SUBTRACT},
+	{78, VK_ADD}, {57372, VK_RETURN}, {83, VK_DECIMAL},
 	{79, VK_NUMPAD1}, {80, VK_NUMPAD2}, {81, VK_NUMPAD3}, {75, VK_NUMPAD4},
 	{76, VK_NUMPAD5}, {77, VK_NUMPAD6}, {71, VK_NUMPAD7}, {72, VK_NUMPAD8}, {73, VK_NUMPAD9}, {82, VK_NUMPAD0},
 	// Windows 特殊键 (61000+)
 	{61010, VK_INSERT}, {61011, VK_DELETE}, {60999, VK_HOME}, {61007, VK_END},
 	{61001, VK_PRIOR}, {61009, 0x22}, {61000, VK_UP}, {61003, VK_LEFT}, {61005, VK_RIGHT}, {61008, VK_DOWN}
 };
+
+// 兼容旧声音包格式：扩展扫描码标准 16 位表示为 0xE0xx，但旧包中曾被写成 0x0Exx（如右 Ctrl 57373 写成 3613）
+inline int NormalizeScanCode(int scan)
+{
+	if (((scan & 0xFF00) == 0x0E00) && (scan & 0x00FF) != 0)
+		return 0xE000 | (scan & 0x00FF);
+	return scan;
+}
 struct SoundRange
 {
 	int begin;
@@ -42,13 +54,16 @@ struct SoundRange
 };
 array<SoundRange, 256> VkToSoundRange;
 unordered_map<string, array<ALuint, 256>> KeybdSoundSourceList;
-vector<ALuint> KeybdSoundBufferList;    // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
+vector<ALuint> KeybdSoundBufferList; // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 array<ALuint, 256> CurrentKeybdSource;
-ALCcontext* g_pALContext = nullptr;   // 保存全局 context
+ALCcontext* g_pALContext = nullptr; // 保存全局 context
+atomic<bool> g_AudioDeviceChanged = false; // 音频设备变更标志：由主窗口 WndProc（WM_DEVICECHANGE）置位，ClickSound 线程统一重建
+HDEVNOTIFY g_hAudioDevNotify = nullptr;  // 音频设备（声卡）变化通知句柄，WndProc WM_CREATE/WM_DESTROY 中注册/注销
+HDEVNOTIFY g_hVolumeDevNotify = nullptr; // 卷设备（耳机/扬声器端点）变化通知句柄，同上
 
 unordered_map<string, unordered_map<string, ALuint>> MouseSoundSourceList;
 unordered_map<string, ALuint> CurrentMouseSource;
-vector<ALuint> MouseSoundBufferList;    // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
+vector<ALuint> MouseSoundBufferList; // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 
 // 函数定义
 LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam);
@@ -56,127 +71,13 @@ DWORD WINAPI ClickSound(LPVOID lpParam);
 bool InitOpenAL();
 void LoadSounds();
 void DownloadKeybdSounds();
-bool ParseMouseSoundConfig(string& name, unordered_map<string, string>& defines, const string& file);
-bool ParseKeybdSoundConfig(string& name, unordered_map<string, SoundRange>& defines, const string& file);
+bool LoadMouseSoundPack(const string& dir);
+bool LoadKeybdSoundPack(const string& dir);
 void ShutdownOpenAL();
 bool LoadWaveData(const string& fileName, ALuint* buffer);
 void BindSouce(ALuint* source, ALuint* buffer, bool loop);
 void CreateSouce(ALuint* source, bool loop);
 DWORD WINAPI MouseSoundThread(LPVOID lpParam);
-
-void LoadSounds()
-{
-	PrintLog("[Sound] 开始加载音频", PL_INFO);
-
-	vector<string> dirs;
-	FindDirectorys(Sound_MousePath, dirs);
-	for (const string& dir : dirs)
-	{
-		const string file = Sound_MousePath + "\\" + dir + "\\config.json";
-		string name;
-		unordered_map<string, string> defines;
-		if (!ParseMouseSoundConfig(name, defines, file))
-			continue;
-		for (auto& pair : defines)
-		{
-			ALuint buffer = 0;
-			const string SoundFile = Sound_MousePath + "\\" + dir + "\\" + pair.second;
-
-			if (!LoadWaveData(SoundFile, &buffer))
-			{
-				static bool IsShow = false;
-				if (!IsShow)
-				{
-					//RenderMessageBox(config.UseChinese ? u8"无法加载一些鼠标声音的文件" : "Cannot load some mouse sound files", config.UseChinese ? u8"错误" : "Error", MB_OK, false);
-					IsShow = true;
-				}
-				PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
-				continue;
-			}
-
-			ALuint source;
-			CreateSouce(&source, false);
-			BindSouce(&source, &buffer, false);
-			MouseSoundSourceList[name][pair.first] = source;
-			MouseSoundBufferList.push_back(buffer); // 修复：存值而非 &buffer（buffer 为循环局部变量，地址每轮复用且函数返回后悬垂）
-			PrintLog("[Sound] 已加载wav文件:" + SoundFile, PL_INFO);
-		}
-		MouseSoundList.push_back(name);
-	}
-
-	FindDirectorys(Sound_KeybdPath, dirs); // 里面包含dirs.clear()
-	for (const string& dir : dirs)
-	{
-		const string file = Sound_KeybdPath + "\\" + dir + "\\config.json";
-		string name;
-		unordered_map<string, SoundRange> defines;
-		if (!ParseKeybdSoundConfig(name, defines, file))
-			continue;
-		const string SoundFile = Sound_KeybdPath + "\\" + dir + "\\sound.wav";
-
-		WaveInfo info; // 里面包含了buffer的数据
-		if (!ALFWGetWaveInfo(SoundFile.c_str(), info))
-		{
-			static bool IsShow = false;
-			if (!IsShow)
-			{
-				//RenderMessageBox(config.UseChinese ? (u8"无法加载键盘声音文件: " + dir) : ("Cannot load keyboard sound file: " + dir), config.UseChinese ? u8"错误" : "Error", MB_OK, false);
-				IsShow = true;
-			}
-			PrintLog("[Sound] 加载声音文件失败: " + SoundFile, PL_ERROR);
-			continue;
-		}
-
-		for (auto& pair : defines)
-		{
-			int vk;
-			try
-			{
-				vk = KeyScanToVk[stoi(pair.first)];
-			}
-			catch (...)
-			{
-				PrintLog("[Sound] 加载声音配置文件失败: 无效的defines", PL_ERROR);
-				continue;
-			}
-			ALuint buffer;
-			alGenBuffers(1, &buffer);
-
-			// 配置文件里的 begin/offeset 单位是毫秒，需要转成 sample
-			int startSample = pair.second.begin * info.freq / 1000;
-			int numSamples = pair.second.offeset * info.freq / 1000;
-			if (numSamples <= 0)
-				numSamples = 1; // 至少 1 个 sample
-
-			if (!ALFWSplitBuffer(buffer, info, startSample, numSamples)) // 分割
-			{
-				PrintLog("[Sound] 分割声音文件失败: " + SoundFile, PL_ERROR);
-				alDeleteBuffers(1, &buffer);
-				continue;
-			}
-
-			ALuint source;
-			CreateSouce(&source, false);
-			BindSouce(&source, &buffer, false);
-			KeybdSoundSourceList[name][vk] = source;
-			KeybdSoundBufferList.push_back(buffer); // 修复：存值而非 &buffer（buffer 为循环局部变量，函数返回后悬垂）
-		}
-		KeybdSoundList.push_back(name);
-	}
-
-	// 设置默认值
-	if (!MouseSoundList.empty())
-		config.MouseSoundType = MouseSoundList.at(0);
-	else
-		config.MouseSoundType = "None";
-	if (!KeybdSoundList.empty())
-		config.KeybdSoundType = KeybdSoundList.at(0);
-	else
-		config.KeybdSoundType = "None";
-	// 设置当前的声源值
-	CurrentMouseSource = MouseSoundSourceList[config.MouseSoundType];
-	CurrentKeybdSource = KeybdSoundSourceList[config.KeybdSoundType];
-}
 
 void DownloadKeybdSounds()
 {
@@ -219,145 +120,365 @@ void DownloadKeybdSounds()
 	RenderTip(config.UseChinese ? u8"键盘声音包下载完成" : "Keybd sound pack installed", 4.0f, PT_INFO);
 }
 
-bool ParseMouseSoundConfig(string& name, unordered_map<string, string>& defines, const string& file)
+void LoadSounds()
 {
-	ifstream fs(file);
-	if (!fs.is_open())
+	PrintLog("[Sound] 开始加载音频", PL_INFO);
+
+	vector<string> dirs;
+
+	FindDirectorys(Sound_MousePath, dirs);
+	for (const string& dir : dirs)
 	{
-		PrintLog("[Sound] 读取声音配置文件失败: " + file, PL_ERROR);
-		return false;
+		const string PackPath = Sound_MousePath + "\\" + dir;
+		if (!LoadMouseSoundPack(PackPath))
+			continue;
 	}
-	try
+	FindDirectorys(Sound_KeybdPath, dirs); // 里面包含dirs.clear()
+	for (const string& dir : dirs)
 	{
-		picojson::value v;
-		string err = picojson::parse(v, fs);
-		if (!err.empty())
-		{
-			PrintLog("[Sound] 解析声音配置文件失败: " + err, PL_ERROR);
-			return false;
-		}
-
-		if (!v.is<picojson::object>())
-		{
-			PrintLog("[Sound] 解析声音配置文件失败: 根元素不是对象", PL_ERROR);
-			return false;
-		}
-
-		picojson::object& obj = v.get<picojson::object>();
-
-		if (!obj.count("name") || !obj["name"].is<std::string>())
-		{
-			PrintLog("[Sound] 解析声音配置文件失败: 缺少name字段或类型错误", PL_ERROR);
-			return false;
-		}
-		name = obj["name"].get<std::string>();
-
-		if (obj.count("defines") && obj["defines"].is<picojson::object>())
-		{
-			picojson::object& defObj = obj["defines"].get<picojson::object>();
-
-			for (auto& pair : defObj)
-			{
-				if (pair.second.is<std::string>())
-					defines[pair.first] = pair.second.get<std::string>();
-				else
-					PrintLog("[Sound] 警告: defines中的值不是字符串类型", PL_WARNING);
-			}
-		}
-		else
-		{
-			PrintLog("[Sound] 解析声音配置文件失败: 无效的defines（不是object或不存在）", PL_ERROR);
-			return false;
-		}
-
-		if (defines.empty())
-			PrintLog("[Sound] 警告: 没有解析到任何有效的defines配置", PL_WARNING);
-		else
-			PrintLog("[Sound] 成功加载配置: " + name + ", 定义了" + to_string(defines.size()) + "个声音", PL_INFO);
-		return true;
+		const string PackPath = Sound_KeybdPath + "\\" + dir;
+		if (!LoadKeybdSoundPack(PackPath))
+			continue;
 	}
-	catch (const exception& e)
-	{
-		PrintLog("[Sound] JSON处理异常: " + string(e.what()), PL_ERROR);
-		return false;
-	}
-	return false;
+
+	// 设置默认值
+	if (!MouseSoundList.empty())
+		config.MouseSoundType = MouseSoundList.at(0);
+	else
+		config.MouseSoundType = "None";
+	if (!KeybdSoundList.empty())
+		config.KeybdSoundType = KeybdSoundList.at(0);
+	else
+		config.KeybdSoundType = "None";
+	// 设置当前的声源值
+	CurrentMouseSource = MouseSoundSourceList[config.MouseSoundType];
+	CurrentKeybdSource = KeybdSoundSourceList[config.KeybdSoundType];
 }
 
-bool ParseKeybdSoundConfig(string& name, unordered_map<string, SoundRange>& defines, const string& file)
+bool LoadMouseSoundPack(const string& dir)
 {
-	ifstream fs(file);
+	const string ConfigFile = dir + "\\config.json";
+
+	string PackName;
+
+	string LogContext;
+	bool IsError = false;
+
+	ifstream fs(ConfigFile);
 	if (!fs.is_open())
 	{
-		PrintLog("[Sound] 读取声音配置文件失败: " + file, PL_ERROR);
-		return false;
+		LogContext += "读取声音配置文件失败: " + ConfigFile + "\n";
+		IsError = true;
+		goto putoutlog;
 	}
+
 	try
 	{
 		picojson::value v;
 		string err = picojson::parse(v, fs);
 		if (!err.empty())
 		{
-			PrintLog("[Sound] 解析声音配置文件失败: " + err, PL_ERROR);
-			return false;
+			LogContext += "解析声音配置文件失败: " + err + "\n";
+			IsError = true;
+			goto putoutlog;
 		}
 
 		if (!v.is<picojson::object>())
 		{
-			PrintLog("[Sound] 解析声音配置文件失败: 根元素不是对象", PL_ERROR);
-			return false;
+			LogContext += "解析声音配置文件失败: 根元素不是对象\n";
+			IsError = true;
+			goto putoutlog;
 		}
 
 		picojson::object& obj = v.get<picojson::object>();
 
 		if (!obj.count("name") || !obj["name"].is<std::string>())
 		{
-			PrintLog("[Sound] 解析声音配置文件失败: 缺少name字段或类型错误", PL_ERROR);
-			return false;
+			LogContext += "解析声音配置文件失败: 缺少name字段或类型错误\n";
+			IsError = true;
+			goto putoutlog;
 		}
-		name = obj["name"].get<std::string>();
+		PackName = obj["name"].get<std::string>();
+
+		if (!obj.count("defines") || !obj["defines"].is<picojson::object>())
+		{
+			LogContext += "解析声音配置文件失败: 无效的defines（不是object或不存在）\n";
+			IsError = true;
+			goto putoutlog;
+		}
+		picojson::object& defObj = obj["defines"].get<picojson::object>();
+
+		auto& SourceMap = MouseSoundSourceList[PackName];
+		for (auto& pair : defObj)
+		{
+			// 值必须是字符串（文件名）
+			if (!pair.second.is<std::string>())
+			{
+				LogContext += "键 " + pair.first + " 的值不是字符串类型，已跳过\n";
+				continue;
+			}
+			const string& FileName = pair.second.get<std::string>();
+			const string SoundFile = dir + "\\" + FileName;
+
+			ALuint buffer = 0;
+			if (!LoadWaveData(SoundFile, &buffer))
+				LogContext += "加载声音文件失败: " + SoundFile + "，已跳过\n";
+
+			ALuint source;
+			CreateSouce(&source, false);
+			BindSouce(&source, &buffer, false);
+
+			SourceMap[pair.first] = source;
+			MouseSoundBufferList.push_back(buffer);
+
+			LogContext += "已加载wav文件:" + SoundFile + "\n";
+		}
+
+		IsError = false;
+	}
+	catch (const exception& e)
+	{
+		LogContext += "JSON处理异常: " + string(e.what()) + "\n";
+		IsError = true;
+		goto putoutlog;
+	}
+
+putoutlog:
+	if (IsError)
+	{
+		PrintLog("[Sound] 处理鼠标声音包时错误：" + ConfigFile + "\n" + LogContext, PL_ERROR);
+		return false;
+	}
+	PrintLog("[Sound] 已处理鼠标声音包：" + ConfigFile + "\n" + LogContext, PL_INFO);
+	MouseSoundList.push_back(PackName);
+	return true;
+}
+
+bool LoadKeybdSoundPack(const string& dir)
+{
+	const string ConfigFile = dir + "\\config.json";
+
+	string PackName;
+
+	string LogContext;
+	bool IsError = false;
+
+	ifstream fs(ConfigFile);
+	if (!fs.is_open())
+	{
+		LogContext += "读取声音配置文件失败: " + ConfigFile + "\n";
+		IsError = true;
+		goto putoutlog;
+	}
+
+	try
+	{
+		picojson::value v;
+		const string& err = picojson::parse(v, fs);
+		if (!err.empty())
+		{
+			LogContext += "解析声音配置文件失败: " + err + "\n";
+			IsError = true;
+			goto putoutlog;
+		}
+
+		if (!v.is<picojson::object>())
+		{
+			LogContext += "解析声音配置文件失败: 根元素不是对象\n";
+			IsError = true;
+			goto putoutlog;
+		}
+
+		picojson::object& obj = v.get<picojson::object>();
+
+		if (!obj.count("name") || !obj["name"].is<std::string>())
+		{
+			LogContext += "解析声音配置文件失败: 缺少name字段或类型错误\n";
+			IsError = true;
+			goto putoutlog;
+		}
+		PackName = obj["name"].get<std::string>();
+
+		if (!obj.count("key_define_type") || !obj["key_define_type"].is<std::string>())
+		{
+			LogContext += "解析声音配置文件失败: 缺少key_define_type字段或类型错误\n";
+			IsError = true;
+			goto putoutlog;
+		}
+		const string& def_type = obj["key_define_type"].get<std::string>();
 
 		if (obj.count("defines") && obj["defines"].is<picojson::object>())
 		{
 			picojson::object& defObj = obj["defines"].get<picojson::object>();
-
-			for (auto& pair : defObj)
+			if (def_type == "single") // 单文件定义，通过range切割
 			{
-				// 检查值是否为数组
-				if (pair.second.is<picojson::array>())
+				const string& FilePath = dir + "\\" + obj["sound"].get<std::string>();
+				// 检查音频文件是否为支持的格式
 				{
-					auto& arr = pair.second.get<picojson::array>();
-					// 确保数组有2个元素且都是数字
-					if (arr.size() == 2 && arr[0].is<double>() && arr[1].is<double>())
+					// 提取文件扩展名（小写）
+					string ext = FilePath;
+					size_t dotPos = ext.find_last_of('.');
+					if (dotPos != string::npos)
 					{
-						defines[pair.first].begin = static_cast<int>(arr[0].get<double>());
-						defines[pair.first].offeset = static_cast<int>(arr[1].get<double>());
+						ext = ext.substr(dotPos + 1);
+						transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 					}
 					else
-						PrintLog("[Sound] 警告: 键 " + pair.first + " 的数组格式不正确", PL_WARNING);
+						ext = ""; // 无扩展名
+					if (ext != "wav" && ext != "mp3" && ext != "ogg")
+					{
+						LogContext += "不支持的文件类型: " + FilePath + " (仅支持 wav/mp3/ogg)\n";
+						IsError = true;
+						goto putoutlog;
+					}
 				}
-				else
-					PrintLog("[Sound] 警告: 键 " + pair.first + " 的值不是数组", PL_WARNING);
+				WaveInfo info;
+				if (!ALFWGetWaveInfo(FilePath.c_str(), info))
+				{
+					LogContext += "加载声音文件失败: " + FilePath + "，已跳过\n";
+					IsError = true;
+					goto putoutlog;
+				}
+				auto& SourceList = KeybdSoundSourceList[PackName];
+				for (auto& pair : defObj)
+				{
+					// 检查值是否为数组
+					if (pair.second.is<picojson::array>())
+					{
+						auto& arr = pair.second.get<picojson::array>();
+						// 确保数组有2个元素且都是数字
+						if (arr.size() == 2 && arr[0].is<double>() && arr[1].is<double>())
+						{
+							int begin = static_cast<int>(arr[0].get<double>());
+							int offeset = static_cast<int>(arr[1].get<double>());
+							int scanKey;
+							try { scanKey = stoi(pair.first); }
+							catch (...) { LogContext += "Scan转Vk时出现错误，已跳过\n"; continue; }
+							auto itScan = KeyScanToVk.find(NormalizeScanCode(scanKey));
+							if (itScan == KeyScanToVk.end())
+								itScan = KeyScanToVk.find(scanKey);  // 兼容无标准扩展表示的特殊键（如 Pause=3653）
+							if (itScan == KeyScanToVk.end())
+							{
+								LogContext += "未识别的扫描码: " + pair.first + "，已跳过\n";
+								continue;
+							}
+							int vk = itScan->second;
+							ALuint buffer;
+							alGenBuffers(1, &buffer);
+
+							// 配置文件里的 begin/offeset 单位是毫秒，需要转成 sample
+							int StartSample = begin * info.freq / 1000;
+							int NumSamples = offeset * info.freq / 1000;
+							if (NumSamples <= 0)
+								NumSamples = 1; // 至少 1 个 sample
+
+							if (!ALFWSplitDataToBuffer(buffer, info, StartSample, NumSamples)) // 分割
+							{
+								LogContext += "分割音频时，分割的范围超出音频范围: " + FilePath + "\n";
+								alDeleteBuffers(1, &buffer);
+								IsError = true;
+								goto putoutlog;
+							}
+
+							ALuint source;
+							CreateSouce(&source, false);
+							BindSouce(&source, &buffer, false);
+							SourceList[vk] = source;
+							KeybdSoundBufferList.push_back(buffer);
+						}
+						else
+							LogContext += "键 " + pair.first + " 的数组格式不正确\n";
+					}
+					else
+						LogContext += "键 " + pair.first + " 的值不是数组\n";
+				}
+			} 
+			else if (def_type == "multi") // 多文件定义，加载不同的文件
+			{
+				auto& SourceList = KeybdSoundSourceList[PackName];
+				for (auto& pair : defObj)
+				{
+					// 检查值是否为字符串（字符串是音频文件名字）
+					if (pair.second.is<std::string>())
+					{
+						const string& FilePath = dir + "\\" + pair.second.get<std::string>();
+						// 检查音频文件是否为支持的格式
+						{
+							// 提取文件扩展名（小写）
+							string ext = FilePath;
+							size_t dotPos = ext.find_last_of('.');
+							if (dotPos != string::npos)
+							{
+								ext = ext.substr(dotPos + 1);
+								transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+							}
+							else
+								ext = ""; // 无扩展名
+							if (ext != "wav" && ext != "mp3" && ext != "ogg")
+							{
+								LogContext += "不支持的文件类型: " + FilePath + " (仅支持 wav/mp3/ogg)\n";
+								continue;
+							}
+						}
+						WaveInfo info; // 里面包含了buffer的数据
+						if (!ALFWGetWaveInfo(FilePath.c_str(), info))
+							LogContext += "加载声音文件失败: " + FilePath + "，已跳过\n";
+						else
+						{
+							int scanKey;
+							try { scanKey = stoi(pair.first); }
+							catch (...) { LogContext += "Scan转Vk时出现错误，已跳过\n"; continue; }
+							auto itScan = KeyScanToVk.find(NormalizeScanCode(scanKey));
+							if (itScan == KeyScanToVk.end())
+								itScan = KeyScanToVk.find(scanKey);  // 兼容无标准扩展表示的特殊键（如 Pause=3653）
+							if (itScan == KeyScanToVk.end())
+							{
+								LogContext += "未识别的扫描码: " + pair.first + "，已跳过\n";
+								continue;
+							}
+							int vk = itScan->second;
+
+							ALuint buffer;
+							alGenBuffers(1, &buffer);
+
+							ALuint source;
+							CreateSouce(&source, false);
+							BindSouce(&source, &buffer, false);
+							SourceList[vk] = source;
+							KeybdSoundBufferList.push_back(buffer);
+						}
+					}
+					else
+						LogContext += "键 " + pair.first + " 的值不是字符串类型\n";
+				}
 			}
+			else
+				LogContext += "key_define_type定义了一个无效的类型：" + def_type + "\n";
 		}
 		else
 		{
-			PrintLog("[Sound] 解析声音配置文件失败: 无效的defines（不是object或不存在）", PL_ERROR);
-			return false;
+			LogContext += "解析声音配置文件失败: 无效的defines（不是object或不存在）\n";
+			IsError = true;
+			goto putoutlog;
 		}
 
-		if (defines.empty())
-			PrintLog("[Sound] 警告: 没有解析到任何有效的defines配置", PL_WARNING);
-		else
-			PrintLog("[Sound] 成功加载配置: " + name + ", 定义了" + to_string(defines.size()) + "个声音", PL_INFO);
-		return true;
+		IsError = false;
 	}
 	catch (const exception& e)
 	{
-		PrintLog("[Sound] JSON处理异常: " + string(e.what()), PL_ERROR);
+		LogContext += "JSON处理异常: " + string(e.what()) + "\n";
+		IsError = true;
+		goto putoutlog;
+	}
+putoutlog:
+	if (IsError)
+	{
+		PrintLog("在处理声音包时错误：" + ConfigFile + LogContext, PT_ERROR);
 		return false;
 	}
-	return false;
+	PrintLog("已处理声音包：" + ConfigFile + LogContext, PT_ERROR);
+	KeybdSoundList.push_back(PackName); // 添加到列表，这样用户才能选择
+	return true;
 }
 
 bool InitOpenAL()
@@ -416,15 +537,19 @@ bool InitOpenAL()
 
 void ShutdownOpenAL()
 {
-	ALCcontext* pContext;
-	ALCdevice* pDevice;
+	ALCcontext* pContext = alcGetCurrentContext();
+	if (!pContext)   // 修复：判空，防止对 NULL context 操作（未定义行为）
+	{
+		g_pALContext = nullptr;
+		return;
+	}
 
-	pContext = alcGetCurrentContext();
-	pDevice = alcGetContextsDevice(pContext);
+	ALCdevice* pDevice = alcGetContextsDevice(pContext);
 
 	alcMakeContextCurrent(NULL);
 	alcDestroyContext(pContext);
-	alcCloseDevice(pDevice);
+	if (pDevice)
+		alcCloseDevice(pDevice);
 
 	g_pALContext = nullptr; 
 }
@@ -530,7 +655,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		{
 			auto it = MouseSoundSourceList.find(config.MouseSoundType);
 			if (it == MouseSoundSourceList.end())
-				CurrentMouseSource = MouseSoundSourceList["none"];
+				CurrentMouseSource.clear();   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
 			else
 				CurrentMouseSource = it->second;
 		}
@@ -551,10 +676,22 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		{
 			auto it = KeybdSoundSourceList.find(config.KeybdSoundType);
 			if (it == KeybdSoundSourceList.end())
-				CurrentKeybdSource = KeybdSoundSourceList["none"];
+				CurrentKeybdSource.fill(0);   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
 			else
 				CurrentKeybdSource = it->second;
 		}
+		if (g_AudioDeviceChanged.exchange(false))
+		{
+			// 修复：设备切换统一在 ClickSound 线程重建（唯一执行 OpenAL 生命周期管理的线程），
+			// 避免 detach 线程并发 Shutdown/Init 与其它线程持有失效上下文的竞态
+			SoundIsOpen = false;
+			ShutdownOpenAL();
+			Sleep(1000);
+			if (!InitOpenAL())
+				PrintLog("[Sound] 重新打开音频设备失败", PL_ERROR);
+			SoundIsOpen = true;
+		}
+
 		Sleep(500);
 	}
 
@@ -569,12 +706,6 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 			alDeleteBuffers(1, &buffer);
 	}
 
-	for (ALuint buffer : KeybdSoundBufferList)
-	{
-		if (buffer != 0)
-			alDeleteBuffers(1, &buffer);
-	}
-
 	for (auto& sources : KeybdSoundSourceList)
 	{
 		for (auto& source : sources.second)
@@ -583,10 +714,19 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 				alDeleteSources(1, &source);
 		}
 	}
+	for (ALuint buffer : KeybdSoundBufferList)
+	{
+		if (buffer != 0)
+			alDeleteBuffers(1, &buffer);
+	}
 
-	if(!ALFWShutdownOpenAL())
-		PrintLog("[Sound] 无法关闭OpenAL", PL_WARNING);
+	// 修复：噪声源/缓冲此前从未释放
+	alDeleteSources(1, &NoisSource);
+	alDeleteBuffers(1, &NoisBuffer);
 
+	// 修复：原代码 ALFWShutdownOpenAL() 紧接着再调 ShutdownOpenAL()，会对同一上下文双重销毁；
+	// 第二次时当前上下文已为 NULL，alcGetContextsDevice(NULL)/alcDestroyContext(NULL) 属未定义行为。
+	// 统一只调用一次自带判空的 ShutdownOpenAL()。
 	ShutdownOpenAL();
 	ALFWShutdown();
 
@@ -599,6 +739,12 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 	srand(time(NULL));
 	while (!GCExit)
 	{
+		// 修复：OpenAL current context 是线程局部（TLS），本线程此前从未 MakeContextCurrent，
+		// alSourcePlay 会因无当前上下文静默失败（鼠标声音无声的线程问题之一）。
+		// 设备重建后 g_pALContext 会变化，这里每次循环重新绑定。
+		if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+			alcMakeContextCurrent(g_pALContext);
+
 		// 修复：循环内读取 config（UseMouseSound/音量/Sleep 间隔），持读锁与主线程 config 重置互斥
 		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		if (!config.UseMouseSound || !SoundIsOpen)
@@ -627,15 +773,23 @@ DWORD WINAPI MouseSoundThread(LPVOID lpParam)
 			alSourcePlay(source);
 		};
 
+		// 修复：改用 find，避免 operator[] 在键不存在时反复插入默认空条目
+		auto PlayMouse = [&](const string& key)
+		{
+			auto it = CurrentMouseSource.find(key);
+			if (it != CurrentMouseSource.end())
+				PlayWithVariation(it->second);
+		};
+
 		if (GetKeyClick(1, false, GK_HOOK))
-			PlayWithVariation(CurrentMouseSource["1"]);
+			PlayMouse("1");
 		if (GetKeyClick(2, false, GK_HOOK))
-			PlayWithVariation(CurrentMouseSource["2"]);
+			PlayMouse("2");
 
 		if (GetKeyUp(1, false, GK_HOOK))
-			PlayWithVariation(CurrentMouseSource["01"]);
+			PlayMouse("01");
 		if (GetKeyUp(2, false, GK_HOOK))
-			PlayWithVariation(CurrentMouseSource["02"]);
+			PlayMouse("02");
 
 		Sleep(config.MouseSoundSleep);
 	}
@@ -646,58 +800,71 @@ LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam)
 {
 	if (nCode >= 0)
 	{
-		if ((config.UseKeybdSound || config.UseMouseSound) && SoundIsOpen)
+		bool UseKeybdSoundNow = false, UseMouseSoundNow = false;
 		{
-			switch (wParam)
-			{
-				case DBT_DEVICEREMOVECOMPLETE:
-				{
-					PDEV_BROADCAST_HDR pHdr = (PDEV_BROADCAST_HDR)lParam;
-					if (pHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
-					{
-						PDEV_BROADCAST_DEVICEINTERFACE pDevInf = (PDEV_BROADCAST_DEVICEINTERFACE)pHdr;
-						if (IsEqualGUID(pDevInf->dbcc_classguid, GUID_DEVINTERFACE_VOLUME) && wParam == DBT_DEVICEARRIVAL)
-						{
-							thread th([]() {
-								PrintLog("[Sound] 默认音频设备被切换，正在重新打开音频设备", PL_INFO);
-								RenderTip(config.UseChinese ? u8"正在切换音频设备" : "Switching audio device", 3.0f, PT_INFO);
-								SoundIsOpen = false;
-								ShutdownOpenAL();
-								Sleep(1000);
-								InitOpenAL();
-								SoundIsOpen = true;
-								});
-							th.detach();
-						}
-					}
-					break;
-				}
-			}
-			if (config.UseKeybdSound)
+			// 修复：低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
+			// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
+			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
+			UseKeybdSoundNow = config.UseKeybdSound;
+			UseMouseSoundNow = config.UseMouseSound;
+		}
+		if ((UseKeybdSoundNow || UseMouseSoundNow) && SoundIsOpen)
+		{
+			// 说明：WH_KEYBOARD_LL 钩子收不到 DBT_* 设备消息（wParam 只会是 WM_KEYDOWN / WM_KEYUP 等），
+			// 原“设备切换”分支是死代码且线程不安全，已移除。音频设备插拔现由主窗口 WndProc 的
+			// WM_DEVICECHANGE + RegisterDeviceNotification 监听（见 GC.h），置 g_AudioDeviceChanged 后
+			// 由 ClickSound 线程统一重建，不再多线程直接操作 OpenAL。
+			if (UseKeybdSoundNow)
 			{
 				if (g_pALContext && alcGetCurrentContext() != g_pALContext)
 					alcMakeContextCurrent(g_pALContext);
 
 				KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-				int vk = pKeyBoard->vkCode;
-				if (vk < 0 || vk >= 256)
+				int rawVk = (int)pKeyBoard->vkCode;
+				if (rawVk < 0 || rawVk >= 256)
 					return CallNextHookEx(NULL, nCode, wParam, lParam);
+
+				// 修复（Ctrl/Alt/Shift 无声根因）：WH_KEYBOARD_LL 的 vkCode 对左右修饰键返回区分左右的
+				// VK（VK_LCONTROL=0xA2、VK_RMENU=0xA5 等），而声音包加载时 KeyScanToVk 只映射为通用
+				// VK（VK_CONTROL=0x11、VK_MENU=0x12），导致按 0xA2..0xA5 索引 CurrentKeybdSource 恒为 0
+				// 而无声音。这里归一化为通用 VK 后再查表；物理状态仍按原始 vkCode 记录，左右键可独立触发。
+				int vk = rawVk;
+				switch (rawVk)
+				{
+					case VK_LSHIFT:   case VK_RSHIFT:   vk = VK_SHIFT;   break;
+					case VK_LCONTROL: case VK_RCONTROL: vk = VK_CONTROL; break;
+					case VK_LMENU:    case VK_RMENU:    vk = VK_MENU;    break;
+				}
 
 				static bool KeyPhysicalState[256] = { false };
 
 				if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
 				{
 					// 只有当前物理状态为 false（之前确实没有按下）时，才触发声音
-					if (!KeyPhysicalState[vk])
+					if (!KeyPhysicalState[rawVk])
 					{
-						KeyPhysicalState[vk] = true;// 标记为已按下
-						if (CurrentKeybdSource[vk] > 0)
-							alSourcePlay(CurrentKeybdSource[vk]);
+						KeyPhysicalState[rawVk] = true;// 标记为已按下
+
+						ALuint src = CurrentKeybdSource[vk];
+						// 修复：当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
+						if (src == 0)
+						{
+							for (int i = 1; i < 256; ++i)
+							{
+								if (CurrentKeybdSource[i] != 0)
+								{
+									src = CurrentKeybdSource[i];
+									break;
+								}
+							}
+						}
+						if (src != 0)
+							alSourcePlay(src);
 					}
-					// 如果KeyPhysicalState[vk]已经是true，直接忽略（无论系统 flags 是什么）
+					// 如果KeyPhysicalState[rawVk]已经是true，直接忽略（无论系统 flags 是什么）
 				}
 				else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
-					KeyPhysicalState[vk] = false;
+					KeyPhysicalState[rawVk] = false;
 			}
 		}
 	}

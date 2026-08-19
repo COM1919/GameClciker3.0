@@ -180,10 +180,6 @@
   <ItemGroup>
     <ClInclude Include="AgreementString.h" />
     <ClInclude Include="AI.h" />
-    <ClInclude Include="ALFamework\aldlist.h" />
-    <ClInclude Include="ALFamework\CWaves.h" />
-    <ClInclude Include="ALFamework\Famewrok.h" />
-    <ClInclude Include="ALFamework\LoadOAL.h" />
     <ClInclude Include="CodeEditor.h" />
     <ClInclude Include="CodeModules.h" />
     <ClInclude Include="ConfigParser.h" />
@@ -205,6 +201,10 @@
     <ClInclude Include="ImGui\imgui_stdlib.h" />
     <ClInclude Include="ImGui\TextEditor\TextEditor.h" />
     <ClInclude Include="json\picojson.h" />
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\aldlist.h" />
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\CWaves.h" />
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\Famewrok.h" />
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\LoadOAL.h" />
     <ClInclude Include="ScriptEditor.h" />
     <ClInclude Include="StartAnim.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -268,22 +268,6 @@
     <ClInclude Include="UDPSocket.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ALFamework\aldlist.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="ALFamework\CWaves.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="ALFamework\Famewrok.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="ALFamework\LoadOAL.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="BanSystem.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -308,6 +292,10 @@
     <ClCompile Include="ImGui\implot3d_meshes.cpp" />
     <ClCompile Include="ImGui\implot_items.cpp" />
     <ClCompile Include="ImGui\TextEditor\TextEditor.cpp" />
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\aldlist.cpp" />
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\CWaves.cpp" />
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\Famewrok.cpp" />
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\LoadOAL.cpp" />
     <ClCompile Include="stb\stb_vorbis.c" />
     <ClCompile Include="Test.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>

@@ -121,6 +121,7 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
 
 DWORD WINAPI Updata(LPVOID lpParam)
 {
+#ifndef USE_IN_MICROSOFT
     while (UseServerOfType == -1)
         Sleep(200);
     
@@ -290,5 +291,6 @@ DWORD WINAPI Updata(LPVOID lpParam)
         CloseHandle(ShExecInfo.hProcess);
 
     GCExit = true;
+#endif // USE_IN_MICROSOFT
     return 0;
 }

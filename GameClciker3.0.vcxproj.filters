@@ -16,9 +16,6 @@
     <Filter Include="stb">
       <UniqueIdentifier>{c262ed01-b71b-4d60-be27-2251f4c36511}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ALFamework">
-      <UniqueIdentifier>{8215aad7-feb7-40fa-b9e5-d21698908c6c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="ImGui">
       <UniqueIdentifier>{36e4df57-3eab-4ae5-924a-ca17aa1160cc}</UniqueIdentifier>
     </Filter>
@@ -36,6 +33,9 @@
     </Filter>
     <Filter Include="ImGui\ImGuiMD">
       <UniqueIdentifier>{7c1dc4f3-7182-4703-a927-83639662298b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="OpenALFramework">
+      <UniqueIdentifier>{fed7023a-4e59-4c2a-b94f-2d91a0fae32d}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -110,18 +110,6 @@
     </ClInclude>
     <ClInclude Include="resource1.h">
       <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="ALFamework\aldlist.h">
-      <Filter>ALFamework</Filter>
-    </ClInclude>
-    <ClInclude Include="ALFamework\CWaves.h">
-      <Filter>ALFamework</Filter>
-    </ClInclude>
-    <ClInclude Include="ALFamework\Famewrok.h">
-      <Filter>ALFamework</Filter>
-    </ClInclude>
-    <ClInclude Include="ALFamework\LoadOAL.h">
-      <Filter>ALFamework</Filter>
     </ClInclude>
     <ClInclude Include="ImGui\imconfig.h">
       <Filter>ImGui</Filter>
@@ -282,6 +270,18 @@
     <ClInclude Include="UDPSocket.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\aldlist.h">
+      <Filter>OpenALFramework</Filter>
+    </ClInclude>
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\CWaves.h">
+      <Filter>OpenALFramework</Filter>
+    </ClInclude>
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\Famewrok.h">
+      <Filter>OpenALFramework</Filter>
+    </ClInclude>
+    <ClInclude Include="OpenAL\include\OpenAL\ALFamework\LoadOAL.h">
+      <Filter>OpenALFramework</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GC.cpp">
@@ -292,18 +292,6 @@
     </ClCompile>
     <ClCompile Include="stb\stb_vorbis.c">
       <Filter>stb</Filter>
-    </ClCompile>
-    <ClCompile Include="ALFamework\aldlist.cpp">
-      <Filter>ALFamework</Filter>
-    </ClCompile>
-    <ClCompile Include="ALFamework\CWaves.cpp">
-      <Filter>ALFamework</Filter>
-    </ClCompile>
-    <ClCompile Include="ALFamework\Famewrok.cpp">
-      <Filter>ALFamework</Filter>
-    </ClCompile>
-    <ClCompile Include="ALFamework\LoadOAL.cpp">
-      <Filter>ALFamework</Filter>
     </ClCompile>
     <ClCompile Include="ImGui\imgui.cpp">
       <Filter>ImGui</Filter>
@@ -364,6 +352,18 @@
     </ClCompile>
     <ClCompile Include="ImGui\ImGuiMD\md4c.c">
       <Filter>ImGui\ImGuiMD</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\aldlist.cpp">
+      <Filter>OpenALFramework</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\CWaves.cpp">
+      <Filter>OpenALFramework</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\Famewrok.cpp">
+      <Filter>OpenALFramework</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenAL\include\OpenAL\ALFamework\LoadOAL.cpp">
+      <Filter>OpenALFramework</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

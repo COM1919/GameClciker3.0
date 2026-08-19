@@ -98,13 +98,78 @@ int MessageBox(const char* message, const char* title, UINT type);
 void BeginCard(const char* label, ImVec2 size = ImVec2(0, 0), ImGuiChildFlags ChildFlags = ImGuiChildFlags_Borders, ImGuiWindowFlags flag = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 void DrawGlowBorder(ImVec2 min, ImVec2 max, ImU32 color, float thickness = 3.0f);
 void DrawSpiltLine(float lenght, ImVec4 color, float thickness = 1.0f, float SpitlSize = 200);
-void DrawProgressBar(const char* label, float progress, ImVec2 size, ImVec4 Color, ImVec4 bgColor, float thickness = 5.0f);
-//bool ClipCoveredRenderRect(HWND hwnd);
+void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor);
 static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, int* w, int* h, const char* id);
 Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
 Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
 void ClearTextureCache();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor)
+{
+    ImGuiWindow* window = GetCurrentWindow();
+    ImDrawList* dl = window->DrawList;
+    ImGuiID id = GetID(label);
+
+    static map<ImGuiID, float> AnimValueMap;
+    float& AnimValue = AnimValueMap[id];
+    float speed = 0.1f * (1.0f - GetIO().DeltaTime);
+    AnimValue = ImLerp(AnimValue, progress, speed);
+    progress = AnimValue;
+
+    float value = clamp(progress, 0.0f, 1.0f);
+    ImVec2 cursor = GetCursorScreenPos();
+
+    // 外圈轨道颜色（EUI surface 暗色）
+    ImVec4 trackColor = ImVec4(0.20f, 0.20f, 0.24f, 1.0f);
+    // 文字颜色（EUI text）
+    ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    ImVec4 subColor = ImVec4(0.55f, 0.55f, 0.60f, 1.0f);
+
+    float centerX = cursor.x + size.x * 0.5f;
+    float centerY = cursor.y + 58.0f;
+    float outerRadius = 48.0f;
+    float thickness = 8.0f;
+
+    // 轨道圆环
+    dl->AddCircle(ImVec2(centerX, centerY), outerRadius, ColorConvertFloat4ToU32(trackColor), 64, thickness);
+
+    // 进度弧（从顶部顺时针）
+    if (value > 0.001f)
+    {
+        const float startAngle = -IM_PI * 0.5f;  // 顶部
+        const float sweep = value * IM_PI * 2.0f;
+        int segments = max(16, (int)(value * 64.0f));
+
+        vector<ImVec2> arcPoints;
+        arcPoints.reserve(segments + 1);
+        for (int i = 0; i <= segments; i++)
+        {
+            float a = startAngle + sweep * (float)i / (float)segments;
+            arcPoints.push_back(ImVec2(centerX + cosf(a) * outerRadius,
+                centerY + sinf(a) * outerRadius));
+        }
+        dl->AddPolyline(arcPoints.data(), (int)arcPoints.size(), ColorConvertFloat4ToU32(fillColor), 0, thickness);
+    }
+
+    // 中心百分比文字
+    char pctText[16];
+    snprintf(pctText, sizeof(pctText), "%d%%", (int)(value * 100.0f));
+    float pctFontSize = 22.0f;
+    ImVec2 pctSize = CalcTextSize(pctText);
+    dl->AddText(GetFont(), pctFontSize,
+        ImVec2(centerX - pctSize.x * 0.5f, centerY - pctSize.y * 0.5f),
+        ColorConvertFloat4ToU32(textColor), pctText);
+
+    // 底部标签
+    float labelFontSize = 14.0f;
+    ImVec2 labelSize = CalcTextSize(label);
+    dl->AddText(GetFont(), labelFontSize,
+        ImVec2(centerX - labelSize.x * 0.5f, centerY + outerRadius + 12.0f),
+        ColorConvertFloat4ToU32(subColor), label);
+
+    Dummy(size);
+}
 
 struct MarkdownRenderClass : public imgui_md
 {
@@ -549,82 +614,72 @@ bool InputKey(const char* label, int* key, const char* press_tip)
 
     string buf_display;
     string active_key = config.UseChinese ? u8"无" : "None";
-    if (*key == ImGuiKey_Escape)
-        *key = 0;
   
     if (!config.UseChinese)
         goto defa;
     switch (*key)
-        {
-        case 5: active_key = u8"鼠标后侧键"; break;
-        case 6: active_key = u8"鼠标前侧键"; break;
-        case 1: active_key = u8"鼠标左键";   break;
-        case 2: active_key = u8"鼠标右键";   break;
-        case 3: active_key = u8"鼠标中键";   break;
-        case 4: active_key = u8"滚轮键";     break;
-        case 0: active_key = u8"无";         break;
+    {
+        case 5: active_key = config.UseChinese ? u8"鼠标后侧键" : "Back Button";     break;
+        case 6: active_key = config.UseChinese ? u8"鼠标前侧键" : "Forward Button";  break;
+        case 1: active_key = config.UseChinese ? u8"鼠标左键" : "Left Button";       break;
+        case 2: active_key = config.UseChinese ? u8"鼠标右键" : "Right Button";      break;
+        case 3: active_key = config.UseChinese ? u8"鼠标中键" : "Middle Button";     break;
+        case 0: active_key = config.UseChinese ? u8"无" : "None";                    break;
         default:
         defa:
             string vkey_name = GetVkeyName(*key);
             active_key = (char*)vkey_name.c_str();
             break;
-        }
+    }
 
     if (g.ActiveId != id)
         buf_display = active_key;
     else if (g.ActiveId == id)
        buf_display = press_tip;
 
+    static bool IsJustActive = false; // 是否是刚刚才激活的，用于过滤鼠标点击消息
     const bool hovered_key = ItemHoverable(rect, id, g.LastItemData.ItemFlags);
-    if (hovered_key && io.MouseClicked[0])
+    if (hovered_key && io.MouseClicked[0] && g.ActiveId != id) // 如果激活了就不重复激活
     {
-        if (g.ActiveId != id)
-        {
-            // Start edition 使用自己的GetKeyUp后，就不需要这个了
-            //memset(io.MouseDown, 0, sizeof(io.MouseDown));
-            //memset(io.KeysDown, 0, sizeof(io.KeysDown));
-            *key = 0;
-        }
         SetActiveID(id, window);
         FocusWindow(window);
-    }
-    else if (io.MouseClicked[0])
-    {
-        // Release focus when we click outside
-        if (g.ActiveId == id)
-            ClearActiveID();
+        IsJustActive = true;
     }
 
     if (g.ActiveId == id)
     {
-        for (unsigned int i = 3; i < 255; i++)
+        if (IsMouseReleased(ImGuiMouseButton_Left))
+            IsJustActive = false;
+        for (unsigned int i = IsJustActive ? 3 : 1; i < 255; i++)
         {
-            if (GetKeyUp(i))
+            if (GetKeyUp(i, true))
             {
-                *key = i;
+                int TagetValue;
+                if (i == VK_ESCAPE)
+                    TagetValue = 0;
+                else
+                    TagetValue = i;
+                if (TagetValue != *key)
+                    value_changed = true;
+                *key = TagetValue;
                 ClearActiveID();
                 break;
             }
         }
     }
 
-    static std::map <ImGuiID, InputKey_element> anim;
-    auto it_anim = anim.find(id);
-    if (it_anim == anim.end())
-    {
-        anim.insert({ id, { ImGui::ColorConvertU32ToFloat4(ImGui::GetColorU32(ImGuiCol_Button))} });
-        it_anim = anim.find(id);
-    }
-    float speed = 0.1f * (1.0f - ImGui::GetIO().DeltaTime);
+    static map<ImGuiID, ImVec4> AnimValueMap;
+    if (AnimValueMap.find(id) == AnimValueMap.end())
+        AnimValueMap.insert({ id,  GuiColor[ImGuiCol_Button] });
+    ImVec4& AnimValue = AnimValueMap[id];
+    float speed = 0.11f * (1.0f - GetIO().DeltaTime);
 
-    ImU32 tB;
-    tB = (g.ActiveId == id) ? ImGui::GetColorU32(ImGuiCol_FrameBgActive) : hovered_key ? ImGui::GetColorU32(ImGuiCol_FrameBgHovered) : ImGui::GetColorU32(ImGuiCol_FrameBg);
-    ImVec4 tB_vec = ImGui::ColorConvertU32ToFloat4(tB);
-    it_anim->second.B = ImLerp(it_anim->second.B, tB_vec, speed);
+    const ImU32 tB = (g.ActiveId == id) ? GetColorU32(ImGuiCol_FrameBgActive) : hovered_key ? GetColorU32(ImGuiCol_FrameBgHovered) : GetColorU32(ImGuiCol_FrameBg);
+    AnimValue = ImLerp(AnimValue, ColorConvertU32ToFloat4(tB), speed);
 
     // Render
-    window->DrawList->AddRectFilled(rect.Min, ImVec2(rect.Max.x - 4, rect.Max.y), ImGui::ColorConvertFloat4ToU32(it_anim->second.B), 3.0f);
-    ImGui::RenderTextClipped(ImVec2(rect.Min.x, rect.Min.y - 1), ImVec2(rect.Max.x - 4, rect.Max.y - 1), buf_display.c_str(), NULL, NULL, ImVec2(0.5f, 0.5f));
+    window->DrawList->AddRectFilled(rect.Min, ImVec2(rect.Max.x - 4, rect.Max.y), ColorConvertFloat4ToU32(AnimValue), 3.0f);
+    RenderTextClipped(ImVec2(rect.Min.x, rect.Min.y - 1), ImVec2(rect.Max.x - 4, rect.Max.y - 1), buf_display.c_str(), NULL, NULL, ImVec2(0.5f, 0.5f));
 
     return value_changed;
 }
@@ -643,11 +698,15 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     const ImGuiID id = GetID(name);
 
     static map <ImGuiID, PopupWindow_element> anim;
-    static map <ImGuiID, bool> end_anim;
+    static map <ImGuiID, bool> end_anim; // false不播放淡出动画，要么是结束了或者刚刚开始
     const bool IsClose = p_open && !*p_open;
     const bool IsPlayingEndAnim = end_anim[id];
+   
     if (IsClose && !IsPlayingEndAnim)
         return false;
+
+    if (!IsClose)
+        end_anim[id] = true;
     
     const ImVec2 WindowPos((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2);
     const int TagerPos = IsClose ? (io.DisplaySize.y - (size.y * 0.2)) : WindowPos.y;
@@ -659,18 +718,17 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
         anim.insert({ id, { io.DisplaySize.y, 0.0f } });
         it_anim = anim.find(id);
     }
-    float speed = 0.25f * (1.0f - GetIO().DeltaTime);
+    float speed = 0.3f * (1.0f - GetIO().DeltaTime);
 
     it_anim->second.pos = ImLerp(it_anim->second.pos, (float)TagerPos, speed);
     it_anim->second.alpha = ImLerp(it_anim->second.alpha, (float)TagerAlpha, speed);
 
     const ImVec2 RenderPos(WindowPos.x, it_anim->second.pos);
 
-    static bool IsOpen = false;
-    if (!IsOpen)
+    if (!IsPopupOpen(name))
     {
+        end_anim[id] = true;
         OpenPopup(name);
-        IsOpen = true;
     }
 
     SetNextWindowPos(RenderPos);
@@ -709,7 +767,7 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
 
         PopStyleColor(4); // ImGuiCol_PopupBg, ImGuiCol_Border, ImGuiCol_ModalWindowDimBg, ImGuiCol_TitleBgActive
         PopStyleVar(); // ImGuiStyleVar_WindowRounding
-
+        
         if (!is_open || (p_open && !*p_open))
             end_anim[id] = true;
 
@@ -717,7 +775,6 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
         {
             anim.erase(it_anim);
             end_anim[id] = false;
-            IsOpen = false; // 保证下次可以打开
             EndPopup();
             if (is_open)
                 ClosePopupToLevel(g.BeginPopupStack.Size, true);
@@ -748,15 +805,15 @@ void NoticeFlag(const char* msg, UINT type)
     EndTooltip();
 }
 
-/*==========来自其他库移植代码==========*/
-static ImGuiID tooltip_shownid = 0;
-static ImGuiID tooltip_hoveredid = 0;
-static int tooltip_thisframe = -1;
-static bool tooltip_washovered = false;
-static float tooltip_time = 0.f;
-static float tooltip_lastactive = 0.f;
 void AttachTooltip(const char* desc, float delay, float maxwidth)
 {
+    static ImGuiID tooltip_shownid = 0;
+    static ImGuiID tooltip_hoveredid = 0;
+    static int tooltip_thisframe = -1;
+    static bool tooltip_washovered = false;
+    static float tooltip_time = 0.f;
+    static float tooltip_lastactive = 0.f;
+
     ImGuiContext* g = GetCurrentContext();
     ImGuiID id = g->CurrentWindow->ID;
     float time = GetTime();
@@ -909,10 +966,6 @@ void RenderControl()
             }
         }
     }
-
-#else
-    if (mb_message.size() > 0)
-        mb_message.clear();
 #endif // GC_NO_MSGBOX
     //=======================提示框===========================
     {
@@ -1287,12 +1340,8 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
 
-    static bool IsOpen = true;
-    if (IsOpen)
-    {
+    if (!IsPopupOpen("##messagebox"))
         OpenPopup("##messagebox");
-        IsOpen = false;
-    }
     if (BeginPopupModal("##messagebox", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollWithMouse))
     {
         SetWindowPos(RenderPos);
@@ -1363,7 +1412,6 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
             const int ret = RetValueList[id];
             RetValueList.erase(id);
             anim.erase(id);
-            IsOpen = true; // 保证下次弹窗可以打开
             CloseCurrentPopup();
             EndPopup();
             return ret;
@@ -2123,6 +2171,20 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
         ChangeWindowMessageFilter(0x0049, MSGFLT_ADD); //0x0049 = WM_COPYGLOBALDATA，因为这个没有公开。
+
+        // 注册音频设备插拔通知（声卡接口 + 音量/端点接口），插拔耳机/声卡时 WndProc 收到
+        // WM_DEVICECHANGE 后置 g_AudioDeviceChanged，由 ClickSound 线程统一重建 OpenAL
+        DEV_BROADCAST_DEVICEINTERFACE AudioNotify = {};
+        AudioNotify.dbcc_size = sizeof(AudioNotify);
+        AudioNotify.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+        AudioNotify.dbcc_classguid = AudioDevInterfaceGuid;
+        g_hAudioDevNotify = RegisterDeviceNotification(hWnd, &AudioNotify, DEVICE_NOTIFY_WINDOW_HANDLE);
+
+        DEV_BROADCAST_DEVICEINTERFACE VolumeNotify = {};
+        VolumeNotify.dbcc_size = sizeof(VolumeNotify);
+        VolumeNotify.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+        VolumeNotify.dbcc_classguid = GUID_DEVINTERFACE_VOLUME;
+        g_hVolumeDevNotify = RegisterDeviceNotification(hWnd, &VolumeNotify, DEVICE_NOTIFY_WINDOW_HANDLE);
         break;
     }
     case WM_SIZE:
@@ -2142,6 +2204,17 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_DESTROY:
     case WM_CLOSE:
     {
+        // 注销音频设备变化通知
+        if (g_hAudioDevNotify)
+        {
+            UnregisterDeviceNotification(g_hAudioDevNotify);
+            g_hAudioDevNotify = nullptr;
+        }
+        if (g_hVolumeDevNotify)
+        {
+            UnregisterDeviceNotification(g_hVolumeDevNotify);
+            g_hVolumeDevNotify = nullptr;
+        }
         if (IsFirstRun)
         {
             DelFile(ConfigFile.c_str());
@@ -2196,6 +2269,27 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
         }
         DragFinish(hDrop);
+        return 0;
+    }
+    case WM_DEVICECHANGE:
+    {
+        // 修复：原“设备切换”逻辑挂在 WH_KEYBOARD_LL 键盘钩子里，钩子根本收不到 DBT_* 设备广播
+        // （wParam 只会是 WM_KEYDOWN/WM_KEYUP 等），是死代码。现改为在主窗口监听真正的设备插拔事件：
+        // RegisterDeviceNotification（WM_CREATE 中注册）→ 置 g_AudioDeviceChanged → ClickSound 线程统一重建
+        if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE)
+        {
+            PDEV_BROADCAST_HDR pHdr = (PDEV_BROADCAST_HDR)lParam;
+            if (pHdr && pHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE)
+            {
+                PDEV_BROADCAST_DEVICEINTERFACE pDev = (PDEV_BROADCAST_DEVICEINTERFACE)pHdr;
+                if (pDev->dbcc_classguid == AudioDevInterfaceGuid || pDev->dbcc_classguid == GUID_DEVINTERFACE_VOLUME)
+                {
+                    PrintLog("[Sound] 音频设备发生变化，准备重新打开音频设备", PL_INFO);
+                    RenderTip(config.UseChinese ? u8"正在切换音频设备" : "Switching audio device", 3.0f, PT_INFO);
+                    g_AudioDeviceChanged = true;
+                }
+            }
+        }
         return 0;
     }
     }

@@ -312,10 +312,10 @@ namespace ScriptAPI
         return 0;
     }
 
-    int GetMousePos(lua_State* L)
+    int GetCursorPos(lua_State* L)
     {
         if (lua_gettop(L) != 0)
-            luaL_error(L, "GetMousePos的参数太多");
+            luaL_error(L, "GetCursorPos的参数太多");
         POINT pos;
         ::GetCursorPos(&pos);
         lua_pushinteger(L, pos.x);
@@ -323,10 +323,10 @@ namespace ScriptAPI
         return 2;
     }
 
-    int SetMousePos(lua_State* L)
+    int SetCursorPos(lua_State* L)
     {
         if (lua_gettop(L) != 2)
-            luaL_error(L, "SetMousePos的参数不足或太多");
+            luaL_error(L, "SetCursorPos的参数不足或太多");
         int x = luaL_checkinteger(L, 1);
         int y = luaL_checkinteger(L, 2);
         POINT pos;
@@ -403,7 +403,7 @@ namespace ScriptAPI
         int sleep = luaL_optinteger(L, 3, 60);
 
         ItemBarPos = pos;
-        ::SetKeyClick(config.ItemEnableClickerKey[pos], sleep, mode);
+        ::SetKeyClick(config.ItemBarKey[pos], sleep, mode);
         return 0;
     }
 
@@ -485,115 +485,202 @@ namespace ScriptAPI
         return 1;
     }
 
-    enum ProtocolType
+    // 网络权限控制（每个脚本独立）
+    static bool CheckNetworkPermission()
     {
-        PROTOCOL_UDP = 1,
-        PROTOCOL_TCP = 2
-    };
-    struct ConnectionInfo
-    {
-        HANDLE handle;     // 管道句柄 或 SOCKET（转成 HANDLE）
-        int type;          // PROTOCOL_*
-        bool connected;    // 是否已连接（UDP 可能不需要）
-    };
-    static map<int, ConnectionInfo> ScriptConnections;  // 原 PipeList 替换
-    static int NextId = 1;
-
-    /*
-    * https://chat.deepseek.com/share/poiuxxt8e5iyozm1tr
-    */
-
-    static map<int, HANDLE> PipeList;
-    int ConnectNamedPipe(lua_State* L)
-    {
-        if (lua_gettop(L) != 1)
-            luaL_error(L, "ConnectNamedPipe的参数不足或太多");
-        const char* pipe_name = luaL_checkstring(L, 1);
-
-        if (!WaitNamedPipe(pipe_name, NMPWAIT_WAIT_FOREVER))
+        if (CurrentScriptFile.empty())
+            return false;
+        int perm = 0;
         {
-            ::PrintLog("[Script] 连接管道失败：管道不存在", PL_ERROR);
+            shared_lock<shared_mutex> lock(ScriptStatesMtx);
+            auto it = ScriptStates.find(CurrentScriptFile);
+            if (it == ScriptStates.end())
+                return false;
+            perm = it->second.NetworkPermission;
+        }
+        if (perm == 1)
+            return true;
+        if (perm == 2)
+            return false;
+        // 未请求过，弹窗询问用户
+        string title = config.UseChinese ? "网络权限请求" : "Network Permission Request";
+        string msg = config.UseChinese ?
+            ("脚本 [" + CurrentScriptFile + "] 请求使用网络功能，是否允许？") :
+            ("Script [" + CurrentScriptFile + "] requests network access. Allow?");
+        int ret = ::RenderMessageBox(msg, title.c_str(), MB_OKCANCEL);
+        const bool allowed = (ret == IDOK);
+        {
+            lock_guard<shared_mutex> lock(ScriptStatesMtx);
+            auto it = ScriptStates.find(CurrentScriptFile);
+            if (it != ScriptStates.end())
+                it->second.NetworkPermission = allowed ? 1 : 2;
+        }
+        return allowed;
+    }
+
+    // 每个脚本独立的套接字表，避免不同脚本的 socket 混淆
+    static map<string, map<int, SOCKET>> ScriptSockets;
+    static mutex ScriptSocketsMtx;
+    static atomic<int> NextSocketId(1);
+
+    static bool EnsureWsaInit()
+    {
+        static bool WsaStarted = false;
+        static mutex WsaMtx;
+        if (WsaStarted)
+            return true;
+        lock_guard<mutex> lock(WsaMtx);
+        if (WsaStarted)
+            return true;
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) == 0)
+        {
+            WsaStarted = true;
+            return true;
+        }
+        return false;
+    }
+
+    static SOCKET FindScriptSocket(int id)
+    {
+        lock_guard<mutex> lock(ScriptSocketsMtx);
+        auto outer = ScriptSockets.find(CurrentScriptFile);
+        if (outer == ScriptSockets.end())
+            return INVALID_SOCKET;
+        auto it = outer->second.find(id);
+        if (it == outer->second.end())
+            return INVALID_SOCKET;
+        return it->second;
+    }
+
+    int ConnectNetwork(lua_State* L)
+    {
+        if (lua_gettop(L) != 2)
+            luaL_error(L, "ConnectNetwork的参数不足或太多");
+        string ip = luaL_checkstring(L, 1);
+        int port = luaL_checkinteger(L, 2);
+        if (!CheckNetworkPermission())
+        {
+            ::PrintLog("[Script] 网络权限被拒绝，连接失败", PL_WARNING);
             lua_pushinteger(L, -1);
             return 1;
         }
-
-        HANDLE hPipe;
-        hPipe = CreateFile(pipe_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-        if (hPipe == INVALID_HANDLE_VALUE)
+        if (!EnsureWsaInit())
         {
-            ::PrintLog("[Script] 连接管道失败：无法打开管道", PL_ERROR);
+            ::PrintLog("[Script] WSA初始化失败", PL_ERROR);
             lua_pushinteger(L, -1);
             return 1;
         }
-        unsigned int id = rand() + 1;
-        PipeList[id] = hPipe;
+        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (s == INVALID_SOCKET)
+        {
+            ::PrintLog("[Script] 创建socket失败", PL_ERROR);
+            lua_pushinteger(L, -1);
+            return 1;
+        }
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        if (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) <= 0)
+        {
+            ::PrintLog("[Script] IP地址无效：" + ip, PL_ERROR);
+            closesocket(s);
+            lua_pushinteger(L, -1);
+            return 1;
+        }
+        if (connect(s, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
+        {
+            ::PrintLog("[Script] 连接失败：" + ip, PL_ERROR);
+            closesocket(s);
+            lua_pushinteger(L, -1);
+            return 1;
+        }
+        const int id = NextSocketId++;
+        {
+            lock_guard<mutex> lock(ScriptSocketsMtx);
+            ScriptSockets[CurrentScriptFile][id] = s;
+        }
         lua_pushinteger(L, id);
         return 1;
     }
 
-    int ReadNamedPipe(lua_State* L)
+    int RecvNetwork(lua_State* L)
     {
         if (lua_gettop(L) != 1)
-            luaL_error(L, "ReadNamedPipe的参数不足或太多");
+            luaL_error(L, "RecvNetwork的参数不足或太多");
         int id = luaL_checkinteger(L, 1);
-        if (PipeList.find(id) == PipeList.end())
+        if (!CheckNetworkPermission())
         {
-            ::PrintLog("[Script] 读取管道失败：管道不存在", PL_ERROR);
+            lua_pushstring(L, "");
+            return 1;
+        }
+        SOCKET s = FindScriptSocket(id);
+        if (s == INVALID_SOCKET)
+        {
             lua_pushstring(L, "");
             return 1;
         }
         char buffer[MAX_BUF];
-        DWORD dwRead;
-        if (!ReadFile(PipeList[id], buffer, MAX_BUF, &dwRead, NULL))
+        int len = recv(s, buffer, MAX_BUF - 1, 0);
+        if (len <= 0)
         {
-            ::PrintLog("[Script] 读取管道失败：读取失败", PL_ERROR);
             lua_pushstring(L, "");
             return 1;
         }
+        buffer[len] = '\0';
         lua_pushstring(L, buffer);
         return 1;
     }
 
-    int WriteNamedPipe(lua_State* L)
+    int SendNetwork(lua_State* L)
     {
         if (lua_gettop(L) != 2)
-            luaL_error(L, "WriteNamedPipe的参数不足或太多");
+            luaL_error(L, "SendNetwork的参数不足或太多");
         int id = luaL_checkinteger(L, 1);
-        if (PipeList.find(id) == PipeList.end())
+        string data = luaL_checkstring(L, 2);
+        if (!CheckNetworkPermission())
         {
-            ::PrintLog("[Script] 写入管道失败：管道不存在", PL_ERROR);
             lua_pushinteger(L, -1);
             return 1;
         }
-        string str = luaL_checkstring(L, 2);
-        try
+        SOCKET s = FindScriptSocket(id);
+        if (s == INVALID_SOCKET)
         {
-            str = StringToUTF8(str);
-        }
-        catch (...) {}
-        if (!WriteFile(PipeList[id], str.c_str(), str.size(), NULL, NULL))
-        {
-            ::PrintLog("[Script] 写入管道失败：写入失败", PL_ERROR);
             lua_pushinteger(L, -1);
             return 1;
         }
-        lua_pushinteger(L, 0);
+        int ret = send(s, data.c_str(), (int)data.size(), 0);
+        lua_pushinteger(L, (ret == SOCKET_ERROR) ? -1 : 0);
         return 1;
     }
 
-    int CloseNamedPipe(lua_State* L)
+    int CloseNetwork(lua_State* L)
     {
         if (lua_gettop(L) != 1)
-            luaL_error(L, "CloseNamedPipe的参数不足或太多");
+            luaL_error(L, "CloseNetwork的参数不足或太多");
         int id = luaL_checkinteger(L, 1);
-        if (PipeList.find(id) == PipeList.end())
+        if (!CheckNetworkPermission())
         {
-            ::PrintLog("[Script] 关闭管道失败：管道不存在", PL_ERROR);
             lua_pushinteger(L, -1);
-            return -1;
+            return 1;
         }
-        CloseHandle(PipeList[id]);
-        PipeList.erase(id);
+        {
+            lock_guard<mutex> lock(ScriptSocketsMtx);
+            auto outer = ScriptSockets.find(CurrentScriptFile);
+            if (outer == ScriptSockets.end())
+            {
+                lua_pushinteger(L, -1);
+                return 1;
+            }
+            auto it = outer->second.find(id);
+            if (it == outer->second.end())
+            {
+                lua_pushinteger(L, -1);
+                return 1;
+            }
+            closesocket(it->second);
+            outer->second.erase(it);
+        }
         lua_pushinteger(L, 1);
         return 1;
     }
@@ -817,7 +904,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "PlayEnableSound的参数太多");
         ::PlayEnableSound();
-        return 1;
+        return 0;
     }
 
     int PlayDisableSound(lua_State* L)
@@ -825,7 +912,112 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "PlayDisableSound的参数太多");
         ::PlayDisableSound();
+        return 0;
+    }
+
+    int PlayToggleSound(lua_State* L)
+    {
+        if (lua_gettop(L) != 1)
+            luaL_error(L, "PlayToggleSound的参数不足或太多");
+        bool enable = lua_toboolean(L, 1);
+        if (enable)
+            ::PlayEnableSound();
+        else
+            ::PlayDisableSound();
+        return 0;
+    }
+
+    int GetCurrentWindowPos(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "GetCurrentWindowPos的太多");
+        HWND hwnd = GetForegroundWindow();
+        RECT rect;
+        GetWindowRect(hwnd , &rect);
+        lua_pushnumber(L, rect.left);
+        lua_pushnumber(L, rect.top);
+        return 2;
+    }
+
+    int GetCurrentWindowRect(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "GetCurrentWindowPos的太多");
+        HWND hwnd = GetForegroundWindow();
+        RECT rect;
+        GetWindowRect(hwnd, &rect);
+        lua_pushnumber(L, rect.left);
+        lua_pushnumber(L, rect.top);
+        lua_pushnumber(L, rect.right);
+        lua_pushnumber(L, rect.bottom);
+        return 4;
+    }
+
+    int GetCurrentWindowSize(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "GetCurrentWindowSize的参数太多");
+        HWND hwnd = GetForegroundWindow();
+        RECT rect;
+        GetWindowRect(hwnd, &rect);
+        lua_pushinteger(L, rect.right - rect.left);
+        lua_pushinteger(L, rect.bottom - rect.top);
+        return 2;
+    }
+
+    int MoveCursor(lua_State* L)
+    {
+        if (lua_gettop(L) != 2)
+            luaL_error(L, "MoveCursor的参数不足或太多");
+        int dx = luaL_checkinteger(L, 1);
+        int dy = luaL_checkinteger(L, 2);
+        POINT pos;
+        ::GetCursorPos(&pos);
+        ::SetCursorPos(pos.x + dx, pos.y + dy);
+        return 0;
+    }
+
+    int MoveCursorX(lua_State* L)
+    {
+        if (lua_gettop(L) != 1)
+            luaL_error(L, "MoveCursorX的参数不足或太多");
+        int dx = luaL_checkinteger(L, 1);
+        POINT pos;
+        ::GetCursorPos(&pos);
+        ::SetCursorPos(pos.x + dx, pos.y);
+        return 0;
+    }
+
+    int MoveCursorY(lua_State* L)
+    {
+        if (lua_gettop(L) != 1)
+            luaL_error(L, "MoveCursorY的参数不足或太多");
+        int dy = luaL_checkinteger(L, 1);
+        POINT pos;
+        ::GetCursorPos(&pos);
+        ::SetCursorPos(pos.x, pos.y + dy);
+        return 0;
+    }
+
+    int GetItemBarKey(lua_State* L)
+    {
+        if (lua_gettop(L) != 1)
+            luaL_error(L, "GetItemBarKey的参数不足或太多");
+        int index = luaL_checkinteger(L, 1);
+        if (index < 0 || index > 8)
+            luaL_error(L, "GetItemBarKey的index必须在0到8的范围");
+        lua_pushinteger(L, config.ItemBarKey[index]);
         return 1;
+    }
+
+    int GetWindowsCenterPos(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "GetWindowsCenterPos的参数太多");
+        POINT center = GetGameWindowCenter(GetForegroundWindow());
+        lua_pushinteger(L, center.x);
+        lua_pushinteger(L, center.y);
+        return 2;
     }
 
     //--------------------GUI的API------------------------------
@@ -1088,10 +1280,10 @@ namespace ScriptAPI
         return 1;
     }
 
-    int SetCursorPos(lua_State* L)
+    int SetNextItemPos(lua_State* L)
     {
         if (lua_gettop(L) != 2)
-            luaL_error(L, "SetCursorPos的参数不足或太多");
+            luaL_error(L, "SetNextItemPos的参数不足或太多");
         int x = luaL_checkinteger(L, 1);
         int y = luaL_checkinteger(L, 2);
         if (x < 0 && y >= 0)
@@ -1103,10 +1295,10 @@ namespace ScriptAPI
         return 0;
     }
 
-    int GetCursorPos(lua_State* L)
+    int GetNextItemPos(lua_State* L)
     {
         if (lua_gettop(L) != 0)
-            luaL_error(L, "GetCursorPos的参数太多");
+            luaL_error(L, "GetNextItemPos的参数太多");
         ImVec2 pos = ImGui::GetCursorPos();
         lua_pushinteger(L, pos.x);
         lua_pushinteger(L, pos.y);

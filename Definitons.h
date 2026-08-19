@@ -47,7 +47,7 @@
 #define URL_GITEE_POPUP    "https://gitee.com/com1919/gameclicker-information/raw/master/popup.txt"
 #define URL_GITEE_SCRIPTS  "https://gitee.com/com1919/gameclicker-information/raw/master/scriptlist.txt"
 #define URL_GITEE_SC_ROOT  "https://gitee.com/com1919/gameclicker-information/raw/master/script/"
-#define URL_GITEE_SOUNDS   "https://gitee.com/com1919/gameclicker-information/releases/download/KeySound/keys.zip"
+#define URL_GITEE_SOUNDS   "https://gitee.com/com1919/gameclicker-information/releases/download/KeySound2/keys.zip"
 
 #define MAIN_R_KEY    5       //默认鼠标侧键，连点右键的快捷键
 #define MAIN_L_KEY    6       //默认鼠标侧键，连点左键的快捷键
@@ -188,7 +188,7 @@ public:
     int MouseShakeSpeed = 300;              //鼠标抖动速度
     int MouseShakeRect = 8;                 //鼠标抖动范围
     array<int, 10>                          //物品栏开关连点快捷键
-        ItemEnableClickerKey = { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39 };
+        ItemBarKey = { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39 };
     LRPair<array<int, 10>>                  //物品栏CPS预设
         ItemBarPresetCPS = {
             { DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS },
@@ -251,8 +251,8 @@ public:
     bool UseLClickTime = false;             //开关左键连点间隔
     bool UseRClickTime = false;             //开关右键连点间隔
     bool UseGUIDetection = false;           //开关GUI检测
-    bool UseLClickPressTime = true;         //开关左键仿人类点击
-    bool UseRClickPressTime = true;         //开关右键仿人类点击
+    bool UseLClickPressTime = false;        //开关左键按下间隔
+    bool UseRClickPressTime = false;        //开关右键按下间隔
     bool UseRAutoPressDuration = true;      //开关自动设置右键按下时长
     bool UseLAutoPressDuration = true;      //开关自动设置左键按下时长
     bool UseStartWithWindows = false;       //开关开机启动
@@ -276,7 +276,6 @@ public:
     bool UseDriverProtect = false;          //开关驱动保护
     bool UseHiddenProcess = false;          //开关隐藏进程
     bool UseSuspendNetease = false;         //开关挂起网易游戏
-    bool UseAutoResetOnDisable = true;      //开关鼠标模式时禁用连点是否重置鼠标按下状态(是否自动松开)
     bool AllowSetLClicker = true;           //开关允许控制左键开关
     bool AllowSetRClicker = true;           //开关允许控制右键开关
     bool UseEnableGameGui = false;          //开关开启游戏视觉效果
@@ -349,8 +348,7 @@ atomic<bool> ThreadExitFlag(false);     //线程退出标志
 
 const vector<string> ScriptRestrictedFuncs = {
         "SetClipboardText", "GetClipboardText",
-        "WriteNamedPipe", "CloseNamedPipe", "ReadNamedPipe", "ConnectNamedPipe",
-        "SimulatedInputText", "SetMousePos"
+        "SimulatedInputText", "SetCursorPos"
 };
 
 struct ScriptInfo
@@ -372,6 +370,7 @@ struct ScriptInfo
 struct ScriptState
 {
     int key = 0;
+    int NetworkPermission = 0; // 网络权限: 0=未请求, 1=已允许, 2=已拒绝
     bool IsPressedKey = false; // 这个不需要自己控制
     bool IsClickedKey = false; // 这个需要在读取后设置为false
     bool IsReleaseKey = false; // 这个需要在读取后设置为false
@@ -393,8 +392,8 @@ map<string, ScriptState> ScriptStates;  //脚本相关状态控制
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.51";          //版本号
-string title = "GAMECLICKER 3.51";      //标题名字
+const string version = "3.53";          //版本号
+string title = "GAMECLICKER 3.53";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
 const int AgreementVersion = 3;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
@@ -426,6 +425,8 @@ const int RenderFps = 60;               //渲染帧率
 #undef GC_NO_HOOK
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
+
+#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
 
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
@@ -724,3 +725,10 @@ typedef struct GameGuiPipeData
     LRPair<bool> IsHumanDown = {};               //鼠标键是否按下
 };
 
+const string ASCIITitle = R"(
+   ______                        _________      __
+  / ____/___ _____ ___  ___     / ____/ (_)____/ /_____  _____
+ / / __/ __ `/ __ `__ \/ _ \   / /   / / / ___/ //_/ _ \/ ___/
+/ /_/ / /_/ / / / / / /  __/  / /___/ / / /__/ ,< /  __/ /
+\____/\__,_/_/ /_/ /_/\___/   \____/_/_/\___/_/|_|\___/_/
+)";

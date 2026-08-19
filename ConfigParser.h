@@ -258,7 +258,6 @@ void SaveConfig()
 	WritePrivateProfileString("FeatureSwitches", "useDriverProtect", config.UseDriverProtect ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useHiddenProcess", config.UseHiddenProcess ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useAutoResetOnDisable", config.UseAutoResetOnDisable ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", CIniPos);
 	WritePrivateProfileString("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", CIniPos);
@@ -303,7 +302,7 @@ void SaveConfig()
 	string itemEnableClickerKeyStr;
 	for (int i = 0; i < 10; i++)
 	{
-		itemEnableClickerKeyStr += to_string(config.ItemEnableClickerKey[i]);
+		itemEnableClickerKeyStr += to_string(config.ItemBarKey[i]);
 		if (i < 9) itemEnableClickerKeyStr += ",";
 	}
 	WritePrivateProfileString("ItemBarSettings", "itemEnableClickerKey", itemEnableClickerKeyStr.c_str(), CIniPos);
@@ -660,9 +659,6 @@ void LoadConfig()
 		GetPrivateProfileString("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.UseSuspendNetease = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useAutoResetOnDisable", config.UseAutoResetOnDisable ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
-		st = buffer;
-		config.UseAutoResetOnDisable = st.find("TRUE") != string::npos;
 		GetPrivateProfileString("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
 		st = buffer;
 		config.AllowSetLClicker = st.find("TRUE") != string::npos;
@@ -770,7 +766,7 @@ void LoadConfig()
             string token;
             int i = 0;
             while (getline(ss, token, ',') && i < 10)
-				config.ItemEnableClickerKey[i++] = stoi(token);
+				config.ItemBarKey[i++] = stoi(token);
 		}
 
 		//==================================================LRPair arrays==================================================

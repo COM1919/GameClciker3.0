@@ -20,6 +20,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 并重定向 stdout，使 PrintLog 里的 cout 能显示在终端里（崩溃前可立即看到日志）。
     if (lpCmdLine && strstr(lpCmdLine, "debug"))
     {
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+        cout << ASCIITitle << endl;
+        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+        cout << "===========================Debug模式已开启===========================\n\n" << endl;
+        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
         LogDebugCout = true;
         if (!AttachConsole(ATTACH_PARENT_PROCESS))
             AllocConsole();
@@ -594,7 +600,7 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
     while (!GCExit)
     {
         // 修复：原代码无锁 push_back/erase，与主渲染线程的 back()/copy 并发时，
-        // vector 扩容/缩容导致迭代与访问已释放内存 → 0xC0000005。写入统一加写锁。
+        // vector 扩容/缩容导致迭代与访问已释放内存 -> 0xC0000005。写入统一加写锁。
         // 采样函数（内部会 Sleep）放在锁外，避免长时间占用锁阻塞渲染线程。
         const float cpuRate = GetCpuUsageRate(200) / 100.0f;
         const float gpuRate = GetGpuUsageRate(200) / 100.0f;
@@ -615,22 +621,6 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
                 MemRates.erase(MemRates.begin());
         }
         //GetCpuUsageRate等函数会进行Sleep
-
-        /*
-        size_t size = ScriptThreads.size();
-        if(size <= 0)
-            Sleep(200);
-        else
-        {
-            for (int i = 0; i < size; i++)
-            {
-                vector<float> rates;
-                rates.push_back(GetThreadCpuUsage(ClickSoundThread, 200) / 100.0f);
-                if (rates.size() > MAX_PERF_RECORDS)
-                    rates.erase(rates.begin());
-                ScriptCpuRates.push_back(rates);
-            }
-        }*/
     }
     return 0;
 }
@@ -1033,74 +1023,75 @@ void RenderGui(ImGuiIO& io)
                 //-----------------------CPU/GPU/内存监控信息---------------------------
                 // 修复：读取端加读锁，避免与 RecordsPCRate 线程的 push_back/erase 并发（vector realloc → 悬垂访问）
                 shared_lock<shared_mutex> perfLock(PerformanceMutex);
-                DrawProgressBar(config.UseChinese ? u8"CPU占用率" : "CPU usage", CpuRates.back(), { 120, 120 }, GuiColor[ImGuiCol_CheckMark], GuiColor[ImGuiCol_FrameBg]);
-                SameLine();
-                DrawProgressBar(config.UseChinese ? u8"显卡占用率" : "GPU usage", GpuRates.back(), { 120, 120 }, GuiColor[ImGuiCol_CheckMark], GuiColor[ImGuiCol_FrameBg]);
-                SameLine();
-                DrawProgressBar(config.UseChinese ? u8"内存占用率" : "Memory usage", MemRates.back(), { 120, 120 }, GuiColor[ImGuiCol_CheckMark], GuiColor[ImGuiCol_FrameBg]);
-
-                //-----------------------CPU/GPU---------------------------
-
-                const int PosY3 = GetCursorPosY();
-                TextColored((ImVec4)ImColor(17, 125, 187, 255), u8"CPU");
-                SameLine();
-                Text(u8"/");
-                SameLine();
-                TextColored((ImVec4)ImColor(222, 18, 20, 255), u8"GPU");
-                SameLine();
-                Text(config.UseChinese ? u8"占用率监控" : "CPS monitoring");
-
-                //不用const staitc的，是因为这玩意任意错位
-                float PosY4 = GetCursorPosY();
-                BeginChild("##CPURecordsBeginChild", { 250, 120 }, true, flags);
                 {
+                    DrawRoundProgressBar(config.UseChinese ? u8"CPU" : "CPU", CpuRates.back(), ImVec2(150, 160), ImVec4(0.22f, 0.50f, 0.88f, 1.0f));
+                    SameLine();
+                    DrawRoundProgressBar(config.UseChinese ? u8"GPU" : "GPU", GpuRates.back(), ImVec2(150, 160), ImVec4(0.20f, 0.76f, 0.58f, 1.0f));
+                    SameLine();
+                    DrawRoundProgressBar(config.UseChinese ? u8"内存" : "Memory", MemRates.back(), ImVec2(150, 160), ImVec4(0.98f, 0.62f, 0.15f, 1.0f));
+
+                    //-----------------------CPU/GPU---------------------------
+
+                    const int PosY3 = GetCursorPosY();
+                    TextColored((ImVec4)ImColor(17, 125, 187, 255), u8"CPU");
+                    SameLine();
+                    Text(u8"/");
+                    SameLine();
+                    TextColored((ImVec4)ImColor(222, 18, 20, 255), u8"GPU");
+                    SameLine();
+                    Text(config.UseChinese ? u8"占用率监控" : "CPS monitoring");
+
+                    //不用const staitc的，是因为这玩意任意错位
+                    float PosY4 = GetCursorPosY();
+                    BeginChild("##CPURecordsBeginChild", { 250, 120 }, true, flags);
+                    {
+                        temp.clear();
+                        temp.resize(MAX_RECORDS, 0);
+                        copy(CpuRates.begin(), CpuRates.end(), temp.begin());
+                        rotate(temp.begin(), temp.begin() + CpuRates.size(), temp.end());
+
+                        const static ImVec2 Pos = GetCursorPos();
+                        PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(17, 125, 187, 255));
+                        PlotLines(u8"##CPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
+                        PopStyleColor();
+
+                        temp.clear();
+                        temp.resize(MAX_RECORDS, 0);
+                        copy(GpuRates.begin(), GpuRates.end(), temp.begin());
+                        rotate(temp.begin(), temp.begin() + GpuRates.size(), temp.end());
+
+                        SetCursorPos(Pos);
+                        PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(222, 18, 20, 255));
+                        PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImColor(0, 0, 0, 0));
+                        PlotLines(u8"##GPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
+                        PopStyleColor(2);
+
+                        SetScrollHereX(1);
+                    }
+                    EndChild();
+
+                    SameLine();
+                    float PosX4 = GetCursorPosX();
+
+                    //-----------------------Mem---------------------------
+
                     temp.clear();
                     temp.resize(MAX_RECORDS, 0);
-                    copy(CpuRates.begin(), CpuRates.end(), temp.begin());
-                    rotate(temp.begin(), temp.begin() + CpuRates.size(), temp.end());
 
-                    const static ImVec2 Pos = GetCursorPos();
-                    PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(17, 125, 187, 255));
-                    PlotLines(u8"##CPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
-                    PopStyleColor();
+                    copy(MemRates.begin(), MemRates.end(), temp.begin());
+                    rotate(temp.begin(), temp.begin() + MemRates.size(), temp.end());
 
-                    temp.clear();
-                    temp.resize(MAX_RECORDS, 0);
-                    copy(GpuRates.begin(), GpuRates.end(), temp.begin());
-                    rotate(temp.begin(), temp.begin() + GpuRates.size(), temp.end());
+                    SetCursorPosY(PosY3);
 
-                    SetCursorPos(Pos);
-                    PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(222, 18, 20, 255));
-                    PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImColor(0, 0, 0, 0));
-                    PlotLines(u8"##GPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
-                    PopStyleColor(2);
-
-                    SetScrollHereX(1);
+                    Text(config.UseChinese ? u8"内存占用率监控" : "Memory usage monitoring");
+                    SetCursorPos({ PosX4, PosY4 });
+                    BeginChild("##MemRecordsBeginChild", { 250, 120 }, true, flags);
+                    {
+                        PlotLines(u8"##MemRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
+                        SetScrollHereX(1);
+                    }
+                    EndChild();
                 }
-                EndChild();
-
-                SameLine();
-                float PosX4 = GetCursorPosX();
-
-                //-----------------------Mem---------------------------
-
-                temp.clear();
-                temp.resize(MAX_RECORDS, 0);
-
-                copy(MemRates.begin(), MemRates.end(), temp.begin());
-                rotate(temp.begin(), temp.begin() + MemRates.size(), temp.end());
-
-                SetCursorPosY(PosY3);
-
-                Text(config.UseChinese ? u8"内存占用率监控" : "Memory usage monitoring");
-                SetCursorPos({ PosX4, PosY4 });
-                BeginChild("##MemRecordsBeginChild", { 250, 120 }, true, flags);
-                {
-                    PlotLines(u8"##MemRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
-                    SetScrollHereX(1);
-                }
-                EndChild();
-
 
                 EndTabItem();
             }
@@ -1254,65 +1245,6 @@ void RenderGui(ImGuiIO& io)
 
                 EndTabItem();
             }
-            /*
-            //-----------------------脚本性能---------------------------
-            if (BeginTabItem(config.UseChinese ? u8"脚本性能" : "Script Setting"))
-            {
-                ImDrawList* DrawList = GetWindowDrawList();
-
-                const static ImGuiWindowFlags flags =
-                    ImGuiWindowFlags_HorizontalScrollbar |
-                    ImGuiWindowFlags_NoScrollWithMouse |
-                    ImGuiWindowFlags_NoScrollbar;
-
-                TextColored((ImVec4)ImColor(132, 53, 79, 255), config.UseChinese ? u8"当脚本优化足够好时，CPU占用会出现几乎0的情况。" : "When the script is optimized well, the CPU usage will be almost 0.");
-                
-                size_t size = ScriptThreads.size();
-                for (int i = 0; i < size; i++)
-                {
-                    BeginChild(("##ScriptChild" + to_string(i)).c_str(), ImVec2(660, 150), true, flags);
-                    {
-                        TextColored((ImVec4)ImColor(245, 87, 98, 255), InstallScriptName[i].c_str());
-
-                        const static ImGuiWindowFlags flags =
-                            ImGuiWindowFlags_HorizontalScrollbar |
-                            ImGuiWindowFlags_NoScrollWithMouse;
-
-                        const float PosY = GetCursorPosY();
-
-                        PushStyleVar(ImGuiStyleVar_ScrollbarSize, 2);
-
-                        vector<float> temp;
-                        temp.resize(MAX_RECORDS, 0);
-
-                        const vector<float>& rates = ScriptCpuRates[i];
-
-                        copy(rates.begin(), rates.end(), temp.begin());
-                        rotate(temp.begin(), temp.begin() + rates.size(), temp.end());
-
-                        SameLine(0, 80);
-
-                        Text(config.UseChinese ? u8"CPU占用率监控" : "CPU usage monitoring");
-                        const float PosY2 = GetCursorPosY();
-                        BeginChild("##ScriptRecordsBeginChild", { 500, 100 }, true, flags);
-                        {
-                            PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(220, 220, 170, 255));
-                            PlotLines(u8"##ScriptRecordsCPU", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
-                            PopStyleColor();
-                            SetScrollHereX(1);
-                        }
-                        EndChild();
-
-                        SameLine();
-
-                        DrawProgressBar(config.UseChinese ? u8"脚本CPU占用率" : "Script cpu usage", rates.back(), { 100, 100 }, GuiColor[ImGuiCol_ButtonActive], GuiColor[ImGuiCol_FrameBg]);
-
-                        PopStyleVar(); //ImGuiStyleVar_ScrollbarSize
-                    }
-                }
-
-                EndTabItem();
-            }*/
             EndTabBar();
             
             break;
@@ -1330,7 +1262,7 @@ void RenderGui(ImGuiIO& io)
             if (Button(config.UseChinese ? u8"保存设置" : "Save", ImVec2(80, 40)))
                 ReloadClicker = true;
             SameLine();
-            if (Button(config.UseChinese ? u8"重置配置" : "Reset Settings", ImVec2(80, 40)))
+            if (Button(config.UseChinese ? u8"重置配置" : "Reset", ImVec2(80, 40)))
             {
                 // 修复：原 detach 线程在确认后直接执行 config.~Config()+placement new，
                 // 与 ClickerControl/MouseSoundThread/GetInfo 等线程并发读写 config → 0xC0000005。
@@ -1375,16 +1307,36 @@ void RenderGui(ImGuiIO& io)
                     Text(config.UseChinese ? u8"右键连点按键" : "RClicker Key");
                     SameLine();
                     SetNextItemWidth(100);
-                    InputKey("##RClickKey", &config.RKEY, config.UseChinese ? u8"请按下按键" : "Press a key");
-                    if (config.RClickerMode & C_MOUSESMODE || config.RClickerMode & C_ASSISTMODE)
+                    {
+                        int LastKey = config.RKEY;
+                        if (InputKey("##RClickKey", &config.RKEY, config.UseChinese ? u8"请按下按键" : "Press a key"))
+                        {
+                            if (LastKey == 2)
+                            {
+                                config.RClickerMode |= C_BUTTONMODE;
+                                config.RClickerMode &= ~C_MOUSESMODE;
+                                RenderTip(config.UseChinese ? u8"已自动切换为 &6默认模式" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
+                            }
+                            if (config.RKEY == 2)
+                            {
+                                config.RClickerMode |= C_MOUSESMODE;
+                                config.RClickerMode &= ~C_BUTTONMODE;
+                                RenderTip(config.UseChinese ? u8"已自动切换为 &6鼠标模式" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
+                            }
+                        }
+                    }
+                    if (!(config.RClickerMode & C_BUTTONMODE || config.RClickerMode & C_SWITCHMODE) && 
+                        (config.RClickerMode & C_MOUSESMODE || config.RClickerMode & C_ASSISTMODE))
                         AttachTooltip(config.UseChinese ? u8"&b辅助模式 &f或 &b鼠标模式&f不需要设置快捷键" : "AssistMode or MouseMode does not need to set a shortcut key");
-
+                    else
+                        AttachTooltip(config.UseChinese ? u8"如果需要实现 按住鼠标 来连点\n可以使用鼠标模式。" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
+                   
                     SameLine();
 
                     Text(config.UseChinese ? u8"右键CPS" : "RClicker CPS");
                     AttachTooltip(config.UseChinese ? u8"CPS指每秒连点次数，越高越快，\n一般右键设置 20CPS 就可以。" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the left key sets 14CPS can be used.");
                     SameLine();
-                    SetNextItemWidth(300);
+                    SetNextItemWidth(350);
                     if (config.UseRFluctuation && !config.UseBrutalMode)
                     {
                         static float MinCps = config.RCPS - config.RFluctuationCPS;
@@ -1414,8 +1366,27 @@ void RenderGui(ImGuiIO& io)
                     Text(config.UseChinese ? u8"左键连点按键" : "LClicker Key");
                     SameLine();
                     SetNextItemWidth(100);
-                    InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"请按下按键" : "Press a key");
-                    if (config.LClickerMode & C_MOUSESMODE || config.LClickerMode & C_ASSISTMODE)
+                    {
+                        int LastKey = config.RKEY;
+                        if (InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"请按下按键" : "Press a key"))
+                        {
+
+                            if (LastKey == 2)
+                            {
+                                config.LClickerMode |= C_BUTTONMODE;
+                                config.LClickerMode &= ~C_MOUSESMODE;
+                                RenderTip(config.UseChinese ? u8"已自动切换为 &6默认模式" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
+                            }
+                            if (config.LKEY == 1)
+                            {
+                                config.LClickerMode |= C_MOUSESMODE;
+                                config.LClickerMode &= ~C_BUTTONMODE;
+                                RenderTip(config.UseChinese ? u8"已自动切换为 &6鼠标模式" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
+                            }
+                        }
+                    }
+                    if (!(config.LClickerMode & C_BUTTONMODE || config.LClickerMode & C_SWITCHMODE) &&
+                        (config.LClickerMode & C_MOUSESMODE || config.LClickerMode & C_ASSISTMODE))
                         AttachTooltip(config.UseChinese ? u8"&b辅助模式 &f或 &b鼠标模式&f不需要设置快捷键" : "AssistMode or MouseMode does not need to set a shortcut key");
                     else
                         AttachTooltip(config.UseChinese ? u8"如果需要实现 按住鼠标 来连点\n可以使用鼠标模式。" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
@@ -1425,7 +1396,7 @@ void RenderGui(ImGuiIO& io)
                     Text(config.UseChinese ? u8"左键CPS" : "LClicker CPS");
                     AttachTooltip(config.UseChinese ? u8"CPS指每秒连点次数，越高越快，\n一般左键设置 14CPS 就可以。" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the right key sets 20CPS can be used.");
                     SameLine();
-                    SetNextItemWidth(300);
+                    SetNextItemWidth(350);
                     if (config.UseLFluctuation && !config.UseBrutalMode)
                     {
                         static float MinCps = config.LCPS - config.LFluctuationCPS;
@@ -2042,12 +2013,6 @@ void RenderGui(ImGuiIO& io)
                         SliderInt(u8"##AssistModeCPSThreshold", &config.AssistModeCPSThreshold, 1, 16, u8"%dCPS", ImGuiSliderFlags_AlwaysClamp);
                         AttachTooltip(config.UseChinese ? u8"当你点击的CPS达到预定值时，才会触发辅助点击\n&6该功能可有效降低误判。" : "When the CPS reaches the prescribed value, The assist click will be triggered, \n&6which can effectively reduce the misjudgment.");
                     }
-                    if (config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE)
-                    {
-                        SetCursorPosY(GetCursorPosY() + 10);
-                        Toggle(config.UseChinese ? u8"自动重置鼠标状态" : "Auto Reset Mouse Status", &config.UseAutoResetOnDisable, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"当你设置为鼠标模式时，并且在使用过程中被连点控制禁用了连点\n此时可能会发现你明明没有按下鼠标，\n但是游戏却表现出按下鼠标的状态。\n&6此功能可以消除这种问题，\n但是可能对于手动禁用然后挖方块的人造成挖掘状态断开。" : "When you set the clicker to mouse mode \nand disable the clicker control during use\nYou may find that you are not pressing the mouse, \nbut the game is showing the state of pressing the mouse. \n&6This feature can eliminate this problem,\nBut it may cause mining status disconnection for \nthose who manually disable and mine blocks.");
-                    }
                 }
                 EndCard();
 
@@ -2194,7 +2159,7 @@ void RenderGui(ImGuiIO& io)
 
                         SetCursorPos(ImVec2(PosX + 10, pos1.y + 24));
                         SetNextItemWidth(40);
-                        InputKey(u8"##item", &config.ItemEnableClickerKey.at(i), config.UseChinese ? u8"请按下按键" : "Press a key");
+                        InputKey(u8"##item", &config.ItemBarKey.at(i), config.UseChinese ? u8"请按下按键" : "Press a key");
                         PopID();
                     }
 				}
@@ -3057,7 +3022,7 @@ void RenderGui(ImGuiIO& io)
                             {
                                 LastMechvibesClick = GetTickCount64();
                                 ShellExecute(NULL, NULL, "https://mechvibes.com/sound-packs/", NULL, NULL, SW_SHOWNORMAL);
-                                RenderMessageBox(u8"在打开的网页列表中，找到想要的音色\n点击左边的“Learn More”，然后点击“Download”就可以下载了。\n&6如何导入？\n&f1.打开下载好的压缩包，将里面的音频文件解压出来。\n2.将解压的音频文件转为wav格式（有在线转换的工具）\n3.把转换后的wav文件拖入原先的压缩包，并且重命名为 sound.wav\n4.点击旁边的“导入文件”按钮然后选择你刚刚修改的压缩包。\n&6注意：导入的音色必须是wav格式（如果已经是了就可以不用转换）\n且文件名必须为 sound.wav，否则无法使用。", config.UseChinese ? u8"导入音色教程" : "How to import sounds", MB_OK, false);
+                                RenderMessageBox(u8"在打开的网页列表中，找到想要的音色\n点击左边的“Learn More”，然后点击“Download”就可以下载了。\n&6如何导入？\n点击旁边的“导入文件”按钮然后选择你刚刚下载的压缩包。", config.UseChinese ? u8"导入音色教程" : "How to import sounds", MB_OK, false);
                             }
                         }
                         EndDisabled();
@@ -3669,9 +3634,7 @@ void RenderGui(ImGuiIO& io)
                     ImGuiWindowFlags_NoScrollbar;
 
                 //-------------------------获取脚本--------------------------
-                static int ScriptSize = 0;
-                static int ScriptSelected = -1; // -1为没有打开任何设置
-                static int ScriptTab = 0;
+                static int ScriptSettingsSelected = -1; // -1为没有打开任何设置
                 static bool IsWillGotoShopTab = false; // 用于调整到其他tab
 
                 static auto NothingsHereFunc = []()
@@ -3950,7 +3913,6 @@ void RenderGui(ImGuiIO& io)
                                 }
                             }
                             EndDisabled();
-
                         }
                         else
                             RenderSkeletonList(10);
@@ -3986,13 +3948,19 @@ void RenderGui(ImGuiIO& io)
 
                         // 读取锁
                         shared_lock<shared_mutex> read_lock(AvaiableScriptsMtx);
-                        if (AvaiableScripts.size() == 0)
+                        const int TotalScript = AvaiableScripts.size();
+                        if (TotalScript == 0)
                             NothingsHereFunc();
                         //-------------------------脚本图片和信息--------------------------
                         const ImVec2 pos = GetCursorPos();
-                        int count = 0;
-                        for (ScriptInfo& script : AvaiableScripts)
+                        const int PaperSize = 10;
+                        const int TotalPaper = (TotalScript + PaperSize - 1) / PaperSize;
+                        static int CurrentPaper = 1;
+
+                        const int MaxCount = min(PaperSize * CurrentPaper, TotalScript);
+                        for (int count = (CurrentPaper - 1) * PaperSize; count < MaxCount; count++) // count不能等于MaxCount，不然会出现翻页后重复出现
                         {
+                            ScriptInfo& script = AvaiableScripts[count];
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
 
                             PushID(count);
@@ -4093,68 +4061,53 @@ void RenderGui(ImGuiIO& io)
                                         static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Add);
                                         if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                         {
-                                            // 修复：原代码 [&] 捕获 for 循环元素引用 script，解锁后后台线程写它，
-                                            // 而"删除"按钮的 detach 线程可能已 erase 该元素 → 悬垂引用写 → 0xC0000005。
-                                            // 修复2：原代码 read_lock.unlock() 后再 read_lock.lock() 重锁，重锁后 for 循环
-                                            // 继续使用的 script 引用/迭代器可能已失效（删除线程在解锁窗口 erase）。
-                                            // 现在持读锁期间按值拷贝 scriptCopy，安装动作（StartScript + 写入 InstalledScripts +
-                                            // 更新 AvaiableScripts）全部移入 detach 线程；线程内两次加锁互不嵌套，
-                                            // 避免与 ClearScriptCache（Installed→…→Avaiable 锁序）形成死锁环。
-                                            ScriptInfo scriptCopy = script; // 拷贝时仍持有 read_lock，引用有效
-                                            thread FuncThread([scriptCopy]() mutable
-                                            {
-                                                // 修复：删除"安装后自动启动脚本"功能（废弃）——安装后脚本不自动运行，
-                                                // 由用户在"已安装"列表的"启用"开关手动启动。
-                                                const HANDLE hThread = nullptr;
-                                                scriptCopy.hThread = hThread;
-                                                // 创建 ScriptState 条目（供"启用"开关/启动按键使用，IsRunning=false）
+                                            ScriptInfo ScriptCopy = script; // 拷贝时仍持有 read_lock，引用有效
+                                            thread FuncThread([ScriptCopy]() mutable
                                                 {
-                                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                                    ScriptStates[scriptCopy.file];
-                                                }
-                                                {
-                                                    lock_guard<shared_mutex> lock(InstalledScriptsMtx);
-                                                    InstalledScripts.push_back(scriptCopy);
-                                                }
-                                                {
-                                                    lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                    for (ScriptInfo& s : AvaiableScripts)
+                                                    const HANDLE hThread = nullptr;
+                                                    ScriptCopy.hThread = hThread;
+                                                    // 创建 ScriptState 条目（供"启用"开关/启动按键使用，IsRunning=false）
                                                     {
-                                                        if (s.file == scriptCopy.file)
+                                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                                        ScriptStates[ScriptCopy.file];
+                                                    }
+                                                    {
+                                                        lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                                                        InstalledScripts.push_back(ScriptCopy);
+                                                    }
+                                                    {
+                                                        lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                        for (ScriptInfo& s : AvaiableScripts)
                                                         {
-                                                            s.hThread = hThread;
-                                                            s.IsInstalled = true;
-                                                            break;
+                                                            if (s.file == ScriptCopy.file)
+                                                            {
+                                                                s.hThread = hThread;
+                                                                s.IsInstalled = true;
+                                                                break;
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                // 修复：安装后默认运行脚本（与"已安装"列表的"开关"逻辑一致）
-                                                {
-                                                    lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                                    if (!ScriptStates[scriptCopy.file].IsRunning)
                                                     {
-                                                        ScriptStates[scriptCopy.file].IsRunning = true;
-                                                        thread th([file = scriptCopy.file]()
+                                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                                        ScriptStates[ScriptCopy.file].IsRunning = true;
+                                                    }
+                                                    {
+                                                        // 保存线程句柄，删除脚本时才能正确终止线程
+                                                        const HANDLE hThread = StartScript(ScriptCopy.file);
+                                                        if (hThread != NULL)
                                                         {
-                                                            // 保存线程句柄，删除脚本时才能正确终止线程
-                                                            const HANDLE hThread = StartScript(file);
-                                                            if (hThread != NULL)
+                                                            lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                            for (ScriptInfo& s : AvaiableScripts)
                                                             {
-                                                                lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                                for (ScriptInfo& s : AvaiableScripts)
+                                                                if (s.file == ScriptCopy.file)
                                                                 {
-                                                                    if (s.file == file)
-                                                                    {
-                                                                        s.hThread = hThread;
-                                                                        break;
-                                                                    }
+                                                                    s.hThread = hThread;
+                                                                    break;
                                                                 }
                                                             }
-                                                        });
-                                                        th.detach();
+                                                        }
                                                     }
-                                                }
-});
+                                                });
                                             FuncThread.detach();
                                         }
                                         SameLine(0, spacing);
@@ -4200,9 +4153,26 @@ void RenderGui(ImGuiIO& io)
                             }
                             EndChild();
                             PopID();
-
-                            count++;
                         }
+
+                        BeginDisabled(CurrentPaper <= 1);
+                        {
+                            if (Button(config.UseChinese ? u8"上一页" : "Back"))
+                                CurrentPaper--;
+                        }
+                        EndDisabled();
+
+                        SameLine();
+                        Text(config.UseChinese ? u8"第 %d/%d 页" : "Page %d/%d", CurrentPaper, TotalPaper);
+                        SameLine();
+
+                        BeginDisabled(CurrentPaper >= TotalPaper);
+                        {
+                            if (Button(config.UseChinese ? u8"下一页" : "Next"))
+                                CurrentPaper++;
+                        }
+                        EndDisabled();
+
                         EndTabItem();
                     }
 
@@ -4214,7 +4184,7 @@ void RenderGui(ImGuiIO& io)
                         if (InstalledScripts.size() == 0)
                             NothingsHereFunc();
                         int count = 0;
-                        for (const ScriptInfo script : InstalledScripts)
+                        for (const ScriptInfo& script : InstalledScripts)
                         {
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
 
@@ -4285,7 +4255,7 @@ void RenderGui(ImGuiIO& io)
                                     {
                                         // 写入锁
                                         lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                        // 修复：find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
+                                        // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
                                         auto st = ScriptStates.find(script.file);
                                         if (st != ScriptStates.end())
                                         {
@@ -4299,7 +4269,9 @@ void RenderGui(ImGuiIO& io)
                                     // 修复：删除自动启动后，开关从"关闭"拨到"开启"且脚本线程未运行时，手动启动脚本线程
                                     SetCursorPosY(WindowHeight - 24.0f);
                                     {
+                                        // 写入锁
                                         lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
                                         auto st = ScriptStates.find(script.file);
                                         if (st != ScriptStates.end())
                                         {
@@ -4307,10 +4279,10 @@ void RenderGui(ImGuiIO& io)
                                             if (Toggle("##script_enable", &IsEnable, ToggleFlags))
                                             {
                                                 st->second.IsSuspend = !IsEnable;
-                                                // 开启时若脚本线程尚未运行（含正在启动中），启动它
+                                                // 开启时若脚本线程尚未运行（含正在启动中），启动它，算是增强健壮了吧
                                                 if (IsEnable && !st->second.IsRunning)
                                                 {
-                                                    st->second.IsRunning = true;   // 乐观置位，防止重复启动
+                                                    st->second.IsRunning = true; // 乐观置位，防止重复启动
                                                     thread th([file = script.file]()
                                                     {
                                                         // 保存线程句柄，删除脚本时才能正确终止线程
@@ -4342,9 +4314,9 @@ void RenderGui(ImGuiIO& io)
                                                     th.detach();
                                                 }
                                             }
-                                            AttachTooltip(config.UseChinese ? u8"关闭后：脚本停止运行\n开启时：若脚本未运行则启动脚本" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
                                         }
                                     }
+                                    AttachTooltip(config.UseChinese ? u8"关闭后：脚本停止运行\n开启时：若脚本未运行则启动脚本" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
                                     SameLine(0, spacing);
 
                                     // 脚本设置按键 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
@@ -4352,7 +4324,7 @@ void RenderGui(ImGuiIO& io)
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Pics_FunSetting);
                                     if (ImageButton("##script_settings", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                     {
-                                        ScriptSelected = count;
+                                        ScriptSettingsSelected = count;
                                         // 打开设置时暂停脚本，避免脚本与设置界面并发操作
                                         lock_guard<shared_mutex> lock(ScriptStatesMtx);
                                         auto st = ScriptStates.find(script.file);
@@ -4370,7 +4342,7 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             bool IsError = false;
                                             string errormsg;
-                                            ScriptSelected = -1;
+                                            ScriptSettingsSelected = -1;
                                             {
                                                 // 修复：原代码用 shared_lock（读锁）却修改 s.IsInstalled 并调用
                                                 // CloseScriptThread（会写 s.hThread）→ 读锁内写的数据竞争。改为写锁。
@@ -4400,7 +4372,7 @@ void RenderGui(ImGuiIO& io)
                                             PrintLog("[Script] 已删除脚本：" + script.file, PL_INFO);
                                             {
                                                 // 修复：原代码在主线程 read_lock.unlock() 后 erase InstalledScripts 再重锁，
-                                                // 重锁后 range-for 迭代器失效 → 崩溃。改为在此 detach 线程内按 file 查找删除
+                                                // 重锁后 range-for 迭代器失效 -> 崩溃。改为在此 detach 线程内按 file 查找删除
                                                 // （独立加锁、不嵌套，避免与 ClearScriptCache 的锁序形成环）。
                                                 lock_guard<shared_mutex> lock(InstalledScriptsMtx);
                                                 for (auto it = InstalledScripts.begin(); it != InstalledScripts.end(); ++it)
@@ -4583,7 +4555,7 @@ void RenderGui(ImGuiIO& io)
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Setting);
                         if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"脚本配置" : "Script Cfg", ImVec2(100, 40)))
                         {
-                            ScriptSelected = 999999999;
+                            ScriptSettingsSelected = 999999999;
                             // 写入锁
                             lock_guard<shared_mutex> lock(ScriptStatesMtx);
                             ScriptStates[ScriptTestFile].IsSuspend = true;
@@ -4609,7 +4581,13 @@ void RenderGui(ImGuiIO& io)
 
                     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Book);
                     if (ImageButton(config.UseChinese ? u8"脚本文档" : "Script Doc", (ImTextureID)image_texture2, ImVec2(32, 32)))
-                        ShellExecute(NULL, NULL, "https://wiki.mcgc.top/zh/script", NULL, NULL, SW_SHOWNORMAL);
+                    {
+#ifdef USE_IN_MICROSOFT
+                        ShellExecute(NULL, NULL, "https://bbs.mcgc.top/d/214", NULL, NULL, SW_SHOWNORMAL);
+#else
+                        ShellExecute(NULL, NULL, "https://wiki.mcgc.top/zh/script/start", NULL, NULL, SW_SHOWNORMAL);
+#endif // USE_IN_MICROSOFT
+                    }
 
                     SameLine();
 
@@ -4632,9 +4610,9 @@ void RenderGui(ImGuiIO& io)
                 }
                 //-----------------------脚本设置GUI---------------------------
 
-                if (ScriptSelected > -1)
+                if (ScriptSettingsSelected > -1)
                 {
-                    const bool IsTestScript = (ScriptSelected == 999999999);
+                    const bool IsTestScript = (ScriptSettingsSelected == 999999999);
                     ScriptInfo script;
                     if (!IsTestScript)
                     {
@@ -4642,41 +4620,43 @@ void RenderGui(ImGuiIO& io)
                         shared_lock<shared_mutex> lock(InstalledScriptsMtx);
                         // 修复：ScriptSelected 是打开设置时的列表索引，若期间脚本被删除（列表变短）
                         // 会越界访问 → 崩溃。加边界检查，越界则关闭设置。
-                        if (ScriptSelected >= (int)InstalledScripts.size())
-                            ScriptSelected = -114514;
+                        if (ScriptSettingsSelected >= (int)InstalledScripts.size())
+                            ScriptSettingsSelected = -114514;
                         else
-                            script = InstalledScripts[ScriptSelected];
+                            script = InstalledScripts[ScriptSettingsSelected];
                     }
-                    if (IsTestScript || ScriptSelected > -1)
+                    if (IsTestScript || ScriptSettingsSelected > -1)
                     {
                         const string title = IsTestScript ? (config.UseChinese ? u8"测试脚本设置" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
-                        bool IsOpened = true;
-                        if (BeginPopupWindow(title.c_str(), &IsOpened))
+                        const string& filename = IsTestScript ? ScriptTestFile : script.file;
+
+                        static bool IsOpened = true;
+                        bool RunState = true;
+                       
+                        const bool ret = BeginPopupWindow(title.c_str(), &IsOpened);
+                        if (ret)
                         {
-                            const string& filename = IsTestScript ? ScriptTestFile : script.file;
-                            unsigned int result = 0;
-                            if (!RenderScriptGui(filename))
-                                result = 1;
-
-                            // 是否关闭或者崩溃
-                            if (!IsOpened || result == 1)
-                            {
-                                ScriptSelected = -114514;
-                                thread FuncThread(SaveScriptConfig, filename);
-                                FuncThread.detach();
-                                {
-                                    // 写入锁
-                                    lock_guard<shared_mutex> lock2(ScriptStatesMtx);
-                                    // 修复：find 替代 operator[]——脚本可能在弹窗期间被删除，
-                                    // operator[] 会插入僵尸 ScriptState 条目
-                                    auto st = ScriptStates.find(filename);
-                                    if (st != ScriptStates.end())
-                                        st->second.IsSuspend = false;
-                                }
-                                PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
-                            }
-
+                            RunState = RenderScriptGui(filename);
                             EndPopupWindow();
+                        }
+
+                        // 是否关闭或者崩溃
+                        if (!ret || !RunState)
+                        {
+                            IsOpened = true; // 重置打开状态
+                            ScriptSettingsSelected = -114514;
+                            thread FuncThread(SaveScriptConfig, filename);
+                            FuncThread.detach();
+                            {
+                                // 写入锁
+                                lock_guard<shared_mutex> lock2(ScriptStatesMtx);
+                                // find 替代 operator[] -- 脚本可能在弹窗期间被删除，
+                                // operator[] 会插入僵尸 ScriptState 条目
+                                auto st = ScriptStates.find(filename);
+                                if (st != ScriptStates.end())
+                                    st->second.IsSuspend = false;
+                            }
+                            PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
                         }
                     }
                 }
@@ -4711,48 +4691,58 @@ void RenderGui(ImGuiIO& io)
             static int IsOpenLnagPaper = -1;
             if (IsOpenLnagPaper == 1)// 这个函数告诉ImGui，下一个要绘制的标签项应该处于打开/激活状态
                 ImGui::SetNextItemOpen(true);
-            if (BeginTabItem((ICON_FA_LANGUAGE + (config.UseChinese ? u8"语言设置"s : "Language"s)).c_str(), NULL))
+            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"软件设置"s : "Software Setings"s)).c_str(), NULL))
             {
-                const static array<const char*, 2> LanguageList = { u8"中文", "English" };
-                static int LanguageSelected = 0;
-
-                if (IsOpenLnagPaper != 0) // 重置激活状态
-                    IsOpenLnagPaper = -1;
-
-                Text(config.UseChinese ? u8"语言" : "Language");
-                SameLine();
-                SetNextItemWidth(150);
-                if (BeginCombo("##Language", LanguageList[LanguageSelected]))
+                //-----------------------语言设置---------------------------
                 {
-                    for (int n = 0; n < 2; n++)
+                    const static array<const char*, 2> LanguageList = { u8"中文", "English" };
+                    static int LanguageSelected = 0;
+
+                    if (IsOpenLnagPaper != 0) // 重置激活状态
+                        IsOpenLnagPaper = -1;
+
+                    Text(config.UseChinese ? u8"语言" : "Language");
+                    SameLine();
+                    SetNextItemWidth(150);
+                    if (BeginCombo("##Language", LanguageList[LanguageSelected]))
                     {
-                        const bool is_selected = (LanguageSelected == n);
-                        if (Selectable(LanguageList[n], is_selected))
+                        for (int n = 0; n < 2; n++)
                         {
-                            LanguageSelected = n;
-                            RenderTip(config.UseChinese ? u8"部分文字需要重启应用才能生效" : "Some text may need to restart the application to take effect.", 3.0f, PT_INFO);
+                            const bool is_selected = (LanguageSelected == n);
+                            if (Selectable(LanguageList[n], is_selected))
+                            {
+                                LanguageSelected = n;
+                                RenderTip(config.UseChinese ? u8"部分文字需要重启应用才能生效" : "Some text may need to restart\nthe app to take effect.", 3.0f, PT_INFO);
+                            }
+                            if (is_selected)
+                                SetItemDefaultFocus();
                         }
-                        if (is_selected)
-                            SetItemDefaultFocus();
+                        EndCombo();
                     }
-                    EndCombo();
+
+                    if (LanguageSelected == 0)
+                        config.UseChinese = true;
+                    else
+                        config.UseChinese = false;
+
+                    static bool b_Lang = config.UseChinese;
+                    if (b_Lang != config.UseChinese)
+                    {
+                        b_Lang = config.UseChinese;
+                        IsOpenLnagPaper = 1;
+                    }
+
+                    if (!config.UseChinese)
+                        Text("&bThe text content is translated by AI and may contain errors.\nYou can report this issue at https://bbs.mcgc.top.");
                 }
 
-                if (LanguageSelected == 0)
-                    config.UseChinese = true;
-                else
-                    config.UseChinese = false;
-
-                static bool b_Lang = config.UseChinese;
-                if (b_Lang != config.UseChinese)
+                //-----------------------其他设置---------------------------
                 {
-                    b_Lang = config.UseChinese;
-                    IsOpenLnagPaper = 1;
+                    PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 5.0f));
+                    if (Button(config.UseChinese ? u8"打开配置文件夹" : "Browse Config", ImVec2(-1, 40)))
+                        ShellExecute(NULL, "open", ConfigPath.c_str(), NULL, NULL, SW_SHOW);
+                    PopStyleVar();
                 }
-
-                if (!config.UseChinese)
-                    Text("&bThe text content is translated by AI and may contain errors.\nYou can report this issue at https://bbs.mcgc.top.");
-
                 EndTabItem();
             }
 
@@ -4787,7 +4777,13 @@ void RenderGui(ImGuiIO& io)
                     if (Button(config.UseChinese ? u8"论坛" : "Forum"))
                         ShellExecute(NULL, NULL, "https://bbs.mcgc.top", NULL, NULL, SW_SHOWNORMAL);
                     if (Button(config.UseChinese ? u8"文档 && 维基百科" : "Document && Wikipedia"))
+                    {
+#ifdef USE_IN_MICROSOFT
+                        ShellExecute(NULL, NULL, "https://bbs.mcgc.top/d/215", NULL, NULL, SW_SHOWNORMAL);
+#else
                         ShellExecute(NULL, NULL, "https://wiki.mcgc.top", NULL, NULL, SW_SHOWNORMAL);
+#endif // USE_IN_MICROSOFT
+                    }
                 }
                 EndCard();
                 SameLine();

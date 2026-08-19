@@ -19,7 +19,6 @@ LRPair<float> ClickerDynamicDelay;
 bool SwitchMode_LClick = false;// 开个模式的临时变量，仅仅用于开关模式的连点控制
 bool SwitchMode_RClick = false;
 
-POINT GetGameWindowCenter(HWND hwnd);
 DWORD WINAPI ClickerControl(LPVOID lpParam);
 DWORD WINAPI MouseShakeMove(LPVOID lpParam);
 DWORD WINAPI GameGuiThread(LPVOID lpParam);
@@ -30,18 +29,6 @@ void BeginSleep(const char* flag);
 void EndSleep(const char* flag, int time);
 DWORD WINAPI RClickRun(LPVOID lpParam);
 DWORD WINAPI LClickRun(LPVOID lpParam);
-
-POINT GetGameWindowCenter(HWND hwnd)
-{
-	RECT rc{};
-	GetClientRect(hwnd, &rc);
-	POINT pt = {
-		static_cast<int>((rc.right - rc.left) / 2),
-		static_cast<int>((rc.bottom - rc.top) / 2)
-	};
-	ClientToScreen(hwnd, &pt);
-	return pt;
-}
 
 DWORD WINAPI ClickerControl(LPVOID lpParam)
 {
@@ -272,7 +259,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		{
 			for (int i = 0; i < 9; i++)
 			{
-				if (GetKeyClick(config.ItemEnableClickerKey[i]))
+				if (GetKeyClick(config.ItemBarKey[i]))
 					ItemBarPos = i;
 			}
 		}

@@ -7,8 +7,6 @@
         "1": "left-down.wav",
         "01": "left-up.wav",
         "2": "right-down.wav",
-        "02": "right-up.wav",
-        "3": "scroll-down.wav",
-        "03": "scroll-up.wav"
+        "02": "right-up.wav"
     }
 }
