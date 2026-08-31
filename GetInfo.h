@@ -44,12 +44,18 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         else
         {
             string SpoonsText = ExtractString(content, "=spoons=", "=spoons-end=");
+            // 修复：gitee 分支无锁写入 SponsorList，与主线程（持 SponsorListMutex 读锁）并发 → 竞争
+            lock_guard<shared_mutex> lock(SponsorListMutex);
             SplitString(SpoonsText, "\n", SponsorList);
         }
-        if (!ReadURLDatas(URL_GITEE_NOTICE, NoticeStr))
+        // 修复：NoticeStr 写入时加锁（ReadURLDatas 内部直接写入 NoticeStr），与主线程每帧读取（c_str()）并发安全
         {
-            PrintLog("[Init] Gitee: 获取公告失败", PL_ERROR);
-            return 0;
+            lock_guard<shared_mutex> lock(NoticeMutex);
+            if (!ReadURLDatas(URL_GITEE_NOTICE, NoticeStr))
+            {
+                PrintLog("[Init] Gitee: 获取公告失败", PL_ERROR);
+                return 0;
+            }
         }
         if (!ReadURLDatas(URL_GITEE_POPUP, content))
         {
@@ -72,6 +78,8 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         }
         else
         {
+            // 修复：NoticeStr 连续修改期间加写锁（主线程每帧无锁读 c_str() 会悬垂）
+            lock_guard<shared_mutex> lock(NoticeMutex);
             NoticeStr = ExtractString(content, "=n=", "=nend=");
             NoticeStr = RemoveSubString(NoticeStr, "<br />");
             NoticeStr = RemoveSubString(NoticeStr, "</span>");
@@ -144,11 +152,11 @@ DWORD WINAPI Updata(LPVOID lpParam)
         DownloadURL   = ExtractString   (content, "=downloadurl=", "=downloadurlend=");
         ForceUpdata   = ExtractString   (content, "=force=", "=forceend=");
         //后删除<br />，可以提升性能，因为没处理的HTML文件一堆<br />
-        NewVersionStr = RemoveSubString(NewVersionStr, "<br />");
-        DownloadURL   = RemoveSubString(DownloadURL, "<br />");
+        NewVersionStr = RemoveSubString (NewVersionStr, "<br />");
+        DownloadURL   = RemoveSubString (DownloadURL, "<br />");
         DownloadURL   = ExtractString   (DownloadURL, "<span style=\"color:#81bf7e\">", "</span>");
-        Updatalog     = RemoveSubString(Updatalog, "<br />");
-        ForceUpdata   = RemoveSubString(ForceUpdata, "<br />");
+        Updatalog     = RemoveSubString (Updatalog, "<br />");
+        ForceUpdata   = RemoveSubString (ForceUpdata, "<br />");
         IsForceUpdata = ForceUpdata.find("1") != string::npos;
     }
     else
@@ -201,9 +209,8 @@ DWORD WINAPI Updata(LPVOID lpParam)
         return 0;
     }
 
-    PrintLog("等待窗口加载完后进行更新", PL_INFO);
-    while (Starting) Sleep(100);
-    PrintLog(("[Updata] 更新的版本号：" + NewVersionStr).c_str(), PL_INFO);
+    while (Starting)
+        Sleep(100);
    
     map<string, UINT> button;
     map<string, ImVec4> colors;
@@ -219,14 +226,14 @@ DWORD WINAPI Updata(LPVOID lpParam)
         colors[config.UseChinese ? u8"现在更新" : "Update now"] = GuiColor[ImGuiCol_ButtonHovered];
         colors[config.UseChinese ? u8"下次一定" : "Later"] = GuiColor[ImGuiCol_Button];
     }
-    int lost_ver = newVerL - curVerL - 2;
+    int lost_ver = newVerL - curVerL;
     string msg = (config.UseChinese ? u8"发现新版本 " : "New version ") + NewVersionStr;
     if (newVerL - 2 >= curVerL)
     {
         if(config.UseChinese)
-            msg += u8"\n&d你已经落后了 " + to_string(lost_ver) + u8" 个版本\n&f强烈建议更新！";
+            msg += u8"\n你已经落后了 " + to_string(lost_ver) + u8" 个版本\n建议更新！";
         else
-            msg += "\n&dYou are behind " + to_string(lost_ver) + " versions\n&fIt is recommended to update!";
+            msg += "\nYou are behind " + to_string(lost_ver) + " versions\nIt is recommended to update!";
     }
     if (RenderMessageBoxEx(msg.c_str(), u8"更新提示", button, colors, true) == IDCANCEL)
     {
@@ -243,7 +250,6 @@ DWORD WINAPI Updata(LPVOID lpParam)
     else
         temp_url = URL_RESOLVE + DownloadURL;
 
-    PrintLog("[Updata] 开始下载GC连点器到 " + filename, PL_INFO);
     bool IsDownloadSuccess = DownloadURLFiles(temp_url.c_str(), filename.c_str());
     if (_access(filename.c_str(), 0) != 0 || !IsDownloadSuccess)
     {

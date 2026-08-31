@@ -22,9 +22,8 @@ bool SwitchMode_RClick = false;
 DWORD WINAPI ClickerControl(LPVOID lpParam);
 DWORD WINAPI MouseShakeMove(LPVOID lpParam);
 DWORD WINAPI GameGuiThread(LPVOID lpParam);
-DWORD WINAPI RecordsCPS(LPVOID lpParam);
 POINT MouseShakeAlgorithm(POINT& view, POINT center);
-LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam);
+inline void HandleClickerControl(int nCode, WPARAM wParam, LPARAM lParam); // 连点器滚轮逻辑分发处理器（由统一鼠标钩子 MouseHookProc 调用）
 void BeginSleep(const char* flag);
 void EndSleep(const char* flag, int time);
 DWORD WINAPI RClickRun(LPVOID lpParam);
@@ -54,6 +53,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				LastTime = GetTickCount64() + 3000;
 			}
 		}
+
+		HWND CurrForegroundHwnd = GetForegroundWindow(); // 防止重复获取
+
+		static HWND LastHwnd = NULL;
+		if (LastHwnd == GCHWND && LastHwnd != CurrForegroundHwnd)
+			ReloadClicker = true;
+		LastHwnd = CurrForegroundHwnd;
+
 		if (ReloadClicker)
 		{
 			IsClickerSuccess = false;
@@ -71,8 +78,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			IsClickerSuccess = true;
 			PrintLog("[Clicker] 重新加载连点成功", PL_INFO);
 		}
-
-		HWND CurrForegroundHwnd = GetForegroundWindow(); // 防止重复获取
 
 		// 一些快捷键处理
 		if (GetKeyClick(config.SetGameWindowKey))
@@ -384,6 +389,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 		}
 
+		// 拒绝默认模式下，快捷键为左/右键
+		{
+			if ((config.LClickerMode & C_BUTTONMODE || config.LClickerMode & C_SWITCHMODE) && config.LKEY == 1)
+				config.LKEY = MAIN_L_KEY;
+			if ((config.RClickerMode & C_BUTTONMODE || config.RClickerMode & C_SWITCHMODE) && config.RKEY == 2)
+				config.RKEY = MAIN_R_KEY;
+		}
+
 		{
 			static ULONGLONG LastTime = GetTickCount64();
 			// RecordTime为1小时
@@ -541,124 +554,29 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 	return 0;
 }
 
-DWORD WINAPI RecordsCPS(LPVOID lpParam)
+inline void HandleClickerControl(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	ULONGLONG EndTime = GetNowMs() + 50;
-	RRecordsCPS.reserve(MAX_RECORDS);
-	LRecordsCPS.reserve(MAX_RECORDS);
+	if (nCode < 0)
+		return;
 
-	LRPair<deque<ULONGLONG>> AllTimeList;
-	LRPair<deque<ULONGLONG>> HumanTimeList;
-	while (!GCExit)
+	switch (wParam)
 	{
-		// 综合统计CPS，包括连点器和人类点击
-		if (GetKeyClick(VK_LBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.left))
+		case WM_MOUSEWHEEL:
 		{
-			CurrentCPS.left++;
-			AllTimeList.left.push_back(GetNowMs() + 1000);
-		}
-		if (GetKeyClick(VK_RBUTTON) || ((config.SimulateClickMode == SC_POST_MESSAGE) && IsClickerDown.right))
-		{
-			CurrentCPS.right++;
-			AllTimeList.right.push_back(GetNowMs() + 1000);
-		}
-		// 统计实际人类点击的CPS，忽略连点器
-		if (GetKeyClick(VK_LBUTTON, true))
-		{
-			app_status.MouseClickCount.left++;
-
-			HumanCPS.left++;
-			HumanTimeList.left.push_back(GetNowMs() + 1000);
-		}
-		if (GetKeyClick(VK_RBUTTON, true))
-		{
-			app_status.MouseClickCount.right++;
-
-			HumanCPS.right++;
-			HumanTimeList.right.push_back(GetNowMs() + 1000);
-		}
-
-		// 连点器CPS 衰减计算
-		if (AllTimeList.left.size() > 0)
-		{
-			if (GetNowMs() >= AllTimeList.left[0])
+			HWND hwnd = GetForegroundWindow();
+			if (!IsOpenGui && hwnd != GCHWND && (GameHwnd == NULL || hwnd == GameHwnd))
 			{
-				CurrentCPS.left--;
-				AllTimeList.left.erase(AllTimeList.left.begin());
-			}
-		}
-		if (AllTimeList.right.size() > 0)
-		{
-			if (GetNowMs() >= AllTimeList.right[0])
-			{
-				CurrentCPS.right--;
-				AllTimeList.right.erase(AllTimeList.right.begin());
-			}
-		}
-		// 人类CPS 衰减计算
-		if (HumanTimeList.left.size() > 0)
-		{
-			if (GetNowMs() >= HumanTimeList.left[0])
-			{
-				HumanCPS.left--;
-				HumanTimeList.left.erase(HumanTimeList.left.begin());
-			}
-		}
-		if (HumanTimeList.right.size() > 0)
-		{
-			if (GetNowMs() >= HumanTimeList.right[0])
-			{
-				HumanCPS.right--;
-				HumanTimeList.right.erase(HumanTimeList.right.begin());
-			}
-		}
-
-		if (GetNowMs() > EndTime)
-		{
-			RecordsCPSMutex.lock();
-			{
-				if (RRecordsCPS.size() >= MAX_RECORDS)
-					RRecordsCPS.erase(RRecordsCPS.begin());
-				if (LRecordsCPS.size() >= MAX_RECORDS)
-					LRecordsCPS.erase(LRecordsCPS.begin());
-
-				RRecordsCPS.push_back(CurrentCPS.right);
-				LRecordsCPS.push_back(CurrentCPS.left);
-			}
-			RecordsCPSMutex.unlock();
-
-			EndTime = GetNowMs() + 50;
-		}
-		IsClickerDown.left = false;
-		IsClickerDown.right = false;
-		Sleep(2);
-	}
-	return 0;
-}
-
-LRESULT CALLBACK ClickerControlHook(int nCode, WPARAM wParam, LPARAM lParam)
-{
-	if (nCode >= 0)
-	{
-		switch (wParam)
-		{
-			case WM_MOUSEWHEEL:
-			{
-				if (!IsOpenGui && GetForegroundWindow() != GCHWND) // 一定要加上判断IsOpenGui，这是误差产生的原因！
-				{
-					MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-					int wheelDelta = GET_WHEEL_DELTA_WPARAM(pMouseStruct->mouseData) / WHEEL_DELTA;
-					ItemBarPos -= wheelDelta; // 这里不需要%，因为下面会处理
-					if (ItemBarPos < 0)
-						ItemBarPos += 9;
-					else
-						ItemBarPos %= 9;
-					break;
-				}
+				MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
+				int wheelDelta = GET_WHEEL_DELTA_WPARAM(pMouseStruct->mouseData) / WHEEL_DELTA;
+				ItemBarPos -= wheelDelta; // 这里不需要%，因为下面会处理
+				if (ItemBarPos < 0)
+					ItemBarPos += 9;
+				else
+					ItemBarPos %= 9;
+				break;
 			}
 		}
 	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
 DWORD WINAPI RClickRun(LPVOID lpParam)
@@ -679,7 +597,6 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 		ULONGLONG EndTime = GetTickCount64() + config.RCTime;
 		ULONGLONG SlepTime = EndTime + config.RCSleep;
 		bool IsEndTime = false;
-		int AssistModeCount = -1;
 		int apd = 0;
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
@@ -727,7 +644,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate && rbm.rand()))
+				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate || rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -749,7 +666,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			if (config.RClickerMode & C_MOUSESMODE && !(config.RClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static ULONGLONG LastTime = 0;
-				static bool IsDownMouse = false;
+				static bool IsStopedClicker = false;
 				const bool IsKeyPressed = GetKeyDown(2, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
@@ -776,13 +693,8 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				if ((!config.EnableRightClicker || !IsKeyPressed) && IsDownMouse)
-				{
-					SetKeyUp(Click::Right, config.SimulateClickMode);
-					IsDownMouse = false;
-				}
 
-				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate && rbm.rand()))
+				if (config.EnableRightClicker && IsKeyPressed && (!config.UseREmptyRate || rbm.rand()))
 				{
 					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
@@ -799,16 +711,26 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 							if (config.UseOldMethodToTrigInter)
 								SetKeyUp(Click::Right, config.SimulateClickMode);
 							SetKeyDown(Click::Right, config.SimulateClickMode);
-							IsDownMouse = true;
 						}
 						else
 							SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
+						IsStopedClicker = false;
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
 				}
-				else IsClickering.right = false;
+				else
+				{
+					IsClickering.right = false;
+					// 恢复鼠标原始状态
+					if (!IsStopedClicker)
+					{
+						IsStopedClicker = true;
+						if (IsKeyPressed) if (!config.UseRClickerTrigInter) SetKeyDown(Click::Right, config.SimulateClickMode);
+						else if (config.UseRClickerTrigInter) SetKeyUp(Click::Right, config.SimulateClickMode);
+					}
+				}
 			}
 			//=========================================开关模式=========================================
 			if (config.RClickerMode & C_SWITCHMODE && !(config.RClickerMode & C_BUTTONMODE))
@@ -865,28 +787,38 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			if (config.RClickerMode & C_ASSISTMODE && !(config.RClickerMode & C_MOUSESMODE))
 			{
 				// 辅助模式没有连点间隙也没有延迟启动
-				// 不使用HumanCPS是因为防止误关闭，门限CPS只需要判断开始的
 				static ULONGLONG LastTime = 0;
-				const bool IsClicker = CurrentCPS.right >= config.AssistModeCPSThreshold;
-				const int ClickDealy = (1000 / max(HumanCPS.right, 1)) / max(config.RMultipleClickValue, 1);
-				const bool IsClickKey = GetKeyClick(2, true, config.ReadKeyStateMode);
+				static int AssistModeCount = 0;
+
+				int HumanCPSCopy;
+				{
+					shared_lock<shared_mutex> lock(HumanCPSMutex);
+					HumanCPSCopy = HumanCPS.right;
+				}
+
+				const bool IsClicker = HumanCPSCopy >= config.AssistModeCPSThreshold;
+				// ClickDealy的CPS保持在AssistModeMinCPS以上，防止CurrentCPS太低导致连点时间过长
+				const int ClickDealy = min(1000 / max(HumanCPSCopy, 1), 500) / max(config.RMultipleClickValue, 1);
+				const bool IsClickKey = GetKeyClick(Click::Right, true, config.ReadKeyStateMode);
+
 				if (!IsClicker && LastTime != 0)
 					LastTime = 0;
-				if (config.EnableRightClicker && ((AssistModeCount > 0) || (IsClickKey && IsClicker)))
+
+				if (config.EnableRightClicker && IsClicker)
 				{
+					if (IsClickKey)
+						AssistModeCount += config.RMultipleClickValue;
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
-					if (!config.UseRStartClickerDelay || (LastTime + config.RStartClickerDelay) <= GetTickCount64())
+					if ((AssistModeCount > 0) && (!config.UseRStartClickerDelay || (LastTime + config.RStartClickerDelay) <= GetTickCount64()))
 					{
-						if (IsClickKey)
-							AssistModeCount += config.RMultipleClickValue;
 						IsClickering.right = true;
 						if (config.UseRClickPressTime)
-						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
+							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
 						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;
-						ptime.EndSleep(ClickerDynamicDelay.right);
+						ptime.EndSleep(ClickDealy);
 						goto label_rc_end;
 					}
 					else IsClickering.right = false;
@@ -923,7 +855,6 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 		ULONGLONG EndTime = GetTickCount64() + config.LCTime;
 		ULONGLONG SlepTime = EndTime + config.LCSleep;
 		bool IsEndTime = false;
-		int AssistModeCount = 0;
 		int apd = 0;
 
 		while (!GCExit && !ReloadClicker && !StopClicker)
@@ -967,7 +898,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate && rbm.rand()))
+				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate || rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -988,14 +919,14 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			if (config.LClickerMode & C_MOUSESMODE && !(config.LClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static ULONGLONG LastTime = 0;
-				static bool IsDownMouse = false;
-				const bool IsKeyPressed = GetKeyDown(1, true, config.ReadKeyStateMode);
+				static bool IsStopedClicker = false;
+				const bool IsKeyPressed = GetKeyDown(Click::Left, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
 				if (!IsKeyPressed)
 				{
 					IsDelayEnd = false;
-					// 修复：连点结束（鼠标键释放）时重置疲劳状态（同 RClickRun）
+					// 连点结束（鼠标键释放）时重置疲劳状态（同 RClickRun）
 					rbm.ResetFatigue();
 				}
 
@@ -1015,14 +946,8 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						IsEndTime = true;
 					}
 				}
-				static bool backup_left = config.EnableLeftClicker;
-				if ((!config.EnableLeftClicker || IsKeyPressed) && IsDownMouse)
-				{
-					SetKeyUp(Click::Left, config.SimulateClickMode);
-					IsDownMouse = false;
-				}
 
-				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate && rbm.rand()))
+				if (config.EnableLeftClicker && IsKeyPressed && (!config.UseLEmptyRate || rbm.rand()))
 				{
 					const ULONGLONG time = GetTickCount64();
 					if (LastTime == 0)
@@ -1039,16 +964,26 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 							if (config.UseOldMethodToTrigInter)
 								SetKeyUp(Click::Left, config.SimulateClickMode);
 							SetKeyDown(Click::Left, config.SimulateClickMode);
-							IsDownMouse = true;
 						}
 						else
 							SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
+						IsStopedClicker = false;
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
 					else IsClickering.left = false;
 				}
-				else IsClickering.left = false;
+				else
+				{
+					IsClickering.left = false;
+					// 恢复鼠标原始状态
+					if (!IsStopedClicker)
+					{
+						IsStopedClicker = true;
+						if (IsKeyPressed) if (!config.UseLClickerTrigInter) SetKeyDown(Click::Left, config.SimulateClickMode);
+						else if (config.UseLClickerTrigInter) SetKeyUp(Click::Left, config.SimulateClickMode);
+					}
+				}
 			}
 			//=========================================开关模式=========================================
 			if (config.LClickerMode & C_SWITCHMODE && !(config.LClickerMode & C_BUTTONMODE))
@@ -1084,7 +1019,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				}
 				if (GetKeyClick(config.LKEY, config.UseHumanOnlyTrigger, config.ReadKeyStateMode))
 					SwitchMode_LClick = !SwitchMode_LClick;
-				if (SwitchMode_LClick && config.EnableLeftClicker && (!config.UseLEmptyRate && rbm.rand()))
+				if (SwitchMode_LClick && config.EnableLeftClicker && (!config.UseLEmptyRate || rbm.rand()))
 				{
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
@@ -1106,23 +1041,33 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			{
 				// 辅助模式没有连点间隙也没有延迟启动
 				static ULONGLONG LastTime = 0;
-				const bool IsClicker = CurrentCPS.left >= config.AssistModeCPSThreshold;
+				static int AssistModeCount = 0;
+
+				int HumanCPSCopy;
+				{
+					shared_lock<shared_mutex> lock(HumanCPSMutex);
+					HumanCPSCopy = HumanCPS.left;
+				}
+
+				const bool IsClicker = HumanCPSCopy >= config.AssistModeCPSThreshold;
 				// ClickDealy的CPS保持在AssistModeMinCPS以上，防止CurrentCPS太低导致连点时间过长
-				const int ClickDealy = (1000 / max(HumanCPS.left, 1)) / max(config.LMultipleClickValue, 1);
-				const bool IsClickKey = GetKeyClick(1, config.UseHumanOnlyTrigger, config.ReadKeyStateMode);
+				const int ClickDealy = min(1000 / max(HumanCPSCopy, 1), 500) / max(config.LMultipleClickValue, 1);
+				const bool IsClickKey = GetKeyClick(Click::Left, true, config.ReadKeyStateMode);
+				
 				if (!IsClicker && LastTime != 0)
 					LastTime = 0;
-				if (config.EnableLeftClicker && ((AssistModeCount > 0) || (IsClickKey && IsClicker)))
+
+				if (config.EnableLeftClicker && IsClicker)
 				{
+					if (IsClickKey)
+						AssistModeCount += config.LMultipleClickValue;
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
-					if (!config.UseLStartClickerDelay || (LastTime + config.LStartClickerDelay) <= GetTickCount64())
+					if ((AssistModeCount > 0) && (!config.UseLStartClickerDelay || (LastTime + config.LStartClickerDelay) <= GetTickCount64()))
 					{
-						if (IsClickKey)
-							AssistModeCount += config.LMultipleClickValue;
 						IsClickering.left = true;
 						if (config.UseLClickPressTime)
-							apd = config.UseLAutoPressDuration ? (ClickDealy * 0.75f) : (ClickDealy - config.LPressDuration);
+							apd = config.UseLAutoPressDuration ? (ClickDealy * 0.75f) : max(ClickDealy - config.LPressDuration, 1);
 						SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
 						
 						AssistModeCount--;

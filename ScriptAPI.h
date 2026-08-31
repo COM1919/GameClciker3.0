@@ -344,7 +344,10 @@ namespace ScriptAPI
     {
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetCpsRight的参数太多");
-        lua_pushinteger(L, CurrentCPS.right);
+        {
+            shared_lock<shared_mutex> lock(CurrentCPSMutex);
+            lua_pushinteger(L, CurrentCPS.right);
+        }
         return 1;
     }
 
@@ -352,7 +355,10 @@ namespace ScriptAPI
     {
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetCpsLeft的参数太多");
-        lua_pushinteger(L, CurrentCPS.left);
+        {
+            shared_lock<shared_mutex> lock(CurrentCPSMutex);
+            lua_pushinteger(L, CurrentCPS.left);
+        }
         return 1;
     }
 
@@ -360,7 +366,10 @@ namespace ScriptAPI
     {
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetHumanCpsLeft的参数太多");
-        lua_pushinteger(L, HumanCPS.left);
+        {
+            shared_lock<shared_mutex> lock(HumanCPSMutex);
+            lua_pushinteger(L, HumanCPS.left);
+        }
         return 1;
     }
 
@@ -368,7 +377,10 @@ namespace ScriptAPI
     {
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetHumanCpsRight的参数太多");
-        lua_pushinteger(L, HumanCPS.right);
+        {
+            shared_lock<shared_mutex> lock(HumanCPSMutex);
+            lua_pushinteger(L, HumanCPS.right);
+        }
         return 1;
     }
 

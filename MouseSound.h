@@ -66,7 +66,7 @@ unordered_map<string, ALuint> CurrentMouseSource;
 vector<ALuint> MouseSoundBufferList; // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 
 // 函数定义
-LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam);
+inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam);   // 键盘按键声音分发处理器（由统一键盘钩子 KeybdHookProc 调用）
 DWORD WINAPI ClickSound(LPVOID lpParam);
 bool InitOpenAL();
 void LoadSounds();
@@ -77,7 +77,7 @@ void ShutdownOpenAL();
 bool LoadWaveData(const string& fileName, ALuint* buffer);
 void BindSouce(ALuint* source, ALuint* buffer, bool loop);
 void CreateSouce(ALuint* source, bool loop);
-DWORD WINAPI MouseSoundThread(LPVOID lpParam);
+inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam);   // 鼠标点击声音分发处理器（由统一鼠标钩子 MouseHookProc 调用）
 
 void DownloadKeybdSounds()
 {
@@ -619,7 +619,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	if(config.UseMouseSound)
 		alSourcePlay(NoisSource);
 	SoundIsOpen = true;
-	CreateThreadSafe(MouseSoundThread, NULL, 0, "MouseSoundThread");
+	// 鼠标点击声不再由 MouseSoundThread 轮询 GetKeyClick，改由统一鼠标钩子（MouseHookProc -> HandleMouseSound）事件驱动
 
 	{
 		lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
@@ -734,139 +734,146 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	return 0;
 }
 
-DWORD WINAPI MouseSoundThread(LPVOID lpParam)
+inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	srand(time(NULL));
-	while (!GCExit)
+	if (nCode < 0)
+		return;
+
+	// 读 config 快照（短读锁，分发线程与主线程 config 重置互斥）
+	bool UseMouseSoundNow = false;
+	float BaseVolume = 0.0f;
 	{
-		// 修复：OpenAL current context 是线程局部（TLS），本线程此前从未 MakeContextCurrent，
-		// alSourcePlay 会因无当前上下文静默失败（鼠标声音无声的线程问题之一）。
-		// 设备重建后 g_pALContext 会变化，这里每次循环重新绑定。
-		if (g_pALContext && alcGetCurrentContext() != g_pALContext)
-			alcMakeContextCurrent(g_pALContext);
-
-		// 修复：循环内读取 config（UseMouseSound/音量/Sleep 间隔），持读锁与主线程 config 重置互斥
 		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
-		if (!config.UseMouseSound || !SoundIsOpen)
-		{
-			Sleep(100);
-			continue;
-		}
-
-		auto PlayWithVariation = [&](ALuint source)
-		{
-			if (source == 0)
-				return;
-
-			float baseVol = config.MouseSoundVolume / 100.0f;
-			float volVariation = 0.1f; // +-10%
-			float randomVol = baseVol * (1.0f + volVariation * ((rand() % 1000) / 500.0f - 1.0f));
-			randomVol = max(0.0f, min(2.0f, randomVol)); // 限制在 0~2.0
-			alSourcef(source, AL_GAIN, randomVol);
-
-			// 音调随机 +-20%，1.0 为原始音调
-			float pitchVariation = 0.2f;
-			float randomPitch = 1.0f + pitchVariation * ((rand() % 1000) / 500.0f - 1.0f);
-			randomPitch = max(0.4f, min(1.6f, randomPitch)); // 限制在 0.4~1.6
-			alSourcef(source, AL_PITCH, randomPitch);
-
-			alSourcePlay(source);
-		};
-
-		// 修复：改用 find，避免 operator[] 在键不存在时反复插入默认空条目
-		auto PlayMouse = [&](const string& key)
-		{
-			auto it = CurrentMouseSource.find(key);
-			if (it != CurrentMouseSource.end())
-				PlayWithVariation(it->second);
-		};
-
-		if (GetKeyClick(1, false, GK_HOOK))
-			PlayMouse("1");
-		if (GetKeyClick(2, false, GK_HOOK))
-			PlayMouse("2");
-
-		if (GetKeyUp(1, false, GK_HOOK))
-			PlayMouse("01");
-		if (GetKeyUp(2, false, GK_HOOK))
-			PlayMouse("02");
-
-		Sleep(config.MouseSoundSleep);
+		UseMouseSoundNow = config.UseMouseSound;
+		BaseVolume = config.MouseSoundVolume / 100.0f;
 	}
-	return 0;
+	if (!UseMouseSoundNow || !SoundIsOpen)
+		return;
+
+	if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+		alcMakeContextCurrent(g_pALContext);
+
+	auto PlayWithVariation = [&](ALuint source)
+	{
+		if (source == 0)
+			return;
+
+		float volVariation = 0.1f; // +-10%
+		float randomVol = BaseVolume * (1.0f + volVariation * ((rand() % 1000) / 500.0f - 1.0f));
+		randomVol = max(0.0f, min(2.0f, randomVol)); // 限制在 0~2.0
+		alSourcef(source, AL_GAIN, randomVol);
+
+		// 音调随机 +-20%，1.0 为原始音调
+		float pitchVariation = 0.2f;
+		float randomPitch = 1.0f + pitchVariation * ((rand() % 1000) / 500.0f - 1.0f);
+		randomPitch = max(0.4f, min(1.6f, randomPitch)); // 限制在 0.4~1.6
+		alSourcef(source, AL_PITCH, randomPitch);
+
+		alSourcePlay(source);
+	};
+
+	// 修复：改用 find，避免 operator[] 在键不存在时反复插入默认空条目
+	auto PlayMouse = [&](const string& key)
+	{
+		auto it = CurrentMouseSource.find(key);
+		if (it != CurrentMouseSource.end())
+			PlayWithVariation(it->second);
+	};
+
+	// 鼠标点击声音由统一鼠标钩子事件驱动（WM_LBUTTONDOWN/UP、WM_RBUTTONDOWN/UP），
+	// 替代原 MouseSoundThread 的 GetKeyClick/GetKeyUp 轮询，按下/抬起事件一次触发一次
+	switch (wParam)
+	{
+		case WM_LBUTTONDOWN: PlayMouse("1");  break;
+		case WM_LBUTTONUP:   PlayMouse("01"); break;
+		case WM_RBUTTONDOWN: PlayMouse("2");  break;
+		case WM_RBUTTONUP:   PlayMouse("02"); break;
+	}
+	if (!config.UseOldMethodToTrigInter)
+	{
+		if (config.UseLClickerTrigInter)
+		{
+			if (wParam == WM_LBUTTONDOWN)
+				PlayMouse("01");
+		}
+		if (config.UseRClickerTrigInter)
+		{
+			if (wParam == WM_RBUTTONDOWN)
+				PlayMouse("02");
+		}
+	}
 }
 
-LRESULT CALLBACK KeybdSoundHook(int nCode, WPARAM wParam, LPARAM lParam)
+inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0)
+	if (nCode < 0)
+		return;
+
+	bool UseKeybdSoundNow = false, UseMouseSoundNow = false;
 	{
-		bool UseKeybdSoundNow = false, UseMouseSoundNow = false;
+		// 修复：低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
+		// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
+		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
+		UseKeybdSoundNow = config.UseKeybdSound;
+		UseMouseSoundNow = config.UseMouseSound;
+	}
+	if ((UseKeybdSoundNow || UseMouseSoundNow) && SoundIsOpen)
+	{
+		// 说明：WH_KEYBOARD_LL 钩子收不到 DBT_* 设备消息（wParam 只会是 WM_KEYDOWN / WM_KEYUP 等），
+		// 原“设备切换”分支是死代码且线程不安全，已移除。音频设备插拔现由主窗口 WndProc 的
+		// WM_DEVICECHANGE + RegisterDeviceNotification 监听（见 GC.h），置 g_AudioDeviceChanged 后
+		// 由 ClickSound 线程统一重建，不再多线程直接操作 OpenAL。
+		if (UseKeybdSoundNow)
 		{
-			// 修复：低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
-			// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
-			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
-			UseKeybdSoundNow = config.UseKeybdSound;
-			UseMouseSoundNow = config.UseMouseSound;
-		}
-		if ((UseKeybdSoundNow || UseMouseSoundNow) && SoundIsOpen)
-		{
-			// 说明：WH_KEYBOARD_LL 钩子收不到 DBT_* 设备消息（wParam 只会是 WM_KEYDOWN / WM_KEYUP 等），
-			// 原“设备切换”分支是死代码且线程不安全，已移除。音频设备插拔现由主窗口 WndProc 的
-			// WM_DEVICECHANGE + RegisterDeviceNotification 监听（见 GC.h），置 g_AudioDeviceChanged 后
-			// 由 ClickSound 线程统一重建，不再多线程直接操作 OpenAL。
-			if (UseKeybdSoundNow)
+			if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+				alcMakeContextCurrent(g_pALContext);
+
+			KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
+			int rawVk = (int)pKeyBoard->vkCode;
+			if (rawVk < 0 || rawVk >= 256)
+				return;
+
+			// 修复（Ctrl/Alt/Shift 无声根因）：WH_KEYBOARD_LL 的 vkCode 对左右修饰键返回区分左右的
+			// VK（VK_LCONTROL=0xA2、VK_RMENU=0xA5 等），而声音包加载时 KeyScanToVk 只映射为通用
+			// VK（VK_CONTROL=0x11、VK_MENU=0x12），导致按 0xA2..0xA5 索引 CurrentKeybdSource 恒为 0
+			// 而无声音。这里归一化为通用 VK 后再查表；物理状态仍按原始 vkCode 记录，左右键可独立触发。
+			int vk = rawVk;
+			switch (rawVk)
 			{
-				if (g_pALContext && alcGetCurrentContext() != g_pALContext)
-					alcMakeContextCurrent(g_pALContext);
+				case VK_LSHIFT:   case VK_RSHIFT:   vk = VK_SHIFT;   break;
+				case VK_LCONTROL: case VK_RCONTROL: vk = VK_CONTROL; break;
+				case VK_LMENU:    case VK_RMENU:    vk = VK_MENU;    break;
+			}
 
-				KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-				int rawVk = (int)pKeyBoard->vkCode;
-				if (rawVk < 0 || rawVk >= 256)
-					return CallNextHookEx(NULL, nCode, wParam, lParam);
+			static bool KeyPhysicalState[256] = { false };
 
-				// 修复（Ctrl/Alt/Shift 无声根因）：WH_KEYBOARD_LL 的 vkCode 对左右修饰键返回区分左右的
-				// VK（VK_LCONTROL=0xA2、VK_RMENU=0xA5 等），而声音包加载时 KeyScanToVk 只映射为通用
-				// VK（VK_CONTROL=0x11、VK_MENU=0x12），导致按 0xA2..0xA5 索引 CurrentKeybdSource 恒为 0
-				// 而无声音。这里归一化为通用 VK 后再查表；物理状态仍按原始 vkCode 记录，左右键可独立触发。
-				int vk = rawVk;
-				switch (rawVk)
+			if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
+			{
+				// 只有当前物理状态为 false（之前确实没有按下）时，才触发声音
+				if (!KeyPhysicalState[rawVk])
 				{
-					case VK_LSHIFT:   case VK_RSHIFT:   vk = VK_SHIFT;   break;
-					case VK_LCONTROL: case VK_RCONTROL: vk = VK_CONTROL; break;
-					case VK_LMENU:    case VK_RMENU:    vk = VK_MENU;    break;
-				}
+					KeyPhysicalState[rawVk] = true;// 标记为已按下
 
-				static bool KeyPhysicalState[256] = { false };
-
-				if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
-				{
-					// 只有当前物理状态为 false（之前确实没有按下）时，才触发声音
-					if (!KeyPhysicalState[rawVk])
+					ALuint src = CurrentKeybdSource[vk];
+					// 修复：当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
+					if (src == 0)
 					{
-						KeyPhysicalState[rawVk] = true;// 标记为已按下
-
-						ALuint src = CurrentKeybdSource[vk];
-						// 修复：当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
-						if (src == 0)
+						for (int i = 1; i < 256; ++i)
 						{
-							for (int i = 1; i < 256; ++i)
+							if (CurrentKeybdSource[i] != 0)
 							{
-								if (CurrentKeybdSource[i] != 0)
-								{
-									src = CurrentKeybdSource[i];
-									break;
-								}
+								src = CurrentKeybdSource[i];
+								break;
 							}
 						}
-						if (src != 0)
-							alSourcePlay(src);
 					}
-					// 如果KeyPhysicalState[rawVk]已经是true，直接忽略（无论系统 flags 是什么）
+					if (src != 0)
+						alSourcePlay(src);
 				}
-				else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
-					KeyPhysicalState[rawVk] = false;
+				// 如果KeyPhysicalState[rawVk]已经是true，直接忽略（无论系统 flags 是什么）
 			}
+			else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+				KeyPhysicalState[rawVk] = false;
 		}
 	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }

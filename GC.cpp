@@ -7,6 +7,7 @@
 #include "GameGui.h"
 #include "ScriptEditor.h"
 #include <ctime>
+#include "HookCentral.h"   // 中央分发钩子（4 个低级钩子合并为键盘/鼠标各 1 个）
 
 //#include "CodeEditor.h"
 #include <cstring>   // strstr（命令行 debug 参数检测）
@@ -20,17 +21,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 并重定向 stdout，使 PrintLog 里的 cout 能显示在终端里（崩溃前可立即看到日志）。
     if (lpCmdLine && strstr(lpCmdLine, "debug"))
     {
+        if (!AttachConsole(ATTACH_PARENT_PROCESS))
+            AllocConsole();
+        FILE* fp = nullptr;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+        LogDebugCout = true;
+
         HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
         cout << ASCIITitle << endl;
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
         cout << "===========================Debug模式已开启===========================\n\n" << endl;
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
-        LogDebugCout = true;
-        if (!AttachConsole(ATTACH_PARENT_PROCESS))
-            AllocConsole();
-        FILE* fp = nullptr;
-        freopen_s(&fp, "CONOUT$", "w", stdout);
     }
     int ret = StartUpGC(hInstance);
     cout << "程序退出，返回值：" << ret << endl;
@@ -188,30 +190,21 @@ DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
 #ifndef GC_NO_HOOK
     bool IsRetry = false;
 retry:
-    HHOOK Hook_MouseSound = SetWindowsHookEx(WH_KEYBOARD_LL, KeybdSoundHook, GetModuleHandle(NULL), 0);
-    HHOOK Hook_Clicker = SetWindowsHookEx(WH_MOUSE_LL, ClickerControlHook, GetModuleHandle(NULL), 0);
-    HHOOK Hook_KeyState = SetWindowsHookEx(WH_KEYBOARD_LL, KeyStateHookProc, GetModuleHandle(NULL), 0);
-    HHOOK Hook_MouseState = SetWindowsHookEx(WH_MOUSE_LL, MouseStateHookProc, GetModuleHandle(NULL), 0);
+    // 钩子合并：原 4 个低级钩子（键盘 x2 + 鼠标 x2）-> 2 个（键盘 x1 + 鼠标 x1），
+    // 同类型事件在回调内靠中央分发（见 HookCentral.h）。低级钩子每次事件都会打断进程，
+    // 合并后同一次事件只打断一次，重复 CallNextHookEx 链遍历的开销随之消失。
+    HHOOK Hook_Mouse = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetModuleHandle(NULL), 0);
+    HHOOK Hook_Keybd = SetWindowsHookEx(WH_KEYBOARD_LL, KeybdHookProc, GetModuleHandle(NULL), 0);
 
     bool IsError = false;
-    if (Hook_Clicker == NULL)
+    if (Hook_Mouse == NULL)
     {
         PrintLog("[Hook] 无法设置鼠标钩子", PL_ERROR);
         IsError = true;
     }
-    if (Hook_MouseSound == NULL)
+    if (Hook_Keybd == NULL)
     {
-        PrintLog("[Hook] 无法设置鼠标声音钩子", PL_ERROR);
-        IsError = true;
-    }
-    if (Hook_KeyState == NULL)
-    {
-        PrintLog("[Hook] 无法设置按键状态钩子", PL_ERROR);
-        IsError = true;
-    }
-    if (Hook_MouseState == NULL)
-    {
-        PrintLog("[Hook] 无法设置鼠标状态钩子", PL_ERROR);
+        PrintLog("[Hook] 无法设置键盘钩子", PL_ERROR);
         IsError = true;
     }
 
@@ -234,7 +227,11 @@ retry:
     }
     else if (IsRetry)
         RenderTip(config.UseChinese ? "全局钩子设置成功！" : "Global hook set successfully", 4.0f, PT_INFO);
-    PrintLog("[Hook] 鼠标钩子安装成功", PL_INFO);
+    PrintLog("[Hook] 全局钩子安装成功（键盘/鼠标各 1 个，事件中央分发）", PL_INFO);
+
+    // 启动钩子事件分发线程：钩子回调只入队（低频、不可阻塞），所有 Handle
+    // （状态/声音/连点器）在 HookDispatchThread 单一工作线程中异步执行（见 HookCentral.h）
+    CreateThreadSafe(HookDispatchThread, NULL, 0, "HookDispatchThread");
     
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0))
@@ -245,11 +242,9 @@ retry:
             break;
     }
 
-    PrintLog("[Hook] 卸载鼠标HOOK", PL_INFO);
-    UnhookWindowsHookEx(Hook_Clicker);
-    UnhookWindowsHookEx(Hook_MouseSound);
-    UnhookWindowsHookEx(Hook_KeyState);
-    UnhookWindowsHookEx(Hook_MouseState);
+    PrintLog("[Hook] 卸载全局HOOK", PL_INFO);
+    UnhookWindowsHookEx(Hook_Mouse);
+    UnhookWindowsHookEx(Hook_Keybd);
 #endif // !GC_NO_HOOK
     return 0;
 }
@@ -477,14 +472,13 @@ int GCMainLoop()
 DWORD WINAPI InitGC(LPVOID lpParam)
 {
     PrintLog("[Init] 创建线程", PL_INFO);
-    CreateThreadSafe(RecordsCPS, NULL, 0, "RecordsCPS");
+    CreateThreadSafe(HandleCPSRecord, NULL, 0, "HandleCPSRecord");
     SetThreadPriority(ClickRunThread, THREAD_PRIORITY_HIGHEST);
     ClickSoundThread = CreateThreadSafe(ClickSound, NULL, 0, "ClickSound");
     CreateThreadSafe(GetInfo, NULL, 0, "GetInfo");
     CreateThreadSafe(Updata, NULL, 0, "Updata");
     CreateThreadSafe(RecordsPCRate, NULL, 0, "RecordsPCRate");
     CreateThreadSafe(CreateTrayIcon, NULL, 0, "CreateTrayIcon");
-    //CreateThreadSafe(ItemBarSwitch, NULL, 0, "ItemBarSwitch"); // 内存搜索的物品栏
     CreateThreadSafe(ClickerControl, NULL, 0, "ClickerControl");
     CreateThreadSafe(MouseShakeMove, NULL, 0, "MouseShakeMove");
     CreateThreadSafe(SystemMsgHookLoop, NULL, 0, "SystemMsgHookLoop");
@@ -840,7 +834,10 @@ void RenderGui(ImGuiIO& io)
 
     //=======================信息显示===========================
     SetCursorPosX(14);
-    Text(u8"CPS:%d | %d", CurrentCPS.left, CurrentCPS.right);
+    {
+        shared_lock<shared_mutex> lock(CurrentCPSMutex);
+        Text(u8"CPS:%d | %d", CurrentCPS.left, CurrentCPS.right);
+    }
     
     SetCursorPosX(12);
     ImDrawList* DrawList = GetWindowDrawList();
@@ -869,7 +866,10 @@ void RenderGui(ImGuiIO& io)
     {
         SetCursorPos({ RectPos.x, RectPos.y + 16 });
         Text("%.1f FPS", io.Framerate);
-        Text("Human:%d|%d", HumanCPS.left, HumanCPS.right);
+        {
+            shared_lock<shared_mutex> lock(HumanCPSMutex);
+            Text("Human:%d|%d", HumanCPS.left, HumanCPS.right);
+        }
     }
 
     //=======================菜单显示===========================
@@ -896,23 +896,6 @@ void RenderGui(ImGuiIO& io)
         {
             TabsText((ICON_FA_HOUSE + (config.UseChinese ? u8"主页"s : "Home"s)).c_str());
 
-            /*
-            BeginChild("##MarkdownView", ImVec2(677, 230), true);
-            {
-                MarkdownRender.print(NoticeStr.c_str(), NoticeStr.c_str() + NoticeStr.size());
-            }
-            EndChild();
-            */
-            InputTextMultiline(u8"##notice", (char*)NoticeStr.c_str(), NoticeStr.size(), ImVec2(677, 230), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_NoHorizontalScroll);
-
-            const static ImGuiWindowFlags flags =
-                ImGuiWindowFlags_NoScrollbar |
-                ImGuiWindowFlags_NoScrollWithMouse |
-                ImGuiWindowFlags_NoCollapse |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoResize |
-                ImGuiWindowFlags_NoTitleBar;
-
             // 修复：原代码为 static const int，会把 ULONGLONG 差值截断为 32 位 int（>24.8天即溢出），
             // 且 InitSuccessTime 可能尚未被 InitGC 写入（==0），0-StartTime 无符号下溢成巨大值。
             // 改为加锁读取 + ULONGLONG 类型 + 未初始化时实时计算。
@@ -922,22 +905,26 @@ void RenderGui(ImGuiIO& io)
                 if (InitSuccessTime != 0 && InitSuccessTime >= StartTime)
                     StartupTime = InitSuccessTime - StartTime;
             }
-            if (StartupTime == 0)
-                StartupTime = GetNowMs() - StartTime; // 初始化尚未完成，回退为实时耗时
+
             static string DailyMotto = DailyMottos[Random(0, 29)];
             Text(config.UseChinese ? u8"&c本次启动耗时" : "&cStartup time");
             SameLine();
             Text(config.UseChinese ? u8"&a%llu 毫秒" : "&a%llu ms", StartupTime);
             SameLine();
-            PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(0, 0, 0, 0));
-            PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(0, 0, 0, 0));
-            PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(0, 0, 0, 0));
-            {
-                if (Button(DailyMotto.c_str()))
-                    DailyMotto = DailyMottos.at(Random(0, 29));
-            }
-            PopStyleColor(3);
+            Text(DailyMotto.c_str());
 
+            /*
+            BeginChild("##MarkdownView", ImVec2(677, 230), true);
+            {
+                MarkdownRender.print(NoticeStr.c_str(), NoticeStr.c_str() + NoticeStr.size());
+            }
+            EndChild();
+            */
+            {
+                // 修复：NoticeStr 由 GetInfo 线程写入，主线程每帧读取 c_str() 会悬垂 → 快照拷贝
+                shared_lock<shared_mutex> lock(NoticeMutex);
+                InputTextMultiline(u8"##notice", (char*)NoticeStr.c_str(), NoticeStr.size(), ImVec2(677, -1), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_NoHorizontalScroll);
+            }
             break;
         }
         case Tab::Info:
@@ -953,7 +940,8 @@ void RenderGui(ImGuiIO& io)
 
                 const static ImGuiWindowFlags flags =
                     ImGuiWindowFlags_HorizontalScrollbar |
-                    ImGuiWindowFlags_NoScrollWithMouse;
+                    ImGuiWindowFlags_NoScrollWithMouse |
+                    ImGuiWindowFlags_NoBackground;
 
                 const float PosY = GetCursorPosY();
 
@@ -969,7 +957,7 @@ void RenderGui(ImGuiIO& io)
 
                 Text(config.UseChinese ? u8"右键CPS监控" : "RCPS monitoring");
                 const float PosY2 = GetCursorPosY();
-                BeginChild("##RRecordsBeginChild", { 250, 120 }, true, flags);
+                BeginChild("##RRecordsBeginChild", { 250, 120 }, false, flags);
                 {
                     PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(220, 220, 170, 255));
                     PlotLines(u8"##RRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
@@ -993,7 +981,7 @@ void RenderGui(ImGuiIO& io)
 
                 Text(config.UseChinese ? u8"左键CPS监控" : "LCPS monitoring");
                 SetCursorPos({ PosX, PosY2 });
-                BeginChild("##LRecordsBeginChild", { 250, 120 }, true, flags);
+                BeginChild("##LRecordsBeginChild", { 250, 120 }, false, flags);
                 {
                     PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(220, 220, 170, 255));
                     PlotLines(u8"##LRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
@@ -1043,7 +1031,7 @@ void RenderGui(ImGuiIO& io)
 
                     //不用const staitc的，是因为这玩意任意错位
                     float PosY4 = GetCursorPosY();
-                    BeginChild("##CPURecordsBeginChild", { 250, 120 }, true, flags);
+                    BeginChild("##CPURecordsBeginChild", { 250, 120 }, false, flags);
                     {
                         temp.clear();
                         temp.resize(MAX_RECORDS, 0);
@@ -1085,7 +1073,7 @@ void RenderGui(ImGuiIO& io)
 
                     Text(config.UseChinese ? u8"内存占用率监控" : "Memory usage monitoring");
                     SetCursorPos({ PosX4, PosY4 });
-                    BeginChild("##MemRecordsBeginChild", { 250, 120 }, true, flags);
+                    BeginChild("##MemRecordsBeginChild", { 250, 120 }, false, flags);
                     {
                         PlotLines(u8"##MemRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
                         SetScrollHereX(1);
@@ -1370,7 +1358,6 @@ void RenderGui(ImGuiIO& io)
                         int LastKey = config.RKEY;
                         if (InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"请按下按键" : "Press a key"))
                         {
-
                             if (LastKey == 2)
                             {
                                 config.LClickerMode |= C_BUTTONMODE;
@@ -1940,10 +1927,10 @@ void RenderGui(ImGuiIO& io)
                         SameLine();
 
                         Toggle(config.UseChinese ? u8"使用旧方法" : "Use Old Method", &config.UseOldMethodToTrigInter, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"本功能针对 &d使用物品 &7/ &d破坏方块&f\n如果出现上述功能无法使用\n则可以尝试开启本功能" : "This function is designed for&d UseItem s&7/&d BreakBlocks&f.\nIf the above functions cannot be used,\nyou can try to turn on this function");
+                        AttachTooltip(config.UseChinese ? u8"本功能针对 &d使用物品 &7/ &d破坏方块&f\n如果出现上述功能无法使用\n则可以尝试开启本功能" : "This function is designed for&d UseItem s&7/&d BreakBlocks&f.\nAnd it can cause the mouse sound to be a bit strange\nIf the above functions cannot be used,\nyou can try to turn on this function");
 
                         if (config.UseLClickerTrigInter)
-                            Text(config.UseChinese ? u8"&e注意：开启 破坏方块 可能出现卡刀的情况\n并且会导致鼠标声音识别异常！ 请自行衡量！" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nAnd it will cause abnormal mouse sound recognition!\nUse at your own risk!");
+                            Text(config.UseChinese ? u8"&e注意：开启 破坏方块 可能出现卡刀的情况\n并且会导致鼠标声音有些奇怪\n请自行衡量！" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nUse at your own risk!");
                     }
 
                     //-------------------------过滤单点--------------------------
@@ -2021,7 +2008,11 @@ void RenderGui(ImGuiIO& io)
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 BeginCard(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", ImVec2(0, 280), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Toggle(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags);
+                    if (Toggle(config.UseChinese ? u8"物品栏开关" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags))
+                    {
+                        config.EnableLeftClicker = true;
+                        config.EnableRightClicker = true;
+                    }
                     AttachTooltip(config.UseChinese ? u8"将对应物品格子的按钮关闭，连点器就会在你手拿对应物品时关闭连点。\n其中的快捷键必须设置，主要用于判断物品栏位置！" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
 
                     if (Button(config.UseChinese ? u8"全部启用" : "Enable All"))
@@ -3803,22 +3794,22 @@ void RenderGui(ImGuiIO& io)
                                     }
                                     // 按钮和其他的
                                     {
-                                        const bool HasLinkButtonShow = !script.link.empty();
-                                        const string LinkText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程"s : "Guide"s));
-                                        const float LinkButtonWidth = CalcTextSize(LinkText.c_str()).x + 16;
+                                        const bool HasLinkButton = !script.link.empty();
+                                        const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程网站"s : "Web Guide"s));
+                                        const float LinkButtonWidth = CalcTextSize(LinkButtonText.c_str()).x + 16;
                                         const float ImageButtonWidth = 32.0f;
                                         const float spacing = 6.0f;
 
                                         float BeginPosX = WindowWidth - ImageButtonWidth - spacing;
-                                        if (HasLinkButtonShow)
+                                        if (HasLinkButton)
                                             BeginPosX -= LinkButtonWidth + spacing;
                                         SetCursorPosX(BeginPosX);
 
                                         // 教程链接按钮
-                                        if (HasLinkButtonShow)
+                                        if (HasLinkButton)
                                         {
                                             SetCursorPosY(WindowHeight - 32);
-                                            if (Button(LinkText.c_str(), ImVec2(LinkButtonWidth, 32)))
+                                            if (Button(LinkButtonText.c_str(), ImVec2(LinkButtonWidth, 32)))
                                             {
                                                 // 值捕获：script 是 for 循环元素引用，线程执行时元素可能已失效
                                                 thread th([scriptCopy = script]()
@@ -3948,6 +3939,7 @@ void RenderGui(ImGuiIO& io)
 
                         // 读取锁
                         shared_lock<shared_mutex> read_lock(AvaiableScriptsMtx);
+
                         const int TotalScript = AvaiableScripts.size();
                         if (TotalScript == 0)
                             NothingsHereFunc();
@@ -3956,6 +3948,11 @@ void RenderGui(ImGuiIO& io)
                         const int PaperSize = 10;
                         const int TotalPaper = (TotalScript + PaperSize - 1) / PaperSize;
                         static int CurrentPaper = 1;
+
+                        // 显示内置文档的脚本ID，负数为不显示（或者是无）
+                        int ShowDocsScriptID = -1;
+                        // 文档内容
+                        string DocsText;
 
                         const int MaxCount = min(PaperSize * CurrentPaper, TotalScript);
                         for (int count = (CurrentPaper - 1) * PaperSize; count < MaxCount; count++) // count不能等于MaxCount，不然会出现翻页后重复出现
@@ -4028,29 +4025,60 @@ void RenderGui(ImGuiIO& io)
 
                                 // 按钮和其他的
                                 {
-                                    const bool HasLinkButtonShow = !script.link.empty();
-                                    const string LinkText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程"s : "Guide"s));
-                                    const float LinkButtonWidth = CalcTextSize(LinkText.c_str()).x + 16;
+                                    const bool HasLinkButton = !script.link.empty();
+                                    const bool HasDocsButton = !script.docs.empty();
+                                    const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"教程网站"s : "Web Guide"s));
+                                    const string DocsButtonText = (ICON_FA_FILE_WORD + (config.UseChinese ? u8"文档"s : "Docs"s));
+                                    const float LinkButtonWidth = CalcTextSize(LinkButtonText.c_str()).x + 16;
+                                    const float DocsButtonWidth = CalcTextSize(DocsButtonText.c_str()).x + 16;
                                     const float ImageButtonWidth = 32.0f;
                                     const float spacing = 6.0f;
 
                                     float BeginPosX = WindowWidth - ((ImageButtonWidth + spacing) * 2);
-                                    if (HasLinkButtonShow)
+                                    if (HasLinkButton)
                                         BeginPosX -= LinkButtonWidth + spacing;
+                                    if (DocsButtonWidth)
+                                        BeginPosX -= DocsButtonWidth + spacing;
                                     SetCursorPosX(BeginPosX);
 
                                     if (!script.IsInstalled)
                                     {
-                                        if (HasLinkButtonShow)
+                                        // 教程网站按钮
+                                        if (HasLinkButton)
                                         {
                                             SetCursorPosY(WindowHeight - ImageButtonWidth);
-                                            if (Button(LinkText.c_str(), ImVec2(LinkButtonWidth, 32)))
+                                            if (Button(LinkButtonText.c_str(), ImVec2(LinkButtonWidth, 32)))
                                             {
                                                 // 值捕获：script 是 for 循环元素引用，线程执行时元素可能已失效
                                                 thread th([scriptCopy = script]()
                                                 {
                                                     ShellExecute(NULL, NULL, scriptCopy.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
                                                 });
+                                                th.detach();
+                                            }
+                                            SameLine(0, spacing);
+                                        }
+
+                                        // 文档显示按钮
+                                        if (HasDocsButton)
+                                        {
+                                            SetCursorPosY(WindowHeight - 32);
+                                            if (Button(DocsButtonText.c_str(), ImVec2(DocsButtonWidth, 32)))
+                                            {
+                                                ShowDocsScriptID = count;
+                                                auto func = [&DocsText](const string& path)
+                                                {
+                                                    ifstream file(path);
+                                                    if (!file.is_open())
+                                                    {
+                                                        PrintLog("[Script] 无法打开文档文件：" + path, PL_ERROR);
+                                                        return;
+                                                    }
+                                                    ostringstream ss;
+                                                    ss << file.rdbuf();
+                                                    DocsText = ss.str();
+                                                };
+                                                thread th(func, script.docs);
                                                 th.detach();
                                             }
                                             SameLine(0, spacing);
@@ -4153,6 +4181,17 @@ void RenderGui(ImGuiIO& io)
                             }
                             EndChild();
                             PopID();
+                        }
+
+                        if (ShowDocsScriptID >= 0)
+                        {
+                            ScriptInfo& script = AvaiableScripts[ShowDocsScriptID];
+
+                            if (BeginPopupWindow(config.UseChinese ? u8"脚本文档" : "Script Document"))
+                            {
+                                TextUnformatted(DocsText.c_str());
+                                EndPopupWindow();
+                            }
                         }
 
                         BeginDisabled(CurrentPaper <= 1);

@@ -27,6 +27,7 @@ void ExceptionHandling(DWORD code, string what);
 LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo);
 inline void BeginSleep(const char* flag);
 inline void EndSleep(const char* flag, int time);
+wstring UTF8ToWString(const string& utf8Str);
 
 // 弹窗请求管理员权限并重启自身
 int RequestAdminAndRestart()
@@ -276,45 +277,57 @@ LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo)
         default:
             err = "未知异常";
     }
-    if (!client_id.size() > 2)
-        client.Send("exit");
     ExceptionHandling(pExceptionInfo->ExceptionRecord->ExceptionCode, err);
     return EXCEPTION_EXECUTE_HANDLER;
+}
+
+wstring UTF8ToWString(const string& utf8Str)
+{
+    if (utf8Str.empty()) return {};
+    int len = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), (int)utf8Str.size(), nullptr, 0);
+    if (len == 0) return {};
+    wstring wstr(len, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), (int)utf8Str.size(), &wstr[0], len);
+    return wstr;
 }
 
 // 每当调用这个函数就代表致命错误，会主动退出GC
 void ExceptionHandling(DWORD code, string what)
 {
-    string msg;
+    wstring msg;
     if (config.UseChinese)
     {
-        msg += "GC发生了致命错误！\n";
-        msg += "原因：" + what + "\n";
-        msg += "系统错误代码：" + to_string(code) + "\n\n";
-        msg += "版本：" + version + "\n";
-        msg += "你可以前往 GC连点器论坛 反馈此问题，我们会尽快修复。\n";
-        msg += "GC论坛：bbs.mcgc.top\n";
-        msg += "是否上报此问题？";
+        msg += L"GC发生了致命错误！\n";
+        msg += L"原因：" + UTF8ToWString(what) + L"\n";
+        msg += L"系统错误代码：" + to_wstring(code) + L"\n\n";
+        msg += L"版本：" + UTF8ToWString(version) + L"\n";
+        msg += L"你可以前往 bbs.mcgc.top 反馈此问题，我们会尽快修复。\n";
+        msg += L"GC论坛：bbs.mcgc.top\n";
+        msg += L"是否上报此问题？";
     }
     else
     {
-        msg += "GC has encountered a fatal error!\n";
-        msg += "Reason: " + what + "\n";
-        msg += "version：" + version + "\n";
-        msg += "System error code: " + to_string(code) + "\n\n";
-        msg += "You can report this issue to the GC Clicker Forum, \nwe will fix it as soon as possible.\n";
-        msg += "GC Forum: bbs.mcgc.top\n";
-        msg += "Do you want to report this issue?";
+        msg += L"GC has encountered a fatal error!\n";
+        msg += L"Reason: " + UTF8ToWString(what) + L"\n";
+        msg += L"version：" + UTF8ToWString(version) + L"\n";
+        msg += L"System error code: " + to_wstring(code) + L"\n\n";
+        msg += L"You can report this issue to the Forum, \nWe will fix it as soon as possible.\n";
+        msg += L"Forum: bbs.mcgc.top\n";
+        msg += L"Do you want to report this issue?";
     }
 
-    // 强制用记事本打开
-    ShellExecute(NULL, "open", "notepad.exe", LogFile.c_str(), NULL, SW_SHOWNORMAL);
 
-    int ret = MessageBox(NULL, msg.c_str(), config.UseChinese ? "GC连点器错误" : "GC Error", MB_YESNO | MB_ICONERROR);
     PrintLog("[Exception] GC发生了致命错误 - 错误代码" + to_string(code) + "原因：" + what, PL_ERROR);
+    int ret = MessageBoxW(NULL, msg.c_str(), config.UseChinese ? L"软件错误" : L"Software Error", MB_YESNO | MB_ICONERROR);
 
     if (ret == IDYES) // 上报
         client.Send("error " + to_string(code) + " " + what);
+
+    if (client_id.size() > 2)
+        client.Send("exit");
+
+    // 强制用记事本打开
+    ShellExecute(NULL, "open", "notepad.exe", LogFile.c_str(), NULL, SW_SHOWNORMAL);
 
     // 关闭互斥量，关闭防止双开
     if (AntiMultiOpenMutex)

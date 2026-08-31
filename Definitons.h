@@ -205,8 +205,7 @@ public:
     GenerateDis_bernoulli_distribution;
     int EmptyRate_RandomMode =              //CPS波动随机数生成模式
     RandomBoolMode_UNIFORM;
-    int MemSearchSleep = 20;                //内存搜索延迟(毫秒)
-    int MouseSoundSleep = 1;                //鼠标点击声音的循环延迟
+    int MouseSoundSleep = 5;                //鼠标点击声音的循环延迟
     int AssistModeCPSThreshold = 4;         //辅助模式的CPS门限
     bool UseOverheatThrottle = false;       //过热降频开关
     int Overheat_MinCPS = 10;               //过热降频的CPS最低限制（不能低于此值）
@@ -342,7 +341,10 @@ vector<float> CpuRates;                 //CPU占用率记录
 vector<float> GpuRates;                 //GPU占用率记录
 vector<float> MemRates;                 //内存占用率记录
 vector<vector<float>> ScriptCpuRates;   //脚本CPU占用率记录
+
 mutex RecordsCPSMutex;                  //RRecordsCPS/LRecordsCPS 的互斥锁
+
+
 shared_mutex PerformanceMutex;          //CpuRates/GpuRates/MemRates 的互斥锁（RecordsPCRate 线程写、主渲染线程读）
 atomic<bool> ThreadExitFlag(false);     //线程退出标志
 
@@ -357,9 +359,10 @@ struct ScriptInfo
     string name;
     string info;
     string file;
-    string texture;// 图片的文件路径
+    string texture; // 图片的文件路径
     string title;
     string link;
+    string docs; // 文档文件路径
     HANDLE hThread{};
     vector<string> RestrictedFuncs;
     string RestrictedFuncsStr;
@@ -392,16 +395,16 @@ map<string, ScriptState> ScriptStates;  //脚本相关状态控制
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.53";          //版本号
-string title = "GAMECLICKER 3.53";      //标题名字
+const string version = "3.55";          //版本号
+string title = "GAMECLICKER 3.55";      //标题名字
 const int ConfigVersion = 5;            //配置文件版本号
-const int AgreementVersion = 3;         //协议文件版本号
+const int AgreementVersion = 8;         //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
 const int RenderFps = 60;               //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
-//#define GC_NO_HOOK                      //是否禁用HOOK
+//#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -421,8 +424,12 @@ const int RenderFps = 60;               //渲染帧率
 #undef GC_NO_SAFE_MODE
 #undef GC_NO_TRY_CATCH
 #undef GC_SERVER_DEBUG
+#undef GC_REMOTE_DEBUG
 #undef GC_MORE_DEBUG_INFO
+#undef GC_ENABLE_QUICK_EXIT
+#undef GC_NO_MSGBOX
 #undef GC_NO_HOOK
+#undef GC_DEBUG_GUIDE_UI
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
@@ -536,8 +543,11 @@ please refund and report it promptly. \n\
 GC developer: COM1919 and supports English now! \n\
 using machine translation. If there are any errors, \n\
 please feel free to provide feedback.";
+// 修复：NoticeStr 由 GetInfo 线程写入、主线程每帧读取显示（c_str()），无锁时写线程 realloc
+// 会令主线程持悬垂指针 → 0xC0000005。
+shared_mutex NoticeMutex;
 
-array<string, 45> DailyMottos = {
+array<string, 48> DailyMottos = {
     config.UseChinese ? u8"&b数字世界是风景，现实生活才是家园。" : "&bDigital world is scenery, real life is home.",
     config.UseChinese ? u8"&b每一次专注学习，都是对未来的投资。" : "&bEach study session invests in your future.",
     config.UseChinese ? u8"&b真正的挑战在屏幕外，别逃避成长。" : "&bReal challenges are off-screen - don't avoid growth.",
@@ -545,44 +555,47 @@ array<string, 45> DailyMottos = {
     config.UseChinese ? u8"&b技能需要训练，大脑需要知识。" : "&bSkills need practice, mind needs knowledge.",
     config.UseChinese ? u8"&b健康的三餐比游戏排名更重要。" : "&bThree healthy meals beat gaming rankings.",
     config.UseChinese ? u8"&b真正的成就不会在虚拟世界中解锁。" : "&bReal achievements aren't unlocked in virtual worlds.",
-    config.UseChinese ? u8"&b与真人面对面交流，感受真实情感。" : "&bFace-to-face talks bring real emotions.",
+    config.UseChinese ? u8"&b她...不再出现，带走了我的人生。" : "&bShe...Not appearing again, taking away my life",
     config.UseChinese ? u8"&b深夜的星空比游戏画面更壮丽。" : "&bNight stars outshine game graphics.",
     config.UseChinese ? u8"&b运动产生的内啡肽比游戏刺激更持久。" : "&bExercise endorphins last longer than gaming thrills.",
-    config.UseChinese ? u8"&b学习编程，创造游戏比玩游戏酷多了。" : "&bLearn coding - creating games beats playing them.",
+    config.UseChinese ? u8"&b..." : "&b...",
     config.UseChinese ? u8"&b帮助父母做家务，你会收获更多尊重。" : "&bHelp with chores, earn more respect.",
     config.UseChinese ? u8"&b培养一项艺术爱好，发现更多美好。" : "&bDevelop an art hobby, discover more beauty.",
     config.UseChinese ? u8"&b游戏角色会重置，人生没有重新开始。" : "&bGame characters reset, life doesn't restart.",
     config.UseChinese ? u8"&b真正的团队合作在现实项目中磨练。" : "&bReal teamwork sharpens in actual projects.",
-    config.UseChinese ? u8"&b放下手柄，拿起乐器，创造属于你的旋律。" : "&bDrop controller, pick instrument, create your melody.",
+    config.UseChinese ? u8"&b不要...不要...不..." : "&bNo...NO..NOOO...",
     config.UseChinese ? u8"&b每天读10页书，一年就是3650页。" : "&bRead 10 pages daily, 3650 pages a year.",
     config.UseChinese ? u8"&b游戏任务会刷新，人生机会不等待。" : "&bGame quests refresh, life chances don't wait.",
     config.UseChinese ? u8"&b投资自己的技能，这是最好的装备。" : "&bInvest in skills - your best equipment.",
     config.UseChinese ? u8"&b真实的友谊需要真实的时间来培养。" : "&bReal friendships need real time to grow.",
-    config.UseChinese ? u8"&b屏幕外的世界有更精彩的冒险。" : "&bWorld outside screen has greater adventures.",
+    config.UseChinese ? u8"&b好...好..难受。" : "&b...Asdfasd....It's uncomfortable.",
     config.UseChinese ? u8"&b学会烹饪，为自己做一顿健康的餐。" : "&bLearn cooking, make yourself a healthy meal.",
     config.UseChinese ? u8"&b游戏排名只是数据，个人成长才是真实。" : "&bGame ranks are data, personal growth is real.",
-    config.UseChinese ? u8"&b保持好奇心，探索未知领域。" : "&bStay curious, explore unknown fields.",
+    config.UseChinese ? u8"&b好想...解脱..." : "&bI really want to ... liberation ..",
     config.UseChinese ? u8"&b帮助同学解决问题，你会获得更多快乐。" : "&bHelp classmates solve problems, gain more joy.",
-    config.UseChinese ? u8"&b每天练习英语10分钟，打开新世界大门。" : "&bPractice English 10 mins daily, open new doors.",
-    config.UseChinese ? u8"&b游戏是设计的快乐，生活是创造的幸福。" : "&bGames are designed joy, life is created happiness.",
+    config.UseChinese ? u8"&b这世界...怎么了？" : "&bThis world..... What's wrong?",
+    config.UseChinese ? u8"&b空无一物。" : "&bEmpty nothing.",
     config.UseChinese ? u8"&b写日记记录成长，比游戏成就更有意义。" : "&bKeep diary for growth, more meaningful than achievements.",
     config.UseChinese ? u8"&b关注科技新闻，了解真实世界的创新。" : "&bFollow tech news, learn real-world innovation.",
-    config.UseChinese ? u8"&b游戏是短暂的娱乐，知识是永恒的财富。" : "&bGames are brief fun, knowledge is eternal wealth.",
+    config.UseChinese ? u8"&b啊...好痛苦...能不能..." : "&bAh...It's so painful...Can y....",
     config.UseChinese ? u8"&b虚拟世界的英雄，不如现实中的勇士。" : "&bVirtual heroes can't match real warriors.",
-    config.UseChinese ? u8"&b学习一门新语言，与更广阔的世界对话。" : "&bLearn new language, converse with wider world.",
-    config.UseChinese ? u8"&b游戏里的任务有攻略，人生的问题靠思考。" : "&bGame quests have guides, life needs thinking.",
+    config.UseChinese ? u8"&b我...坚持不住了..." : "&bI...I can't hold on anymore",
+    config.UseChinese ? u8"&b我不能看见光了。" : "&bI can't see the light anymore.",
     config.UseChinese ? u8"&b参加志愿者活动，感受给予的快乐。" : "&bVolunteer to feel the joy of giving.",
     config.UseChinese ? u8"&b培养解决问题的能力，这是终极技能。" : "&bDevelop problem-solving - the ultimate skill.",
-    config.UseChinese ? u8"&b游戏地图有限，世界地图无限。" : "&bGame maps are limited, world map is infinite.",
+    config.UseChinese ? u8"&b出去看看世界吧，时间不多了。" : "&bGo out and see the world, time is running out.",
     config.UseChinese ? u8"&b与不同背景的人交流，拓展视野。" : "&bTalk to diverse people, broaden horizons.",
-    config.UseChinese ? u8"&b学会理财知识，比游戏经济更有用。" : "&bLearn finance, more useful than game economy.",
-    config.UseChinese ? u8"&b摄影记录生活，比截图更有温度。" : "&bPhotograph life, warmer than screenshots.",
+    config.UseChinese ? u8"&b我不再是我自己了，再见世界。" : "&bI am no longer myself, goodbye to the world.",
+    config.UseChinese ? u8"&b我相信你会更好的，不像我... 好痛..." : "&bI believe you will be better, unlike me....It hurts so much...",
     config.UseChinese ? u8"&b练习公共演讲，提升表达自信。" : "&bPractice public speaking, boost confidence.",
-    config.UseChinese ? u8"&b种植一盆植物，见证生命的成长。" : "&bGrow a plant, witness life's growth.",
+    config.UseChinese ? u8"&b哦不不不，你的胆子真的肥嘟嘟的。" : "&bTIME ARE CHANGING",
     config.UseChinese ? u8"&b游戏技能会过时，学习能力永远保值。" : "&bGame skills expire, learning ability lasts.",
-    config.UseChinese ? u8"&b与长辈交谈，收获智慧与经验。" : "&bTalk to elders, gain wisdom and experience.",
-    config.UseChinese ? u8"&b参与体育比赛，感受真实的竞技精神。" : "&bJoin sports, feel real competitive spirit.",
-    config.UseChinese ? u8"&b学习心理学，更好地理解自己和他人。" : "&bStudy psychology, understand yourself and others."
+    config.UseChinese ? u8"&b尽听老人言，终身难向前。" : "&bListen to the elderly more often, it's hard to progress.",
+    config.UseChinese ? u8"&b时间..." : "&bTime...",
+    config.UseChinese ? u8"&b学习心理学，更好地理解自己和他人。" : "&bStudy psychology, understand yourself and others.",
+    config.UseChinese ? u8"&b你好我的朋友。" : "&bHello my friends.",
+    config.UseChinese ? u8"&b我...好难受..." : "&bI... It's so uncomfortable ...",
+    config.UseChinese ? u8"&bNothings" : "&bbNothings"
 };
 
 HWND GCHWND;
@@ -605,7 +618,6 @@ bool ShowGui                 = true;            //是否显示GUI
 bool IsFirstRun              = false;           //第一次运行（是否显示向导）
 bool SoundIsOpen             = false;           //音效是否正常加载
 LRPair<bool> IsClickering    = {};              //是否连点
-LRPair<bool> IsClickerDown   = {};              //连点器的键按下，CPS计数器专属变量，其他代码不能使用也不能访问
 bool IsMoving                = false;           //玩家是否移动
 bool IsJumping               = false;           //玩家是否跳跃
 bool IsOpenGui               = false;           //在游戏中是否打开GUI
@@ -635,8 +647,12 @@ namespace Overheat
 }
 int UseServerOfType = -1;                       //使用的服务器的类型
 int ItemBarPos = 1;                             //物品栏位置
+
+shared_mutex CurrentCPSMutex;
+shared_mutex HumanCPSMutex;
 LRPair<int> CurrentCPS = {};                    //总实际CPS
 LRPair<int> HumanCPS = {};                      //人类CPS
+
 int ClickTabCount = 11;                         //连点器标签页的次数
 int GameGuiTransparency = 40;                   //单位%
 int IsSearchState = 0;                          //内存搜索状态
@@ -661,6 +677,7 @@ struct AppStaus
     unsigned int StartCount = 0;                //启动次数
     long double UseTime = 0;                    //使用连点器的时长(小时)
 } app_status;
+
 shared_mutex InitSuccessTimeMutex;
 ULONGLONG StartTime = 0;                 //GC启动时的时间
 ULONGLONG InitSuccessTime = 0;           //初始化成功的时间

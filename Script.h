@@ -336,13 +336,16 @@ int CalledScriptFunction(lua_State* L, const string& func)
         {
             if (lua_pcall(L, 0, 0, 0) != LUA_OK)
             {
+                // 修复：原代码 err = StringToUTF8(err).c_str(); 取临时 string 的 c_str()，
+                // 临时对象在分号处析构，err 立即悬垂，下一行 RenderTip 读已释放内存 → 0xC0000005。
+                // 改为用 string 持有转换结果，再取 c_str()。
                 const char* err = lua_tostring(L, -1);
                 luaL_traceback(L, L, err, 1);
-                err = lua_tostring(L, -1);
+                err = lua_tostring(L, -1);   // traceback 后栈顶字符串，err 重新有效
                 PrintLog("Lua脚本执行错误"s + err, PL_ERROR);
 
-                err = StringToUTF8(err).c_str();
-                RenderTip((config.UseChinese ? u8"脚本执行错误"s : "Script execution error"s) + err, 10.0f, PT_ERROR);
+                string errUtf8 = StringToUTF8(err);   // 持有到函数作用域结束
+                RenderTip((config.UseChinese ? u8"脚本执行错误"s : "Script execution error"s) + errUtf8, 10.0f, PT_ERROR);
                 MessageBeep(MB_ICONERROR);
                 lua_pop(L, 1);
                 return 2;

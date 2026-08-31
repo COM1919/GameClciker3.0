@@ -1294,6 +1294,10 @@ struct MessageBox_element
 // 返回-1是没有点击按钮
 int MessageBoxEx(const char* message, const char* title, map<string, UINT> button, map<string, ImVec4> colors)
 {
+    // 这个函数会从 OpenPopupStack 中从后往前遍历，找到第一个可见的模态窗口
+    if (GetTopMostAndVisiblePopupModal() != nullptr)
+        return -1;
+
     ImGuiWindow* window = GetCurrentWindow();
 
     ImGuiContext& g = *GImGui;
@@ -1342,6 +1346,16 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
 
     if (!IsPopupOpen("##messagebox"))
         OpenPopup("##messagebox");
+
+    // 修复：同帧只能有一个模态层。若此刻已有其它 Popup/Modal 打开（ToolbarPopup、LicensePopup_*、
+    // BeginPopupWindow 等），与消息框 Modal 并存会导致 ImGui 输入捕获/绘制栈错乱：
+    // 表现为 UI 冻结——鼠标无法点击任何控件、弹窗不显示但画面仍在渲染。
+    // 策略：若非消息框自己的弹层正占着栈顶，先全部关闭，再保证消息框独占模态层。
+    {
+        const ImGuiID MsgboxPopupId = window->GetID("##messagebox");
+        if (g.OpenPopupStack.Size > 0 && g.OpenPopupStack.back().PopupId != MsgboxPopupId)
+            ClosePopupToLevel(0, true);   // 清空其它弹出层（自己的 ##messagebox 若在栈中会被重开，不影响）
+    }
     if (BeginPopupModal("##messagebox", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollWithMouse))
     {
         SetWindowPos(RenderPos);

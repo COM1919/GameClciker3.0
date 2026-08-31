@@ -67,8 +67,11 @@ DWORD WINAPI GameGuiThread(LPVOID lpParam)
 						data.GpuRates = GpuRates;
 						data.MemRates = MemRates;
 					}
-					data.RCPS = CurrentCPS.right;
-					data.LCPS = CurrentCPS.left;
+					{
+						shared_lock<shared_mutex> lock(CurrentCPSMutex);
+						data.RCPS = CurrentCPS.right;
+						data.LCPS = CurrentCPS.left;
+					}
 					data.IsClickering = IsClickering;
 					data.version = version;
 

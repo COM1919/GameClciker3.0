@@ -14,17 +14,174 @@ struct KeyState // look版
 };
 
 array<KeyState, 256> KeyStateMap;
+mutex ListLock;
+LRPair<deque<ULONGLONG>> AllClickTimeList;
+LRPair<deque<ULONGLONG>> HumanClickTimeList;
+// 修复：AllClickTimeList/HumanClickTimeList 的 push_back/erase/[0] 分布在
+// AddLeftClickCPS/AddRightClickCPS（连点线程+钩子分发线程调用）与
+// HandleCPSRecord（独立线程 erase/pop_front）之间，原代码无锁 → deque 扩容时
+// 另一线程迭代/访问即悬垂 → 0xC0000005。新增互斥锁保护。
+shared_mutex AllClickTimeListMutex;
+shared_mutex HumanClickTimeListMutex;
 
-LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam);
-LRESULT CALLBACK KeyStateHookProc(int nCode, WPARAM wParam, LPARAM lParam);
-bool GetKeyDown(int key, bool only_human = false, int mode = GK_API);
-bool GetKeyUp(int key, bool only_human = false, int mode = GK_API);
-bool GetKeyClick(int key, bool only_human = false, int mode = GK_API);
-void SetKeyDown(int key, int mode = SC_POST_MESSAGE);
-void SetKeyUp(int key, int mode = SC_POST_MESSAGE);
-void SetKeyClick(int key, int sleep = 20, int mode = SC_POST_MESSAGE);
+inline void HandleMouseState(int nCode, WPARAM wParam, LPARAM lParam); // 鼠标按键状态分发处理器（由统一鼠标钩子 MouseHookProc 调用）
+inline void HandleKeyState(int nCode, WPARAM wParam, LPARAM lParam);   // 键盘按键状态分发处理器（由统一键盘钩子 KeybdHookProc 调用）
+DWORD WINAPI HandleCPSRecord(LPVOID lpParam);
+void AddRightClickCPS();
+void AddLeftClickCPS();
+inline bool GetKeyDown(int key, bool only_human = false, int mode = GK_API);
+inline bool GetKeyUp(int key, bool only_human = false, int mode = GK_API);
+inline bool GetKeyClick(int key, bool only_human = false, int mode = GK_API);
+inline void SetKeyDown(int key, int mode = SC_POST_MESSAGE);
+inline void SetKeyUp(int key, int mode = SC_POST_MESSAGE);
+inline void SetKeyClick(int key, int sleep = 20, int mode = SC_POST_MESSAGE);
 
-// 添加一个工具函数来生成正确的键盘 lParam     - 工具函数
+void AddLeftClickCPS()
+{
+	{
+		shared_lock<shared_mutex> lock(CurrentCPSMutex);
+		CurrentCPS.left++;
+	}
+	{
+		// 修复：push_back 与 HandleCPSRecord 的 erase/[0] 并发 → 加写锁
+		lock_guard<shared_mutex> lock(AllClickTimeListMutex);
+		AllClickTimeList.left.push_back(GetNowMs() + 1000);
+	}
+}
+
+void AddRightClickCPS()
+{
+	{
+		shared_lock<shared_mutex> lock(CurrentCPSMutex);
+		CurrentCPS.right++;
+	}
+	{
+		// 修复：同上
+		lock_guard<shared_mutex> lock(AllClickTimeListMutex);
+		AllClickTimeList.right.push_back(GetNowMs() + 1000);
+	}
+}
+
+DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
+{
+	ULONGLONG EndTime = GetNowMs() + 50;
+	RRecordsCPS.reserve(MAX_RECORDS);
+	LRecordsCPS.reserve(MAX_RECORDS);
+
+	while (!GCExit)
+	{
+		// 统计实际人类点击的CPS，忽略连点器
+		if (GetKeyClick(Click::Left, true))
+		{
+			app_status.MouseClickCount.left++;
+			{
+				unique_lock<shared_mutex> lock(HumanCPSMutex);
+				HumanCPS.left++;
+			}
+			{
+				// 修复：push_back 与下方 erase/[0] 并发 → 加写锁
+				lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+				HumanClickTimeList.left.push_back(GetNowMs() + 1000);
+			}
+			// 因为综合CPS包括人类CPS，所以需要在人类CPS处理的这里，加上综合CPS处理
+			// 因为非人类CPS处理，是由SetKey...系列函数的内部处理
+			AddLeftClickCPS();
+		}
+		if (GetKeyClick(Click::Right, true))
+		{
+			app_status.MouseClickCount.right++;
+			{
+				unique_lock<shared_mutex> lock(HumanCPSMutex);
+				HumanCPS.right++;
+			}
+			{
+				// 修复：同上
+				lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+				HumanClickTimeList.right.push_back(GetNowMs() + 1000);
+			}
+			// 上同
+			AddRightClickCPS();
+		}
+
+		// 连点器CPS 衰减计算
+		{
+			// 修复：erase/[0] 与 AddLeft/RightClickCPS 的 push_back 并发 → 加写锁
+			lock_guard<shared_mutex> lock(AllClickTimeListMutex);
+			if (AllClickTimeList.left.size() > 0)
+			{
+				if (GetNowMs() >= AllClickTimeList.left[0])
+				{
+					{
+						unique_lock<shared_mutex> lock2(CurrentCPSMutex);
+						CurrentCPS.left--;
+					}
+					AllClickTimeList.left.erase(AllClickTimeList.left.begin());
+				}
+			}
+			if (AllClickTimeList.right.size() > 0)
+			{
+				if (GetNowMs() >= AllClickTimeList.right[0])
+				{
+					{
+						unique_lock<shared_mutex> lock2(CurrentCPSMutex);
+						CurrentCPS.right--;
+					}
+					AllClickTimeList.right.erase(AllClickTimeList.right.begin());
+				}
+			}
+		}
+		// 人类CPS 衰减计算
+		{
+			// 修复：同上，erase/[0] 与 push_back 并发 → 加写锁
+			lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+			if (HumanClickTimeList.left.size() > 0)
+			{
+				if (GetNowMs() >= HumanClickTimeList.left[0])
+				{
+					{
+						unique_lock<shared_mutex> lock2(HumanCPSMutex);
+						HumanCPS.left--;
+					}
+					HumanClickTimeList.left.erase(HumanClickTimeList.left.begin());
+				}
+			}
+			if (HumanClickTimeList.right.size() > 0)
+			{
+				if (GetNowMs() >= HumanClickTimeList.right[0])
+				{
+					{
+						unique_lock<shared_mutex> lock2(HumanCPSMutex);
+						HumanCPS.right--;
+					}
+					HumanClickTimeList.right.erase(HumanClickTimeList.right.begin());
+				}
+			}
+		}
+
+		if (GetNowMs() > EndTime)
+		{
+			RecordsCPSMutex.lock();
+			{
+				if (RRecordsCPS.size() >= MAX_RECORDS)
+					RRecordsCPS.erase(RRecordsCPS.begin());
+				if (LRecordsCPS.size() >= MAX_RECORDS)
+					LRecordsCPS.erase(LRecordsCPS.begin());
+
+				{
+					shared_lock<shared_mutex> lock(CurrentCPSMutex);
+					RRecordsCPS.push_back(CurrentCPS.right);
+					LRecordsCPS.push_back(CurrentCPS.left);
+				}
+			}
+			RecordsCPSMutex.unlock();
+
+			EndTime = GetNowMs() + 50;
+		}
+		Sleep(10);
+	}
+	return 0;
+}
+
 static LPARAM MakeKeyboardLParam(UINT vk, bool IsKeyUp)
 {
 	LPARAM lParam = 0;
@@ -63,68 +220,66 @@ static LPARAM MakeKeyboardLParam(UINT vk, bool IsKeyUp)
 	return lParam;
 }
 
-LRESULT CALLBACK KeyStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+inline void HandleKeyState(int nCode, WPARAM wParam, LPARAM lParam)
 {
-	if (nCode >= 0)
-	{
-		KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-		int vk = pKeyBoard->vkCode;
-		if (vk > 0 && vk < 256)
-		{
-			bool isDown = false;
-			if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
-				isDown = true;
-			else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
-				isDown = false;
-			else
-				return CallNextHookEx(NULL, nCode, wParam, lParam);
-			const bool isHumanInput = (pKeyBoard->flags & LLMHF_INJECTED) == 0;// 是否是人类按下
-			KeyStateMap[vk].isDown.store(isDown, memory_order_relaxed);
-			if (isHumanInput)// 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
-				KeyStateMap[vk].isHumanDown.store(isDown, memory_order_relaxed); // 鼠标模式的BUG就是因为以前的代码，现在是正确的了
-		}
-	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
-}
+	if (nCode < 0)
+		return;
 
-LRESULT CALLBACK MouseStateHookProc(int nCode, WPARAM wParam, LPARAM lParam)
-{
-	if (nCode >= 0)
+	KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
+	int vk = pKeyBoard->vkCode;
+	if (vk > 0 && vk < 256)
 	{
-		int vk = -1145;
 		bool isDown = false;
-		switch (wParam)
-		{
-		case WM_LBUTTONDOWN: vk = VK_LBUTTON; isDown = true;  break;
-		case WM_RBUTTONDOWN: vk = VK_RBUTTON; isDown = true;  break;
-		case WM_MBUTTONDOWN: vk = VK_MBUTTON; isDown = true;  break;
-		case WM_LBUTTONUP:   vk = VK_LBUTTON; isDown = false; break;
-		case WM_RBUTTONUP:   vk = VK_RBUTTON; isDown = false; break;
-		case WM_MBUTTONUP:   vk = VK_MBUTTON; isDown = false; break;
-		case WM_XBUTTONDOWN:
-		case WM_XBUTTONUP:
-		{
-			MSLLHOOKSTRUCT* pMouse = (MSLLHOOKSTRUCT*)lParam;
-			if (HIWORD(pMouse->mouseData) == XBUTTON1) vk = VK_XBUTTON1;
-			else if (HIWORD(pMouse->mouseData) == XBUTTON2) vk = VK_XBUTTON2;
-			else break;
-			isDown = (wParam == WM_XBUTTONDOWN);
-			break;
-		}
-		}
-		if (vk > 0 && vk < 256)
-		{
-			MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
-			const bool IsInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
-			KeyStateMap[vk].isDown.store(isDown, memory_order_relaxed);
-			if (IsInjected) // 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
-				KeyStateMap[vk].isHumanDown.store(isDown, memory_order_relaxed);
-		}
+		if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
+			isDown = true;
+		else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
+			isDown = false;
+		else
+			return;
+		const bool isHumanInput = (pKeyBoard->flags & LLMHF_INJECTED) == 0;// 是否是人类按下
+		KeyStateMap[vk].isDown.store(isDown, memory_order_relaxed);
+		if (isHumanInput)// 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
+			KeyStateMap[vk].isHumanDown.store(isDown, memory_order_relaxed); // 鼠标模式的BUG就是因为以前的代码，现在是正确的了
 	}
-	return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
 
-bool GetKeyClick(int key, bool only_human, int mode)
+inline void HandleMouseState(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	if (nCode < 0)
+		return;
+
+	int vk = -1145;
+	bool isDown = false;
+	switch (wParam)
+	{
+	case WM_LBUTTONDOWN: vk = VK_LBUTTON; isDown = true;  break;
+	case WM_RBUTTONDOWN: vk = VK_RBUTTON; isDown = true;  break;
+	case WM_MBUTTONDOWN: vk = VK_MBUTTON; isDown = true;  break;
+	case WM_LBUTTONUP:   vk = VK_LBUTTON; isDown = false; break;
+	case WM_RBUTTONUP:   vk = VK_RBUTTON; isDown = false; break;
+	case WM_MBUTTONUP:   vk = VK_MBUTTON; isDown = false; break;
+	case WM_XBUTTONDOWN:
+	case WM_XBUTTONUP:
+	{
+		MSLLHOOKSTRUCT* pMouse = (MSLLHOOKSTRUCT*)lParam;
+		if (HIWORD(pMouse->mouseData) == XBUTTON1) vk = VK_XBUTTON1;
+		else if (HIWORD(pMouse->mouseData) == XBUTTON2) vk = VK_XBUTTON2;
+		else break;
+		isDown = (wParam == WM_XBUTTONDOWN);
+		break;
+	}
+	}
+	if (vk > 0 && vk < 256)
+	{
+		MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
+		const bool IsInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
+		KeyStateMap[vk].isDown.store(isDown, memory_order_relaxed);
+		if (IsInjected) // 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
+			KeyStateMap[vk].isHumanDown.store(isDown, memory_order_relaxed);
+	}
+}
+
+inline bool GetKeyClick(int key, bool only_human, int mode)
 {
 	if (key <= 0 || key >= 256)  // 虚拟键码有效范围 1~255
 		return false;
@@ -151,7 +306,7 @@ bool GetKeyClick(int key, bool only_human, int mode)
 	return false;
 }
 
-bool GetKeyDown(int key, bool only_human, int mode)
+inline bool GetKeyDown(int key, bool only_human, int mode)
 {
 	if (only_human) // 只有钩子才能区分人类输入
 		return KeyStateMap[key].isHumanDown;
@@ -162,7 +317,7 @@ bool GetKeyDown(int key, bool only_human, int mode)
 		return (GetAsyncKeyState(key) & 0x8000) != 0;
 }
 
-bool GetKeyUp(int key, bool only_human, int mode)
+inline bool GetKeyUp(int key, bool only_human, int mode)
 {
 	if (key <= 0 || key >= 256)  // 虚拟键码有效范围 1~255
 		return false;
@@ -185,17 +340,17 @@ bool GetKeyUp(int key, bool only_human, int mode)
 	return false;
 }
 
-void SetKeyDown(int key, int mode)
+inline void SetKeyDown(int key, int mode)
 {
 	if (key == Click::Left)
 	{
 		app_status.ClickerClickCount.left++;
-		IsClickerDown.left = true;
+		AddLeftClickCPS();
 	}
 	else if (key == Click::Right)
 	{
 		app_status.ClickerClickCount.right++;
-		IsClickerDown.right = true;
+		AddRightClickCPS();
 	}
 
 	switch (mode)
@@ -276,7 +431,8 @@ void SetKeyDown(int key, int mode)
 	}
 	}
 }
-void SetKeyUp(int key, int mode)
+
+inline void SetKeyUp(int key, int mode)
 {
 	switch (mode)
 	{
@@ -347,7 +503,7 @@ void SetKeyUp(int key, int mode)
 	}
 }
 
-void SetKeyClick(int key, int sleep, int mode)
+inline void SetKeyClick(int key, int sleep, int mode)
 {
 	switch (mode)
 	{
@@ -367,12 +523,12 @@ void SetKeyClick(int key, int sleep, int mode)
 			if (key == Click::Left)
 			{
 				app_status.ClickerClickCount.left++;
-				IsClickerDown.left = true;
+				AddLeftClickCPS();
 			}
 			else if (key == Click::Right)
 			{
 				app_status.ClickerClickCount.right++;
-				IsClickerDown.right = true;
+				AddRightClickCPS();
 			}
 			INPUT inputs[2] = {};
 			inputs[0].type = INPUT_MOUSE;
@@ -428,7 +584,7 @@ void SetKeyClick(int key, int sleep, int mode)
 		if (key == Click::Left)
 		{
 			app_status.ClickerClickCount.left++;
-			IsClickerDown.left = true;
+			AddLeftClickCPS();
 
 			KeyStateMap[Click::Left].isDown.store(true, memory_order_relaxed);
 			PostMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp);
@@ -440,7 +596,7 @@ void SetKeyClick(int key, int sleep, int mode)
 		else if (key == Click::Right)
 		{
 			app_status.ClickerClickCount.right++;
-			IsClickerDown.right = true;
+			AddRightClickCPS();
 
 			KeyStateMap[Click::Right].isDown.store(true, memory_order_relaxed);
 			PostMessage(hwnd, WM_RBUTTONDOWN, MK_RBUTTON, lp);

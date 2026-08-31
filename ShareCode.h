@@ -1064,6 +1064,14 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 		script.title = StringToUTF8(title);
 		script.texture = BmpFile;
 
+		{
+			const string DocsPath = dir + "\\readme.txt";
+			if (_access(DocsPath.c_str(), 0) == 0)
+				script.docs = DocsPath;
+			else
+				script.docs = "";
+		}
+
 		PrintLog("[Script] 找到脚本文件: " + script.file, PL_INFO);
 		TempList.push_back(script);
 
