@@ -12,18 +12,10 @@ int RenderGuide(ImGuiIO& io)
     if (!init)
     {
         init = true;
-        PrintLog("用户协议已显示", PL_INFO);
+        PrintLog("[GuideRender] 用户协议已显示", PL_INFO);
     }
     
-    if (IsKeyPressed(ImGuiKey_F3))
-    {
-        DebugInfo = !DebugInfo;
-    }
-
-    if (!IsStopClicker)
-        IsStopClicker = true;
-
-    static int Tab = 0;
+    IsStopClicker = true;
 
     static ImGuiStyle& Style = GetStyle();
     static auto GuiColor = Style.Colors;
@@ -45,22 +37,11 @@ int RenderGuide(ImGuiIO& io)
 
     EndAnimation();
 
-    Begin(config.UseChinese ? u8"GC连点器 - 新手向导" : "GameClicker - Newbie Guide", NULL,
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoMove);
-    SetWindowSize({ 600, 400 });
-    SetWindowPos({ 0, 0 });
-
-    if (DebugInfo)
-    {
-        ImVec2 LastPos = GetCursorPos();
-        SetCursorPos({ 0, 400 - 30 });
-        Text(u8"%.1f FPS", io.Framerate);
-        SetCursorPos(LastPos);
-    }
+    Begin(u8"GameClicker", NULL,
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
+    SetWindowSize(ImVec2(600, 400));
+    SetWindowPos(ImVec2(0, 0));
 
     switch (Step)
     {

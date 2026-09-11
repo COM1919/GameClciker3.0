@@ -402,7 +402,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			// RecordTime为1小时
 			static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
 			if (GetTickCount64() - LastTime >= RecordTime)
-				app_status.UseTime += 0.1; // 10秒
+				app_status.UsageDuration += 0.1; // 10秒
 		}
 		//处理溢出(没用，+0.1，一百年都到不了)
 		//if (LMouseClickCount >= LDBL_MAX - 2) LMouseClickCount = 0;

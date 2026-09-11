@@ -259,8 +259,6 @@ lua_State* LuaInit()
         lua_setglobal(L, "debug");
     }
 
-    IsEnableScript = true;
-
     return L;
 }
 

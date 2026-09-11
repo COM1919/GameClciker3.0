@@ -168,7 +168,6 @@ int StartUpGC(HINSTANCE hInstance)
         DelFile(ConfigFile.c_str());
 
     Shell_NotifyIcon(NIM_DELETE, &TrayNid);
-    DeleteFile(ExitFlagFile.c_str());
 
     // 关闭互斥量
     if (AntiMultiOpenMutex)
@@ -293,11 +292,6 @@ int GCMainLoop()
         PrintLog("[Init] 当前程序的绝对位置："s + path, PL_INFO);
 
     PrintLog("[Init] 检查文件完整性 - MainThread", PL_INFO);
-    // 如果该文件存在就代表上一次程序没有正常退出
-    if (_access(ExitFlagFile.c_str(), 0) == 0)
-        AbnormalExit = true;
-    else // 创建识别正常退出标识
-        CreateFile(ExitFlagFile);
 
     // 在RefushScriptList之前删除
     if (DeleteDirectory(ScriptShopDir))
@@ -364,7 +358,7 @@ int GCMainLoop()
 
             ShowWindow(GCHWND, SW_HIDE);
             UpdateWindow(GCHWND);
-            PrintLog("[Render]创建窗口成功！", PL_INFO);
+            PrintLog("[Render] 创建窗口成功！", PL_INFO);
         }
     }
 
@@ -374,7 +368,7 @@ int GCMainLoop()
         DestroyWindow(GCHWND);
         UnregisterClass(wcex.lpszClassName, wcex.hInstance);
         PrintLog("[Render] Dx11初始化失败", PL_ERROR);
-        ExceptionHandling(GetLastError(), "Dx11初始化失败");
+        ExceptionHandling(GetLastError(), "Dx11初始化失败 - 你的电脑视乎很古董");
         return 1;
     }
     PrintLog("[Render] Dx11初始化成功！", PL_INFO);
@@ -402,77 +396,83 @@ int GCMainLoop()
     int RenderSleepCount = 0;
     const int SleepFps = round(1000 / RenderFps);
     PrintLog("[Render] 开始渲染UI", PL_INFO);
+
+    WindowInitSuccessful = true;
+
     while (!IsGCExit)
     {
         LastTime = clock();
         //===============================消息处理===============================
-        MSG msg;
-        while (GetMessage(&msg, NULL, 0, 0))
         {
-            bool IsClicker = IsClickering.right || IsClickering.left;
-            switch (msg.message)
+            constexpr int MaxMsgsPerFrame = 128;   // 每帧处理的消息数量，限制每帧的处理数据量
+            int processed = 0;
+            MSG msg;
+            while (processed < MaxMsgsPerFrame && PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
             {
-            case WM_LBUTTONUP:
-            case WM_LBUTTONDOWN:
-            {
-                if (IsClicker && config.LClickerMode & C_MOUSESMODE && config.LClickerMode & C_ASSISTMODE)
-                    continue;
-                break;
-            }
-            case WM_RBUTTONUP:
-            case WM_RBUTTONDOWN:
-            {
-                if (IsClicker && config.RClickerMode & C_MOUSESMODE && config.RClickerMode & C_ASSISTMODE)
-                    continue;
-                break;
-            }
-            }
+                bool IsClicker = IsClickering.right || IsClickering.left;
+                switch (msg.message)
+                {
+                case WM_LBUTTONUP:
+                case WM_LBUTTONDOWN:
+                {
+                    if (IsClicker && config.LClickerMode & C_MOUSESMODE && config.LClickerMode & C_ASSISTMODE)
+                        continue;
+                    break;
+                }
+                case WM_RBUTTONUP:
+                case WM_RBUTTONDOWN:
+                {
+                    if (IsClicker && config.RClickerMode & C_MOUSESMODE && config.RClickerMode & C_ASSISTMODE)
+                        continue;
+                    break;
+                }
+                }
 
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
 
-            if (IsGCExit)
-            {
-                PrintLog("[Render]消息循环线程退出", PL_INFO);
-                break;
+                ++processed;
             }
         }
 
         //===============================处理暂停渲染逻辑===============================
-        bool IsWindowTopmost = (GetWindowLongPtr(GCHWND, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
-        // 当程序最小化时，不渲染UI
-        static bool RenderStoped = false;
-        const bool IsMinWindows = (MainGuiData.pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) && MainGuiData.SwapChainOccluded;
-        static bool IsCoveredWindows = false; // 每秒更新一次
         {
-            static ULONGLONG LastTime = GetTickCount64();
-            if (LastTime + 200 <= GetTickCount64())
+            bool IsWindowTopmost = (GetWindowLongPtr(GCHWND, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+            // 当程序最小化时，不渲染UI
+            static bool RenderStoped = false;
+            const bool IsMinWindows = (MainGuiData.pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) && MainGuiData.SwapChainOccluded;
+            static bool IsCoveredWindows = false; // 每秒更新一次
             {
-                IsCoveredWindows = IsCoveredWindow(GCHWND, 0.8f);
-                LastTime = GetTickCount64();
-            }
-        }
-        if ((!IsShowGui || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
-        {
-            if (!RenderStoped)
-                RenderStoped = true;
-            if (RenderSleepCount >= 0)
-            {
-                RenderSleepCount++;
-                if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
+                static ULONGLONG LastTime = GetTickCount64();
+                if (LastTime + 200 <= GetTickCount64())
                 {
-                    ClearProcessMemory();
-                    RenderSleepCount = -1;
+                    IsCoveredWindows = IsCoveredWindow(GCHWND, 0.8f);
+                    LastTime = GetTickCount64();
                 }
             }
-            Sleep(20);
-            continue;
+            if ((!IsShowGui || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
+            {
+                if (!RenderStoped)
+                    RenderStoped = true;
+                if (RenderSleepCount >= 0)
+                {
+                    RenderSleepCount++;
+                    if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
+                    {
+                        ClearProcessMemory();
+                        RenderSleepCount = -1;
+                    }
+                }
+                Sleep(20);
+                continue;
+            }
+            else if (RenderSleepCount != 0)
+                RenderSleepCount = 0;
+            else if (RenderStoped)
+                RenderStoped = false;
+            MainGuiData.SwapChainOccluded = false;
         }
-        else if (RenderSleepCount != 0)
-            RenderSleepCount = 0;
-        else if (RenderStoped)
-            RenderStoped = false;
-        MainGuiData.SwapChainOccluded = false;
+
         //===============================处理其他渲染逻辑===============================
         // 处理窗口大小调整（我们不直接在WM_SIZE处理程序中调整大小）
         if (MainGuiData.ResizeWidth != 0 && MainGuiData.ResizeHeight != 0)
@@ -489,7 +489,7 @@ int GCMainLoop()
         //===============================处理渲染===============================
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
-        NewFrame();
+        ImGui::NewFrame();
 
         if (IsFirstRun)
         {
@@ -524,7 +524,7 @@ int GCMainLoop()
             cout << "a\n";*/
 
         //=======================渲染===========================
-        Render();
+        ImGui::Render();
         const float ClearColor[4] = { clear_color.x, clear_color.y, clear_color.z, clear_color.w };
         MainGuiData.pd3dDeviceContext->OMSetRenderTargets(1, &MainGuiData.mainRenderTargetView, nullptr);
         MainGuiData.pd3dDeviceContext->ClearRenderTargetView(MainGuiData.mainRenderTargetView, ClearColor);
@@ -651,7 +651,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     RestoreInstalledScripts();
 
     {
-        while (!IsCreatedWindow)
+        while (!WindowInitSuccessful)
             Sleep(50);
         lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
@@ -1202,7 +1202,7 @@ void RenderGui(ImGuiIO& io)
                     Text(config.UseChinese ? u8"使用GC的时长：" : "Duration of using GC:");
                     SameLine();
                     SetCursorPosX(300);
-                    Text("%Lf", app_status.UseTime);
+                    Text("%Lf", app_status.UsageDuration);
 
                     Text(config.UseChinese ? u8"本次使用GC的时长：" : "The duration of using GC this time:");
                     SameLine();
@@ -2246,33 +2246,33 @@ void RenderGui(ImGuiIO& io)
                 //-------------------------获取游戏窗口----------------------------
                 //DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                 //SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"游戏窗口" : "Game window", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"游戏窗口" : "Game Window", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    static string InfoText = config.UseChinese ? u8"未读取" : "Unread";
-                    static ImVec4 color;
-                    static bool IsStarting = false;
+                    static string InfoText = config.UseChinese ? u8"未获取" : "Not Obtained";
+                    static bool IsStartObtaining = false;
                     static string GameWindowTitle = config.UseChinese ? u8"未知" : "Unknow";
-                    BeginDisabled(IsStarting);
+
+                    BeginDisabled(IsStartObtaining);
                     {
                         if (Button(config.UseChinese ? u8"获取" : "Choice", ImVec2(100, 40)))
                         {
                             GettingGameState = -1;
-                            IsStarting = true;
+                            IsStartObtaining = true;
 
-                            thread GetHwndThread([]()
+                            auto th = []()
                                 {
-                                    PrintLog("[Render]等待用户选择游戏窗口...", PL_INFO);
+                                    PrintLog("[Render] 等待用户选择游戏窗口...", PL_INFO);
+                                    const HWND DesktopHwnd = GetDesktopWindow();
                                     while (!IsGCExit)
                                     {
-                                        HWND FoundHwnd = GetForegroundWindow();
-                                        HWND DesktopHwnd = GetDesktopWindow();
-                                        if (FoundHwnd != GCHWND && FoundHwnd != DesktopHwnd)
+                                        HWND hwnd = GetForegroundWindow();
+                                        if (hwnd != GCHWND && hwnd != DesktopHwnd)
                                         {
-                                            GameHwnd = GetForegroundWindow();
+                                            GameHwnd = hwnd;
                                             GettingGameState = 0;
                                             return 0;
                                         }
-                                        if (FoundHwnd == 0)
+                                        if (hwnd == 0)
                                         {
                                             GettingGameState = 1;
                                             return 0;
@@ -2280,48 +2280,37 @@ void RenderGui(ImGuiIO& io)
                                         Sleep(200);
                                     }
                                     return 0;
-                                });
-                            GetHwndThread.detach();
+                                };
+                            thread t(th);
+                            t.detach();
                         }
                     }
                     EndDisabled();
 
                     if (GettingGameState == 0)
                     {
-                        InfoText = config.UseChinese ? u8"获取成功" : "Get success";
-                        color = (ImVec4)ImColor(149, 219, 125, 255);
-                        IsStarting = false;
+                        InfoText = config.UseChinese ? u8"&a获取成功" : "&aSuccessfully Obtained";
+                        IsStartObtaining = false;
 
                         char buf[MAX_BUF];
                         if (GetWindowText(GameHwnd, buf, MAX_BUF))
                             GameWindowTitle = StringToUTF8(buf);
                         else
-                            GameWindowTitle = u8"获取失败";
+                            GameWindowTitle = u8"";
 
                         GettingGameState = -1;
                     }
                     else if (GettingGameState == 1)
                     {
-                        InfoText = config.UseChinese ? u8"获取失败" : "Get failed";
-                        color = (ImVec4)ImColor(252, 62, 54, 255);
-                        IsStarting = false;
+                        InfoText = config.UseChinese ? u8"&c获取失败" : "&cFailed to obtain";
+                        IsStartObtaining = false;
                         GettingGameState = -1;
                         GameHwnd = 0;
                     }
-                    else if (IsStarting)
-                    {
+                    else if (IsStartObtaining)
                         InfoText = config.UseChinese ? u8"正在获取中，请点击游戏窗口。" : "Getting, please click the game window.";
-                        color = (ImVec4)ImColor(255, 214, 143, 255);
-                    }
-
-                    if (IsGameGuiError)
-                    {
-                        InfoText = config.UseChinese ? u8"无法在该窗口创建GUI" : "Cannot create GUI in this window";
-                        color = (ImVec4)ImColor(252, 62, 54, 255);
-                    }
-
-                    TextColored(color, InfoText.c_str());
-                    Text(config.UseChinese ? u8"窗口名称：%s" : "Window Name: %s", GameWindowTitle.c_str());
+                    // 防止GameWindowTitle中有格式化符号导致 崩溃 或者 漏洞
+                    Text(((config.UseChinese ? u8"窗口名称：" : "Window Name: ") + GameWindowTitle).c_str());
                 }
                 EndCard();
 
@@ -3704,71 +3693,66 @@ void RenderGui(ImGuiIO& io)
         case Tab::Script:
         {
             TabsText((ICON_FA_CODE + (config.UseChinese ? u8"脚本"s : "Scripts"s)).c_str());
-            if (IsEnableScript);
+            
             {
-                const static ImGuiWindowFlags flags =
-                    ImGuiWindowFlags_HorizontalScrollbar |
-                    ImGuiWindowFlags_NoScrollWithMouse |
-                    ImGuiWindowFlags_NoScrollbar;
-
                 //-------------------------获取脚本--------------------------
                 static int ScriptSettingsSelected = -1; // -1为没有打开任何设置
                 static bool IsWillGotoShopTab = false; // 用于调整到其他tab
 
                 static auto NothingsHereFunc = []()
+                {
+                    const ImVec2 WindowSize = GetWindowSize();
+
+                    const ImVec2 BoxSize(380, 160);
+                    const ImVec2 BoxPos((WindowSize.x - BoxSize.x) / 2, (WindowSize.y - BoxSize.y) / 2);
+
+                    static Texture2D iamge_texture = LoadTextureFromFile(Pics_Empyt);
+                    const string Title = config.UseChinese ? u8"&b这里什么都没有" : "&bThere's nothing here";
+                    const ImVec2 TitleSize = CalcTextSize(Title.c_str());
+                    const ImVec2 ImageSize(32, 32);
+                    const float TitleYOffset = 12;
+                    const ImVec2 ImagePos((BoxSize.x - TitleSize.x - ImageSize.x) / 2, TitleYOffset);
+                    const ImVec2 TitlePos(ImagePos.x + ImageSize.x + 10, TitleYOffset + ((ImageSize.y - TitleSize.y) / 2)); // 10是padding
+
+                    const ImVec2 LinePos(20, TitlePos.y + TitleSize.y + 16);
+                    const float LineLength = BoxSize.x - LinePos.x - 20;
+                    const string Info = config.UseChinese ? u8"你可以将脚本文件拖入进来。" : "You can drop the script file into here.";
+                    const ImVec2 InfoSize = CalcTextSize(Info.c_str());
+                    const ImVec2 InfoPos((BoxSize.x - InfoSize.x) / 2, LinePos.y + 16);
+
+                    const ImVec2 ButtonSize(140, 36);
+                    const ImVec2 ButtonPos((BoxSize.x - (ButtonSize.x * 2 + 20)) / 2, BoxSize.y - ButtonSize.y - 16);
+                    const ImVec2 OriginCursorPos = GetCursorPos();
+
+                    SetCursorPos(BoxPos);
+                    //SetNextWindowBgAlpha(0.7f);
+                    PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
+                    BeginChild("##AvailableScripts_box", BoxSize, true, flags);
                     {
-                        const ImVec2 WindowSize = GetWindowSize();
+                        SetCursorPos(ImagePos);
+                        ImageRounded((ImTextureID)iamge_texture, ImageSize, 4.0f);
+                        SetCursorPos(TitlePos);
+                        Text(Title.c_str());
 
-                        const ImVec2 BoxSize(380, 160);
-                        const ImVec2 BoxPos((WindowSize.x - BoxSize.x) / 2, (WindowSize.y - BoxSize.y) / 2);
+                        const ImVec2 WindowPos = GetWindowPos();
+                        const ImVec2 LinePos2(LinePos.x + WindowPos.x, LinePos.y + WindowPos.y);
+                        GetForegroundDrawList()->AddLine(LinePos2, ImVec2(LinePos2.x + LineLength, LinePos2.y), GetColorU32(GuiColor[ImGuiCol_CheckMark]), 2.0f);
 
-                        static Texture2D iamge_texture = LoadTextureFromFile(Pics_Empyt);
-                        const string Title = config.UseChinese ? u8"&b这里什么都没有" : "&bThere's nothing here";
-                        const ImVec2 TitleSize = CalcTextSize(Title.c_str());
-                        const ImVec2 ImageSize(32, 32);
-                        const float TitleYOffset = 12;
-                        const ImVec2 ImagePos((BoxSize.x - TitleSize.x - ImageSize.x) / 2, TitleYOffset);
-                        const ImVec2 TitlePos(ImagePos.x + ImageSize.x + 10, TitleYOffset + ((ImageSize.y - TitleSize.y) / 2)); // 10是padding
+                        SetCursorPos(InfoPos);
+                        Text(Info.c_str());
 
-                        const ImVec2 LinePos(20, TitlePos.y + TitleSize.y + 16);
-                        const float LineLength = BoxSize.x - LinePos.x - 20;
-                        const string Info = config.UseChinese ? u8"你可以将脚本文件拖入进来。" : "You can drop the script file into here.";
-                        const ImVec2 InfoSize = CalcTextSize(Info.c_str());
-                        const ImVec2 InfoPos((BoxSize.x - InfoSize.x) / 2, LinePos.y + 16);
+                        SetCursorPos(ButtonPos);
+                        if (Button(config.UseChinese ? u8"论坛" : "Forum", ButtonSize))
+                            ShellExecute(NULL, NULL, "https://bbs.mcgc.top/t/script", NULL, NULL, SW_SHOWNORMAL);
+                        SameLine(0, 20);
+                        if (Button(config.UseChinese ? u8"前往下载" : "Download", ButtonSize))
+                            IsWillGotoShopTab = true;
+                    }
+                    EndChild();
+                    PopStyleColor(); // ImGuiCol_ChildBg
 
-                        const ImVec2 ButtonSize(140, 36);
-                        const ImVec2 ButtonPos((BoxSize.x - (ButtonSize.x * 2 + 20)) / 2, BoxSize.y - ButtonSize.y - 16);
-                        const ImVec2 OriginCursorPos = GetCursorPos();
-
-                        SetCursorPos(BoxPos);
-                        //SetNextWindowBgAlpha(0.7f);
-                        PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
-                        BeginChild("##AvailableScripts_box", BoxSize, true, flags);
-                        {
-                            SetCursorPos(ImagePos);
-                            ImageRounded((ImTextureID)iamge_texture, ImageSize, 4.0f);
-                            SetCursorPos(TitlePos);
-                            Text(Title.c_str());
-
-                            const ImVec2 WindowPos = GetWindowPos();
-                            const ImVec2 LinePos2(LinePos.x + WindowPos.x, LinePos.y + WindowPos.y);
-                            GetForegroundDrawList()->AddLine(LinePos2, ImVec2(LinePos2.x + LineLength, LinePos2.y), GetColorU32(GuiColor[ImGuiCol_CheckMark]), 2.0f);
-
-                            SetCursorPos(InfoPos);
-                            Text(Info.c_str());
-
-                            SetCursorPos(ButtonPos);
-                            if (Button(config.UseChinese ? u8"论坛" : "Forum", ButtonSize))
-                                ShellExecute(NULL, NULL, "https://bbs.mcgc.top/t/script", NULL, NULL, SW_SHOWNORMAL);
-                            SameLine(0, 20);
-                            if (Button(config.UseChinese ? u8"前往下载" : "Download", ButtonSize))
-                                IsWillGotoShopTab = true;
-                        }
-                        EndChild();
-                        PopStyleColor(); // ImGuiCol_ChildBg
-
-                        SetCursorPos(OriginCursorPos);
-                    };
+                    SetCursorPos(OriginCursorPos);
+                };
 
                 static bool IsNeedRefushShopList = false;
                 static bool IsShopTab = false;
@@ -3821,7 +3805,7 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         static const char* SourceNames[] = { config.UseChinese ? u8"稳定仓库源" : "Stable Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
-                        static int SourceIndex = 0;
+                        static int SourceIndex = 1;
                         Text(config.UseChinese ? u8"下载源" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
@@ -4786,24 +4770,6 @@ void RenderGui(ImGuiIO& io)
                         }
                     }
                 }
-            }
-
-            if (!IsEnableScript)
-            {
-                const static ImVec2 size = GetWindowSize();
-                const static ImVec2 pos = { 102, 100 };
-                const static ImVec4 color(
-                    GuiColor[ImGuiCol_WindowBg].x,
-                    GuiColor[ImGuiCol_WindowBg].y,
-                    GuiColor[ImGuiCol_WindowBg].z,
-                    GuiColor[ImGuiCol_WindowBg].w * 0.7f
-                );
-                ImDrawList* draw_list = GetForegroundDrawList();
-
-                string str = config.UseChinese ? u8"&cLua脚本加载系统发生致命错误\n并且GC在尝试重启Lua脚本系统后无果" : "&cLua script loading system has a fatal error and \nthe GC has no choice but to restart the Lua script system";
-                ImVec2 textSize = CalcTextSize(str.c_str());
-                ImVec2 textPos = { (size.x - textSize.x) / 2, (size.y - textSize.y) / 2 - 15 };
-                draw_list->AddText(textPos, GetColorU32(GuiColor[ImGuiCol_Text]), str.c_str());
             }
 
             break;

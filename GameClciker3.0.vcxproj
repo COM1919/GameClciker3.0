@@ -213,7 +213,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </ExcludedFromBuild>
     </ClInclude>
-    <ClInclude Include="Driver.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GC.h" />
     <ClInclude Include="GuideGui.h" />

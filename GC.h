@@ -884,7 +884,7 @@ void RenderControl()
 
     if (ProgressBarMsg::IsOpen)
     {
-        std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+        std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::Mtx);
         ImDrawList* draw_list = GetWindowDrawList();
         draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(800, 468), GetColorU32((ImVec4)ImColor(5, 5, 5, 100)));
         const ImGuiIO& io = GetIO();
@@ -942,31 +942,31 @@ void RenderControl()
     //=======================MessageBox处理===========================
     {
         // 读取锁
-        shared_lock<shared_mutex> lock(MBChangeMutex);
-        if (mb_message.open)
+        shared_lock<shared_mutex> lock(MessageBoxMsg::Mtx);
+        if (MessageBoxMsg::IsOpen)
         {
-            if (mb_message.type == -1)
+            if (MessageBoxMsg::ButtonType == -1)
             {
-                int ret = MessageBoxEx(mb_message.message.c_str(), mb_message.title.c_str(), mb_message.button, mb_message.colors);
+                int ret = MessageBoxEx(MessageBoxMsg::Message.c_str(), MessageBoxMsg::TitleName.c_str(), MessageBoxMsg::BtnDefines, MessageBoxMsg::BtnColors);
                 if (ret != -1)
                 {
                     lock.unlock();
                     // 写入锁
-                    lock_guard<shared_mutex> lock2(MBChangeMutex);
-                    mb_message.ret_code = ret;
-                    mb_message.open = false;
+                    lock_guard<shared_mutex> lock2(MessageBoxMsg::Mtx);
+                    MessageBoxMsg::ReturnCode = ret;
+                    MessageBoxMsg::IsOpen = false;
                 }
             }
             else
             {
-                int ret = MessageBox(mb_message.message.c_str(), mb_message.title.c_str(), mb_message.type);
+                int ret = MessageBox(MessageBoxMsg::Message.c_str(), MessageBoxMsg::TitleName.c_str(), MessageBoxMsg::ButtonType);
                 if (ret != -1)
                 {
                     lock.unlock();
                     // 写入锁
-                    lock_guard<shared_mutex> lock2(MBChangeMutex);
-                    mb_message.ret_code = ret;
-                    mb_message.open = false;
+                    lock_guard<shared_mutex> lock2(MessageBoxMsg::Mtx);
+                    MessageBoxMsg::ReturnCode = ret;
+                    MessageBoxMsg::IsOpen = false;
                 }
             }
         }

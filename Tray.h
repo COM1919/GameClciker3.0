@@ -54,7 +54,7 @@ DWORD WINAPI CreateTrayIcon(LPVOID lpParam)
 
 LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    UINT WM_TASKBARCREATED = RegisterWindowMessage(TEXT("TaskbarCreated"));
+    UINT WM_TASKBARCREATED = RegisterWindowMessage("GCTaskbar");
     switch (message)
     {
         case WM_CREATE:
@@ -65,8 +65,26 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             TrayNid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
             TrayNid.uCallbackMessage = WM_TRAYICON;
             TrayNid.hIcon = LoadIcon(GCInstance, MAKEINTRESOURCE(GC_ICON));
-
-            lstrcpy(TrayNid.szTip, "GameClicker");
+            
+            string TipText;
+            if (config.UseChinese)
+            {
+                TipText += "左键连点："s + (config.EnableLeftClicker ? "启用    "s : "关闭    "s) + to_string(config.LCPS) + "CPS";
+				TipText += "右键连点："s + (config.EnableRightClicker ? "启用    "s : "关闭    "s) + to_string(config.RCPS) + "CPS";
+                TipText += "使用时长："s + to_string(app_status.UsageDuration);
+                TipText += "手点次数："s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right);
+				TipText += "连点次数："s + to_string(app_status.ClickerClickCount.left) + " | " + to_string(app_status.ClickerClickCount.right);
+            }
+            else
+            {
+				TipText += "Left Clicker: "s + (config.EnableLeftClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.LCPS) + " CPS";
+				TipText += "Right Clicker: "s + (config.EnableRightClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.RCPS) + " CPS";
+				TipText += "Usage Duration: "s + to_string(app_status.UsageDuration);
+				TipText += "Mouse Clicks: "s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right);
+				TipText += "Clicker Clicks: "s + to_string(app_status.ClickerClickCount.left) + " | " + to_string(app_status.ClickerClickCount.right);
+            }
+          
+            lstrcpy(TrayNid.szTip, TipText.c_str());
             Shell_NotifyIcon(NIM_ADD, &TrayNid);
             break;
         }
@@ -79,8 +97,8 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
                     static time_t LastTime = 0;
                     if (GetTickCount64() - LastTime > 100)
                     {
-                        ShowGui = !ShowGui;
-                        ShowWindow(GCHWND, ShowGui);
+                        IsShowGui = !IsShowGui;
+                        ShowWindow(GCHWND, IsShowGui);
                         LastTime = GetTickCount64();
                     }
                     break;
@@ -113,8 +131,8 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
                         }
                         case MENU_SHOW:
                         {
-                            ShowGui = true;
-                            ShowWindow(GCHWND, ShowGui);
+                            IsShowGui = true;
+                            ShowWindow(GCHWND, IsShowGui);
                             break;
                         }
                         case MENU_SITE:

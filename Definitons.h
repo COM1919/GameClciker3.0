@@ -404,7 +404,7 @@ bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里
 const int RenderFps = 60;               //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
-#define GC_NO_HOOK                    //是否禁用HOOK
+//#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -525,8 +525,6 @@ const string ShaderLogFile =      WorkPath + "\\GameClicker\\Shader.log";
 const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
 const string GameGuiLogFile =     WorkPath + "\\GameClicker\\GameGui.log";
 
-const string ExitFlagFile =       WorkPath + "\\GameClicker\\ExitFlag.gcf";
-
 string NoticeStr = config.UseChinese ? 
 u8"\
 GC连点器3.0！全新的UI体验，更好的设置内容。\n\
@@ -611,7 +609,7 @@ HANDLE ClickRunThread;
 HANDLE ClickSoundThread;
 HANDLE WindowMsgThreadHandle = nullptr;   // 窗口消息线程句柄, 退出时等待其结束再释放 ImGui/D3D
 
-atomic<bool> IsCreatedWindow         = false;           //窗口是否创建成功
+atomic<bool> WindowInitSuccessful    = false;           //窗口是否创建成功
 atomic<bool> IsStopClicker           = false;           //是否停止连点
 atomic<bool> IsGCExit                = false;           //连点器退出
 atomic<bool> IsShowGui               = true;            //是否显示GUI
@@ -666,29 +664,28 @@ struct AppStaus
     LRPair<ULONGLONG> ClickerClickCount ;               //连点次数
     LRPair<ULONGLONG> MouseClickCount;                  //鼠标点击次数
     unsigned int StartCount = 0;                        //启动次数
-    long double UseTime = 0;                            //使用连点器的时长(小时)
+    long double UsageDuration = 0;                            //使用连点器的时长(小时)
 } app_status;
 
 shared_mutex InitSuccessTimeMutex;
 ULONGLONG StartTime = 0;                                //GC启动时的时间
 ULONGLONG InitSuccessTime = 0;                          //初始化成功的时间
 
-shared_mutex MBControlMutex;
-shared_mutex MBChangeMutex;
-struct MessageBoxMsg
+namespace MessageBoxMsg
 {
-    bool                 open;
-    string               message;
-    string               title;
-    UINT                 type;
-    map<string, UINT>    button;
-    map<string, ImVec4>  colors;
-    int                  ret_code;
-}mb_message;
+    shared_mutex         Mtx;
+    bool                 IsOpen;
+    string               Message;
+    string               TitleName;
+    int                  ButtonType;
+    map<string, UINT>    BtnDefines;
+    map<string, ImVec4>  BtnColors;
+    int                  ReturnCode;
+};
 
 namespace ProgressBarMsg
 {
-    shared_mutex mtx;
+    shared_mutex Mtx;
     string  TitleName;
     int     ReturnCode = 0;
     double  MaxSize = 0.0;

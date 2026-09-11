@@ -556,7 +556,7 @@ DWORD WINAPI LoadAnimationThread(LPVOID lpParam)
 #endif // GC_NO_ANIMATION
     RenerStartupAnimation(GCInstance);
 
-	while (!IsCreatedWindow)
+	while (!WindowInitSuccessful)
 		Sleep(10);
 
     ShowWindow(GCHWND, SW_SHOWDEFAULT);
@@ -571,6 +571,5 @@ DWORD WINAPI LoadAnimationThread(LPVOID lpParam)
 
     SetForegroundWindow(GCHWND);
     PrintLog("[StartAnim] 动画播放完成！", PL_INFO);
-    Starting = false;
     return 0;
 }

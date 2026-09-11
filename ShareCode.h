@@ -27,8 +27,6 @@
 #define PT_WARNING 2
 #define PT_ERROR 3
 
-string GetQQNumber();
-bool IsNumeric(const string& str);
 int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating);
 int RenderMessageBox(string message, const char* title, UINT type, bool wating);
 void RenderTip(string msg, float timeout, UINT type);
@@ -314,7 +312,7 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 
 	// 打开进度条
 	{
-		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::Mtx);
 		ProgressBarMsg::IsOpen = true;
 		ProgressBarMsg::ReturnCode = 0;
 		ProgressBarMsg::TitleName = title;
@@ -327,7 +325,7 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 	if (!file)
 	{
 		{
-			std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+			std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::Mtx);
 			ProgressBarMsg::IsOpen = false;
 		}
 		return false;
@@ -338,7 +336,7 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 	DWORD bytesRead;
 	while (internet.InternetReadFile(buffer, bufferSize, &bytesRead) && bytesRead > 0)
 	{
-		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::Mtx);
 		fwrite(buffer, 1, bytesRead, file);
 		ProgressBarMsg::ReadSize += bytesRead / 1024.0 / 1024.0; // MB
 
@@ -348,7 +346,7 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 	fclose(file);
 
 	{
-		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::Mtx);
 		bool success = (ProgressBarMsg::ReturnCode != 1) && (ProgressBarMsg::ReadSize > 0);
 		ProgressBarMsg::IsOpen = false;
 		return success;
@@ -2052,68 +2050,55 @@ int RenderMessageBox(string message, const char* title, UINT type, bool wating =
 {
 	// 利用lock的特性来确保每次只有一个线程在操作弹窗
 	// 减少性能开销，因为每次最多是一个弹窗在处理，之前代码会导致所有弹窗都在处理
-	// 真是一个奇妙的解决办法    MBControlMutex不是保护变量的线程竞争的！！
+	// 真是一个奇妙的解决办法    ControlMtx不是保护变量的线程竞争的！！
 	int ret = 0;
-	MBControlMutex.lock();
 	{
 		// 写入锁
-		lock_guard<shared_mutex> lock(MBChangeMutex);
-		mb_message.open = true;
-		mb_message.message = message;
-		mb_message.title = title;
-		mb_message.type = type;
-		mb_message.ret_code = -1;
+		lock_guard<shared_mutex> lock(MessageBoxMsg::Mtx);
+		MessageBoxMsg::IsOpen = true;
+		MessageBoxMsg::Message = message;
+		MessageBoxMsg::TitleName = title;
+		MessageBoxMsg::ButtonType = type;
+		MessageBoxMsg::ReturnCode = -1;
 	}
-	MBControlMutex.unlock();
 
-	auto func = [&]() {
-		while (mb_message.ret_code == -1 && mb_message.open)
-			Sleep(3);
-		ret = mb_message.ret_code;
-		};
 	if (!wating)
-	{
-		// 修复：原代码 detach 一个 [&] 捕获栈局部变量 ret 的线程，函数返回后该线程仍写
-		// 已销毁的栈内存 → 悬垂写（0xC0000005 隐患）。弹窗本体由主线程渲染循环
-		// （RenderControl 中的 MessageBox 处理）负责显示与设置 ret_code，非阻塞场景无需等待线程。
 		return 0;
-	}
 	else
-		func();
+	{
+		while (MessageBoxMsg::ReturnCode == -1 && MessageBoxMsg::IsOpen)
+			Sleep(5);
+		ret = MessageBoxMsg::ReturnCode;
+	}
 	return ret;
 }
 
 int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating = true)
 {
 	int ret = 0;
-	MBControlMutex.lock();
 	{
 		// 写入锁
-		lock_guard<shared_mutex> lock(MBChangeMutex);
-		mb_message.open = true;
-		mb_message.message = message;
-		mb_message.title = title;
-		mb_message.type = -1;
-		mb_message.ret_code = -1;
-		mb_message.button = button;
-		mb_message.colors = colors;
+		lock_guard<shared_mutex> lock(MessageBoxMsg::Mtx);
+		MessageBoxMsg::IsOpen = true;
+		MessageBoxMsg::Message = message;
+		MessageBoxMsg::TitleName = title;
+		MessageBoxMsg::ButtonType = -1;
+		MessageBoxMsg::ReturnCode = -1;
+		MessageBoxMsg::BtnDefines = button;
+		MessageBoxMsg::BtnColors = colors;
 	}
-	MBControlMutex.unlock();
-	auto func = [&]() {
+
+	if (!wating)
+		return 0;
+	else
+	{
 		if (wating)
 		{
-			while (mb_message.ret_code == -1 && mb_message.open)
+			while (MessageBoxMsg::ReturnCode == -1 && MessageBoxMsg::IsOpen)
 				Sleep(3);
 		}
-		ret = mb_message.ret_code;
-		};
-	if (!wating)
-	{
-		// 修复：同 RenderMessageBox，不再 detach 写栈变量的等待线程
-		return 0;
+		ret = MessageBoxMsg::ReturnCode;
 	}
-	else
-		func();
 	return ret;
 }
 
@@ -2123,42 +2108,6 @@ string GetHwid()
 	if (GetCurrentHwProfile(&hwProfileInfo))
 		return hwProfileInfo.szHwProfileGuid;
 	return "0";
-}
-
-bool IsNumeric(const string& str)
-{
-	return all_of(str.begin(), str.end(), [](unsigned char c)
-		{
-			return isdigit(c);
-		});
-}
-
-string GetQQNumber()
-{
-	fstream File(QQNumFile, ios::in | ios::out);
-	char* buf{};
-	bool IsRead = (bool)File.getline(buf, 0);
-	string QQNumber = buf;
-	if (QQNumber.empty() || !IsRead || !File.is_open() || IsNumeric(QQNumber))
-	{
-		TCHAR szText[MAX_PATH] = { 0 };
-		TCHAR szQQNumber[MAX_PATH] = { 0 };
-		HWND hWnd = FindWindow("CTXOPConntion_Class", NULL);
-		if (hWnd)
-		{
-			GetWindowText(hWnd, szText, MAX_PATH);
-		}
-
-		int len = wcslen((wchar_t*)szText) * sizeof(TCHAR);
-		do
-		{
-			len--;
-		} while (szText[len] != '_');
-		lstrcpy(szQQNumber, &szText[len + 1]);
-		File.write(buf, 0);
-	}
-	File.close();
-	return QQNumber;
 }
 
 bool AddToStartup(const string& file)

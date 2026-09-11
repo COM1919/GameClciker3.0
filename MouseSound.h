@@ -103,19 +103,19 @@ void DownloadKeybdSounds()
 	}
 
 	{
-		lock_guard<mutex> lock(PBMsgMutex);
-		pb_message.open = true;
-		pb_message.title = config.UseChinese ? u8"正在解压声音包..." : "Extracting sound pack...";
-		pb_message.maxmb = 1.0;
-		pb_message.mb = 0.0;
-		pb_message.unzip = true;
+		lock_guard<shared_mutex> lock(ProgressBarMsg::Mtx);
+		ProgressBarMsg::IsOpen = true;
+		ProgressBarMsg::TitleName = config.UseChinese ? u8"正在解压声音包..." : "Extracting sound pack...";
+		ProgressBarMsg::MaxSize = 1.0;
+		ProgressBarMsg::ReadSize = 0.0;
+		ProgressBarMsg::IsUnzip = true;
 	}
 
 	int ret = UnZipFile(Tmp_KeySounds.c_str(), Sound_KeybdPath.c_str());
 	{
-		lock_guard<mutex> lock(PBMsgMutex);
-		pb_message.open = false;
-		pb_message.unzip = false;
+		lock_guard<shared_mutex> lock(ProgressBarMsg::Mtx);
+		ProgressBarMsg::IsOpen = false;
+		ProgressBarMsg::IsUnzip = false;
 	}
 
 	if (ret != 0)

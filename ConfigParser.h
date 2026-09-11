@@ -361,29 +361,24 @@ void SaveConfig()
 		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
 			REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS)
 		{
-			// 0: ClickerClickCount.left
 			ULONGLONG val = app_status.ClickerClickCount.left;
 			RegSetValueEx(hKey, "0", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
 
-			// 1: ClickerClickCount.right
 			val = app_status.ClickerClickCount.right;
 			RegSetValueEx(hKey, "1", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
 
-			// 2: MouseClickCount.left
 			val = app_status.MouseClickCount.left;
 			RegSetValueEx(hKey, "2", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
 
-			// 3: MouseClickCount.right
 			val = app_status.MouseClickCount.right;
 			RegSetValueEx(hKey, "3", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
 
-			// 4: StartCount
 			unsigned int uval = app_status.StartCount;
 			RegSetValueEx(hKey, "4", 0, REG_DWORD, (const BYTE*)&uval, sizeof(uval));
 
-			// 5: UseTime ¡ú ×ªÎª×Ö·û´®´æ´¢
+			// UsageDuration -> ×ªÎª×Ö·û´®´æ´¢
 			stringstream ss;
-			ss << fixed << setprecision(18) << (long double)app_status.UseTime;
+			ss << fixed << setprecision(18) << (long double)app_status.UsageDuration;
 			string str = ss.str();
 			RegSetValueEx(hKey, "5", 0, REG_SZ, (const BYTE*)str.c_str(), (DWORD)(str.size() + 1));
 
@@ -904,7 +899,7 @@ void LoadConfig()
 			{
 				try {
 					long double val = std::stold(buffer);
-					app_status.UseTime = val;
+					app_status.UsageDuration = val;
 				}
 				catch (...){}
 			}

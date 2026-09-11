@@ -1819,18 +1819,18 @@ static int stbtt__GetGlyphShapeTT(const stbtt_fontinfo *info, int glyph_index, s
          stbtt_uint16 flags, gidx;
          int comp_num_verts = 0, i;
          stbtt_vertex *comp_verts = 0, *tmp = 0;
-         float mtx[6] = {1,0,0,1,0,0}, m, n;
+         float Mtx[6] = {1,0,0,1,0,0}, m, n;
 
          flags = ttSHORT(comp); comp+=2;
          gidx = ttSHORT(comp); comp+=2;
 
          if (flags & 2) { // XY values
             if (flags & 1) { // shorts
-               mtx[4] = ttSHORT(comp); comp+=2;
-               mtx[5] = ttSHORT(comp); comp+=2;
+               Mtx[4] = ttSHORT(comp); comp+=2;
+               Mtx[5] = ttSHORT(comp); comp+=2;
             } else {
-               mtx[4] = ttCHAR(comp); comp+=1;
-               mtx[5] = ttCHAR(comp); comp+=1;
+               Mtx[4] = ttCHAR(comp); comp+=1;
+               Mtx[5] = ttCHAR(comp); comp+=1;
             }
          }
          else {
@@ -1838,22 +1838,22 @@ static int stbtt__GetGlyphShapeTT(const stbtt_fontinfo *info, int glyph_index, s
             STBTT_assert(0);
          }
          if (flags & (1<<3)) { // WE_HAVE_A_SCALE
-            mtx[0] = mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
-            mtx[1] = mtx[2] = 0;
+            Mtx[0] = Mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[1] = Mtx[2] = 0;
          } else if (flags & (1<<6)) { // WE_HAVE_AN_X_AND_YSCALE
-            mtx[0] = ttSHORT(comp)/16384.0f; comp+=2;
-            mtx[1] = mtx[2] = 0;
-            mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[0] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[1] = Mtx[2] = 0;
+            Mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
          } else if (flags & (1<<7)) { // WE_HAVE_A_TWO_BY_TWO
-            mtx[0] = ttSHORT(comp)/16384.0f; comp+=2;
-            mtx[1] = ttSHORT(comp)/16384.0f; comp+=2;
-            mtx[2] = ttSHORT(comp)/16384.0f; comp+=2;
-            mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[0] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[1] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[2] = ttSHORT(comp)/16384.0f; comp+=2;
+            Mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;
          }
 
          // Find transformation scales.
-         m = (float) STBTT_sqrt(mtx[0]*mtx[0] + mtx[1]*mtx[1]);
-         n = (float) STBTT_sqrt(mtx[2]*mtx[2] + mtx[3]*mtx[3]);
+         m = (float) STBTT_sqrt(Mtx[0]*Mtx[0] + Mtx[1]*Mtx[1]);
+         n = (float) STBTT_sqrt(Mtx[2]*Mtx[2] + Mtx[3]*Mtx[3]);
 
          // Get indexed glyph.
          comp_num_verts = stbtt_GetGlyphShape(info, gidx, &comp_verts);
@@ -1863,11 +1863,11 @@ static int stbtt__GetGlyphShapeTT(const stbtt_fontinfo *info, int glyph_index, s
                stbtt_vertex* v = &comp_verts[i];
                stbtt_vertex_type x,y;
                x=v->x; y=v->y;
-               v->x = (stbtt_vertex_type)(m * (mtx[0]*x + mtx[2]*y + mtx[4]));
-               v->y = (stbtt_vertex_type)(n * (mtx[1]*x + mtx[3]*y + mtx[5]));
+               v->x = (stbtt_vertex_type)(m * (Mtx[0]*x + Mtx[2]*y + Mtx[4]));
+               v->y = (stbtt_vertex_type)(n * (Mtx[1]*x + Mtx[3]*y + Mtx[5]));
                x=v->cx; y=v->cy;
-               v->cx = (stbtt_vertex_type)(m * (mtx[0]*x + mtx[2]*y + mtx[4]));
-               v->cy = (stbtt_vertex_type)(n * (mtx[1]*x + mtx[3]*y + mtx[5]));
+               v->cx = (stbtt_vertex_type)(m * (Mtx[0]*x + Mtx[2]*y + Mtx[4]));
+               v->cy = (stbtt_vertex_type)(n * (Mtx[1]*x + Mtx[3]*y + Mtx[5]));
             }
             // Append vertices.
             tmp = (stbtt_vertex*)STBTT_malloc((num_vertices+comp_num_verts)*sizeof(stbtt_vertex), info->userdata);
