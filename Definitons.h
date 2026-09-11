@@ -404,7 +404,7 @@ bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里
 const int RenderFps = 60;               //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
-//#define GC_NO_HOOK                    //是否禁用HOOK
+#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
@@ -415,7 +415,7 @@ const int RenderFps = 60;               //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -609,61 +609,52 @@ NOTIFYICONDATA TrayNid = { 0 };
 HANDLE AntiMultiOpenMutex;
 HANDLE ClickRunThread;
 HANDLE ClickSoundThread;
+HANDLE WindowMsgThreadHandle = nullptr;   // 窗口消息线程句柄, 退出时等待其结束再释放 ImGui/D3D
 
-bool Starting                = false;           //是否正在启动
-bool StopClicker             = false;           //是否停止连点
-atomic<bool>GCExit           = false;           //连点器退出
-bool IsDownloadRes           = false;           //是否正在下载资源
-bool ShowGui                 = true;            //是否显示GUI
-bool IsFirstRun              = false;           //第一次运行（是否显示向导）
-bool SoundIsOpen             = false;           //音效是否正常加载
-LRPair<bool> IsClickering    = {};              //是否连点
-bool IsMoving                = false;           //玩家是否移动
-bool IsJumping               = false;           //玩家是否跳跃
-bool IsOpenGui               = false;           //在游戏中是否打开GUI
-bool IsGameGuiInit           = false;           //GameGui是否初始化
-bool GameGuiError            = false;           //GameGui是否出错
-bool IsDownloading           = false;           //是否正在下载
-bool ReloadClicker           = true;            //是否重启连点线程
-bool IsClickerSuccess        = false;           //连点线程是否准备成功
-bool AbnormalExit            = false;           //上一次程序是否非正常退出
-bool EnterSafeMode           = false;           //是否进入安全模式
-bool IsRestartAL             = false;           //是否重启OpenAL
-bool IsSearchReload          = false;           //内存搜索是否重新加载
-bool DebugInfo               = false;           //显示调试信息
-bool IsCreateWindowSussce    = false;           //窗口是否创建成功
-bool IsServerClosed          = false;           //服务器是否关闭
-bool AllowUseGameGui         = false;           //是否允许使用视觉效果
-bool AllowConnectServer      = false;           //是否允许连接服务器
-bool IsDragingFile           = false;           //是否正在拖入文件
-bool IsEnableScript          = true;            //是否启用LUA脚本系统，这个针对LUA系统崩溃后的处理
-bool IsCPSWaveSettingChanged = false;           //是否更改了CPS波形设置
-bool IsScriptUseGitee        = false;           //脚本商场是否使用gitee
+atomic<bool> IsCreatedWindow         = false;           //窗口是否创建成功
+atomic<bool> IsStopClicker           = false;           //是否停止连点
+atomic<bool> IsGCExit                = false;           //连点器退出
+atomic<bool> IsShowGui               = true;            //是否显示GUI
+atomic<bool> IsFirstRun              = false;           //第一次运行（是否显示向导）
+LRPair<atomic<bool>> IsClickering    = {};              //是否连点
+atomic<bool> IsMoving                = false;           //玩家是否移动
+atomic<bool> IsJumping               = false;           //玩家是否跳跃
+atomic<bool> IsOpenGui               = false;           //在游戏中是否打开GUI
+atomic<bool> IsDownloading           = false;           //是否正在下载
+atomic<bool> IsReloadClicker         = true;            //是否重启连点线程
+atomic<bool> IsClickerSuccess        = false;           //连点线程是否准备成功
+atomic<bool> IsRestartAL             = false;           //是否重启OpenAL
+atomic<bool> IsServerClosed          = false;           //服务器是否关闭
+atomic<bool> AllowUseGameGui         = false;           //是否允许使用视觉效果
+atomic<bool> AllowConnectServer      = false;           //是否允许连接服务器
+atomic<bool> IsDragingFile           = false;           //是否正在拖入文件
+atomic<bool> IsCPSWaveSettingChanged = false;           //是否更改了CPS波形设置
+atomic<bool> IsScriptUseGitee        = false;           //脚本商场是否使用gitee
+
+int ClickTabCount = 11;                                 //连点器标签页的次数
+int GameGuiTransparency = 40;                           //单位%
+int IsSearchState = 0;                                  //内存搜索状态
+int MemSearchCount = 0;                                 //内存搜索次数
+int GettingGameState = -1;                              //获取游戏窗口的状态
+float SystemScale = 1.0f;                               //DPI缩放率
+string client_id;                                       //客户端的ID
+mutex ClientIDMtx;                                      //client_id 的互斥锁（网络线程写、主渲染线程读）
+UDPSocket client;                                       //UDP 客户端（全局，所有文件可访问；网络线程 + 主线程退出时使用）
+vector<string> MouseSoundList;                          //可用的鼠标声音列表
+vector<string> KeybdSoundList;                          //可用的键盘声音列表
 
 namespace Overheat
 {
-    float Timer = 0;                            //过热保护计时器
-    float CooldownTimer = 0;                    //过热保护冷却计时器
+    float Timer = 0;                                    //过热保护计时器
+    float CooldownTimer = 0;                            //过热保护冷却计时器
 }
-int UseServerOfType = -1;                       //使用的服务器的类型
-int ItemBarPos = 1;                             //物品栏位置
+int UseServerOfType = -1;                               //使用的服务器的类型
+int ItemBarPos = 1;                                     //物品栏位置
 
 shared_mutex CurrentCPSMutex;
 shared_mutex HumanCPSMutex;
-LRPair<int> CurrentCPS = {};                    //总实际CPS
-LRPair<int> HumanCPS = {};                      //人类CPS
-
-int ClickTabCount = 11;                         //连点器标签页的次数
-int GameGuiTransparency = 40;                   //单位%
-int IsSearchState = 0;                          //内存搜索状态
-int MemSearchCount = 0;                         //内存搜索次数
-int GettingGameState = -1;                      //获取游戏窗口的状态
-float SystemScale = 1.0f;                       //DPI缩放率
-string client_id;                               //客户端的ID
-mutex ClientIDMtx;                              //client_id 的互斥锁（网络线程写、主渲染线程读）
-UDPSocket client;                               //UDP 客户端（全局，所有文件可访问；网络线程 + 主线程退出时使用）
-vector<string> MouseSoundList;                  //可用的鼠标声音列表
-vector<string> KeybdSoundList;                  //可用的键盘声音列表
+LRPair<int> CurrentCPS = {};                            //总实际CPS
+LRPair<int> HumanCPS = {};                              //人类CPS
 
 const int ScreenWidth = GetSystemMetrics(SM_CXSCREEN);
 const int ScreenHeigth = GetSystemMetrics(SM_CYSCREEN);
@@ -672,15 +663,15 @@ int WindowHeight = 500;
 
 struct AppStaus
 {
-    LRPair<ULONGLONG> ClickerClickCount ;       //连点次数
-    LRPair<ULONGLONG> MouseClickCount;          //鼠标点击次数
-    unsigned int StartCount = 0;                //启动次数
-    long double UseTime = 0;                    //使用连点器的时长(小时)
+    LRPair<ULONGLONG> ClickerClickCount ;               //连点次数
+    LRPair<ULONGLONG> MouseClickCount;                  //鼠标点击次数
+    unsigned int StartCount = 0;                        //启动次数
+    long double UseTime = 0;                            //使用连点器的时长(小时)
 } app_status;
 
 shared_mutex InitSuccessTimeMutex;
-ULONGLONG StartTime = 0;                 //GC启动时的时间
-ULONGLONG InitSuccessTime = 0;           //初始化成功的时间
+ULONGLONG StartTime = 0;                                //GC启动时的时间
+ULONGLONG InitSuccessTime = 0;                          //初始化成功的时间
 
 shared_mutex MBControlMutex;
 shared_mutex MBChangeMutex;
@@ -695,17 +686,18 @@ struct MessageBoxMsg
     int                  ret_code;
 }mb_message;
 
-struct ProgressBarMsg
+namespace ProgressBarMsg
 {
-    string  title;
-    int     ret_code = 0;
-    double  maxmb = 0.0;
-    double  mb = 0.0;
-    bool    open = false;
-    bool    unzip = false;
-}pb_message;
+    shared_mutex mtx;
+    string  TitleName;
+    int     ReturnCode = 0;
+    double  MaxSize = 0.0;
+    double  ReadSize = 0.0;
+    bool    IsOpen = false;
+    bool    IsUnzip = false;
+}
 
-shared_mutex PTChangeMutex;
+shared_mutex PopTipMutex;
 struct PopTipMsg
 {
     string  message;
@@ -716,31 +708,6 @@ vector<PopTipMsg> pt_message;
 
 const string ServerIP = "server.mcgc.top";
 const int ServerPort = 25564;
-
-const string PipeName = "\\\\.\\pipe\\GameClicker";
-const DWORD PipeBufSize = 4096;
-const int PipeMaxConcurrentOps = 10;
-
-typedef struct GameGuiPipeData
-{
-    string version = ::version;                  //版本号
-    int RCPS;                                    //右键CPS
-    int LCPS;                                    //左键CPS
-    ULONGLONG LClickerClickCount;                //左键连点次数
-    ULONGLONG LMouseClickCount;                  //左键鼠标点击次数
-    ULONGLONG RClickerClickCount;                //右键连点次数
-    ULONGLONG RMouseClickCount;                  //右键鼠标点击次数
-    long double UseClickerTime;                  //使用连点器的时长(小时)
-    ULONGLONG StartTime;                         //GC启动时的时间
-    vector<float> RRecordsCPS;                   //右键CPS记录
-    vector<float> LRecordsCPS;                   //左键CPS记录
-    vector<float> CpuRates;                      //CPU占用率记录
-    vector<float> GpuRates;                      //GPU占用率记录
-    vector<float> MemRates;                      //内存占用率记录
-    LRPair<bool> IsClickering = {};              //是否连点器
-    LRPair<bool> IsClickerDown = {};             //连点器的键按下
-    LRPair<bool> IsHumanDown = {};               //鼠标键是否按下
-};
 
 const string ASCIITitle = R"(
    ______                        _________      __

@@ -34,7 +34,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 	HANDLE RClickerThread = CreateThreadSafe(RClickRun, NULL, 0, "RClickRun");
 	HANDLE LClickerThread = CreateThreadSafe(LClickRun, NULL, 0, "LClickRun");
 
-	while (!GCExit)
+	while (!IsGCExit)
 	{
 		// 修复：循环体持续读取 config（快捷键/CPS/模式等），持读锁保证与主线程 config 重置（写锁）互斥
 		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
@@ -58,13 +58,13 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 
 		static HWND LastHwnd = NULL;
 		if (LastHwnd == GCHWND && LastHwnd != CurrForegroundHwnd)
-			ReloadClicker = true;
+			IsReloadClicker = true;
 		LastHwnd = CurrForegroundHwnd;
 
-		if (ReloadClicker)
+		if (IsReloadClicker)
 		{
 			IsClickerSuccess = false;
-			ReloadClicker = false;
+			IsReloadClicker = false;
 			
 			// 没什么用，保留就行
 			srand(time(NULL));
@@ -92,7 +92,7 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 		}
 		if (CurrForegroundHwnd != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
 		{
-			GCExit = true;
+			IsGCExit = true;
 			PrintLog("[Clicker] 程序退出，用户按下了自毁键", PL_INFO);
 			return 0;
 		}
@@ -484,7 +484,7 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam)
 	INPUT input = { 0 };
 	input.type = INPUT_MOUSE;
 
-	while (!GCExit)
+	while (!IsGCExit)
 	{
 		BeginSleep("MousShake");
 
@@ -582,9 +582,9 @@ inline void HandleClickerControl(int nCode, WPARAM wParam, LPARAM lParam)
 DWORD WINAPI RClickRun(LPVOID lpParam)
 {
 	PreciseSleep ptime;
-	while (!GCExit)
+	while (!IsGCExit)
 	{
-		while (!IsClickerSuccess || StopClicker)
+		while (!IsClickerSuccess || IsStopClicker)
 			Sleep(20);
 
 		RandomBoolManager rbm;
@@ -599,10 +599,10 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 		bool IsEndTime = false;
 		int apd = 0;
 
-		while (!GCExit && !ReloadClicker && !StopClicker)
+		while (!IsGCExit && !IsReloadClicker && !IsStopClicker)
 		{
 			// 修复：点击循环内持续读取 config（模式/CPS/延迟等），持读锁与主线程 config 重置（写锁）互斥。
-			// 注意：不能把锁放在外层循环入口——StopClicker 时线程会长期停在等待循环（Sleep(20)），
+			// 注意：不能把锁放在外层循环入口——IsStopClicker 时线程会长期停在等待循环（Sleep(20)），
 			// 会把读锁占死导致重置线程饿死。因此只覆盖真正读 config 的点击循环。
 			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 
@@ -676,7 +676,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				if (!IsKeyPressed)
 				{
 					IsDelayEnd = false;
-					// 修复：连点结束（鼠标键释放）时重置疲劳状态（同按钮模式）
+					// 连点结束（鼠标键释放）时重置疲劳状态（同按钮模式）
 					rbm.ResetFatigue();
 				}
 
@@ -727,8 +727,9 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					if (!IsStopedClicker)
 					{
 						IsStopedClicker = true;
-						if (IsKeyPressed) if (!config.UseRClickerTrigInter) SetKeyDown(Click::Right, config.SimulateClickMode);
-						else if (config.UseRClickerTrigInter) SetKeyUp(Click::Right, config.SimulateClickMode);
+						if (IsKeyPressed) if (!config.UseRClickerTrigInter)
+							SetKeyDown(Click::Right, config.SimulateClickMode);
+						else SetKeyUp(Click::Right, config.SimulateClickMode);
 					}
 				}
 			}
@@ -838,9 +839,9 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 DWORD WINAPI LClickRun(LPVOID lpParam)
 {
 	PreciseSleep ptime;
-	while (!GCExit)
+	while (!IsGCExit)
 	{
-		while (!IsClickerSuccess || StopClicker)
+		while (!IsClickerSuccess || IsStopClicker)
 			Sleep(10);
 
 		RandomBoolManager rbm;
@@ -857,7 +858,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 		bool IsEndTime = false;
 		int apd = 0;
 
-		while (!GCExit && !ReloadClicker && !StopClicker)
+		while (!IsGCExit && !IsReloadClicker && !IsStopClicker)
 		{
 			// 修复：点击循环内持续读取 config，持读锁与主线程 config 重置（写锁）互斥（同 RClickRun）
 			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
@@ -981,7 +982,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					{
 						IsStopedClicker = true;
 						if (IsKeyPressed) if (!config.UseLClickerTrigInter) SetKeyDown(Click::Left, config.SimulateClickMode);
-						else if (config.UseLClickerTrigInter) SetKeyUp(Click::Left, config.SimulateClickMode);
+						else SetKeyUp(Click::Left, config.SimulateClickMode);
 					}
 				}
 			}

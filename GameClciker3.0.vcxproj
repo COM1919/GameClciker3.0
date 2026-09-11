@@ -185,6 +185,7 @@
     <ClInclude Include="ConfigParser.h" />
     <ClInclude Include="Definitons.h" />
     <ClInclude Include="GetInfo.h" />
+    <ClInclude Include="HookCentral.h" />
     <ClInclude Include="ImGui\Icons\fa.h" />
     <ClInclude Include="ImGui\Icons\IconsFontAwesome6.h" />
     <ClInclude Include="ImGui\ImGuiMD\imgui_md.h" />
@@ -214,7 +215,6 @@
     </ClInclude>
     <ClInclude Include="Driver.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="GameGui.h" />
     <ClInclude Include="GC.h" />
     <ClInclude Include="GuideGui.h" />
     <ClInclude Include="ImGui\imconfig.h" />

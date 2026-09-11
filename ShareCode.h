@@ -313,17 +313,23 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 	HttpQueryInfo(internet.hConnect, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
 
 	// 打开进度条
-	pb_message.open = true;
-	pb_message.ret_code = 0;
-	pb_message.title = title;
-	pb_message.maxmb = contentLength / 1024.0 / 1024.0; // MB
-	pb_message.mb = 0.0;
+	{
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+		ProgressBarMsg::IsOpen = true;
+		ProgressBarMsg::ReturnCode = 0;
+		ProgressBarMsg::TitleName = title;
+		ProgressBarMsg::MaxSize = contentLength / 1024.0 / 1024.0; // MB
+		ProgressBarMsg::ReadSize = 0.0;
+	}
 
 	FILE* file;
 	fopen_s(&file, filename.c_str(), "wb");
 	if (!file)
 	{
-		pb_message.open = false;
+		{
+			std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+			ProgressBarMsg::IsOpen = false;
+		}
 		return false;
 	}
 
@@ -332,18 +338,21 @@ bool DownloadURLFilesWithProgress(const string& url, const string& filename, con
 	DWORD bytesRead;
 	while (internet.InternetReadFile(buffer, bufferSize, &bytesRead) && bytesRead > 0)
 	{
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
 		fwrite(buffer, 1, bytesRead, file);
-		pb_message.mb += bytesRead / 1024.0 / 1024.0; // MB
+		ProgressBarMsg::ReadSize += bytesRead / 1024.0 / 1024.0; // MB
 
-		if (pb_message.ret_code == 1)  // 用户点了取消
+		if (ProgressBarMsg::ReturnCode == 1)  // 用户点了取消
 			break;
 	}
 	fclose(file);
 
-	bool success = (pb_message.ret_code != 1) && (pb_message.mb > 0);
-	pb_message.open = false;
-
-	return success;
+	{
+		std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
+		bool success = (ProgressBarMsg::ReturnCode != 1) && (ProgressBarMsg::ReadSize > 0);
+		ProgressBarMsg::IsOpen = false;
+		return success;
+	}
 }
 
 bool DownloadURLFiles(const string& url, const string& filename)
@@ -2024,7 +2033,7 @@ void RenderTip(string msg, float timeout, UINT type)
 	// 修复：原代码无锁 find_if/push_back。RenderTip 被 GetInfo/Network/ClickSound 等
 	// 多个后台线程以及主线程调用，与渲染线程遍历 pt_message 并发时 vector 扩容，
 	// 导致迭代器失效与访问已释放内存 → 0xC0000005。加写锁保护。
-	lock_guard<shared_mutex> lock(PTChangeMutex);
+	lock_guard<shared_mutex> lock(PopTipMutex);
 	auto pos = find_if(pt_message.begin(), pt_message.end(), [&msg](PopTipMsg a)
 		{
 			return a.message == msg;

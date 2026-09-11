@@ -51,7 +51,7 @@ void InitLogSystem(const string& filename)
 static void WriteLogThread()
 {
     static fstream fLog(LogFilePath, ios::app | ios::out);
-    while (!GCExit)
+    while (!IsGCExit)
     {
         if (LogQueue.size() > 0)
         {

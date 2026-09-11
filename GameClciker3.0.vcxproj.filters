@@ -213,9 +213,6 @@
     <ClInclude Include="GC.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="GameGui.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="CodeEditor.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -281,6 +278,9 @@
     </ClInclude>
     <ClInclude Include="OpenAL\include\OpenAL\ALFamework\LoadOAL.h">
       <Filter>OpenALFramework</Filter>
+    </ClInclude>
+    <ClInclude Include="HookCentral.h">
+      <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

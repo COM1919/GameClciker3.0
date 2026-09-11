@@ -65,18 +65,22 @@ int StartUpGC(HINSTANCE hInstance);
 DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam);
 DWORD WINAPI RecordsPCRate(LPVOID lpParam);
 DWORD WINAPI InitGC(LPVOID lpParam);
+
 namespace ScrollAnim
 {
-    // 滑动条动画的全局变量，用于累积滚动能量
-    float EnergyX = 0.0f;
-    float EnergyY = 0.0f;
+    atomic<float> EnergyX = 0.0f;
+    atomic<float> EnergyY = 0.0f;
     const float SCROLL_MULTIPLIER = 2.0f;  // 速度倍率
     const float SMOOTHING = 18.5f;         // 平滑系数
+    inline void AddEnergy(atomic<float>& v, float delta)   // atomic<float> 无 fetch_add(C++17), 用 CAS
+    {
+        float old = v.load();
+        while (!v.compare_exchange_weak(old, old + delta)) {}
+    }
     void HandleScrolling();
 }
 
 // 本文件定义
-DWORD WINAPI WindowProcessMessagesThread(LPVOID lpParam);
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void ReleasGui(WNDCLASSEX wcex, GuiData* gui);
 void TabsText(const char* Text);
@@ -878,8 +882,9 @@ void RenderControl()
 {
     //=======================进度条处理===========================
 
-    if (pb_message.open)
+    if (ProgressBarMsg::IsOpen)
     {
+        std::lock_guard<std::shared_mutex> lock(ProgressBarMsg::mtx);
         ImDrawList* draw_list = GetWindowDrawList();
         draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(800, 468), GetColorU32((ImVec4)ImColor(5, 5, 5, 100)));
         const ImGuiIO& io = GetIO();
@@ -904,29 +909,29 @@ void RenderControl()
         Text(config.UseChinese ? u8"下载任务" : "Download Task");
         SetWindowFontScale(1.0f);
 
-        Text(pb_message.title.c_str());
+        Text(ProgressBarMsg::TitleName.c_str());
         SetNextItemWidth(420);
 
-        const double RemainingTime = (speed == 0.0) ? 0.0 : (pb_message.maxmb - pb_message.mb) / max(speed, 1.0);
+        const double RemainingTime = (speed == 0.0) ? 0.0 : (ProgressBarMsg::MaxSize - ProgressBarMsg::ReadSize) / max(speed, 1.0);
 
-        ProgressBar(float(pb_message.mb / max(pb_message.maxmb, 1.0)), ImVec2(430, 20));
+        ProgressBar(float(ProgressBarMsg::ReadSize / max(ProgressBarMsg::MaxSize, 1.0)), ImVec2(430, 20));
         Text(config.UseChinese ? u8"已下载:%.2f MB / %.2f MB - %.2f MB/s  剩余时间:%s 秒" : "Downloaded:%.2f MB / %.2f MB - %.2f MB/s  Time:%s seconds",
-            pb_message.mb, pb_message.maxmb, speed, (speed <= 0.0) ? u8"无" : to_string((int)RemainingTime).c_str());
+            ProgressBarMsg::ReadSize, ProgressBarMsg::MaxSize, speed, (speed <= 0.0) ? u8"无" : to_string((int)RemainingTime).c_str());
 
         static ULONGLONG last_time = GetTickCount64() + 1000;
 
         if (last_time < GetTickCount64())
         {
-            speed = (last_byte == 0.0) ? 0.0 : max(pb_message.mb - last_byte, 0.0);
-            last_byte = pb_message.mb;
+            speed = (last_byte == 0.0) ? 0.0 : max(ProgressBarMsg::ReadSize - last_byte, 0.0);
+            last_byte = ProgressBarMsg::ReadSize;
             last_time = GetTickCount64() + 1000;
         }
 
         SetCursorPos(ImVec2(size.x - 12, size.y - 12));
         if (Button(config.UseChinese ? u8"取消" : "Cancel", ImVec2(80, 30)))
         {
-            pb_message.ret_code = 1;
-            pb_message.open = false;
+            ProgressBarMsg::ReturnCode = 1;
+            ProgressBarMsg::IsOpen = false;
         }
 
         End();
@@ -972,7 +977,7 @@ void RenderControl()
         // 修复：原代码 for 遍历在锁外、erase 在锁内，且写端 RenderTip 完全无锁。
         // 任意线程 push_back 触发 vector 扩容 → 正在遍历的迭代器失效 → 0xC0000005。
         // 现在整个遍历+删除在写锁内完成，并用迭代器 erase 代替索引 erase。
-        lock_guard<shared_mutex> lock(PTChangeMutex);
+        lock_guard<shared_mutex> lock(PopTipMutex);
         for (auto it = pt_message.begin(); it != pt_message.end();)
         {
             if (!PopTip(it->message, it->timeout, it->type))
@@ -1438,6 +1443,13 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
 
 void ReleasGui(WNDCLASSEX wcex, GuiData* gui)
 {
+    // 先唤醒并等待窗口消息线程退出, 避免它仍在 WndProc(ImGui_ImplWin32_WndProcHandler) 中
+    // 访问即将销毁的 ImGui 上下文 / D3D 资源 -> UAF
+    if (GCHWND)
+        PostMessage(GCHWND, WM_NULL, 0, 0);
+    if (WindowMsgThreadHandle)
+        WaitForSingleObject(WindowMsgThreadHandle, 2000);
+
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     DestroyContext();
@@ -2066,10 +2078,14 @@ void CleanupDeviceD3D()
 
 void CreateRenderTarget()
 {
-    ID3D11Texture2D* pBackBuffer;
-    MainGuiData.pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-    MainGuiData.pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &MainGuiData.mainRenderTargetView);
+    ID3D11Texture2D* pBackBuffer = nullptr;
+    HRESULT hr = MainGuiData.pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
+    if (FAILED(hr) || pBackBuffer == nullptr)
+        return;
+    hr = MainGuiData.pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &MainGuiData.mainRenderTargetView);
     pBackBuffer->Release();
+    if (FAILED(hr))
+        MainGuiData.mainRenderTargetView = nullptr;
 }
 
 void CleanupRenderTarget()
@@ -2087,92 +2103,6 @@ void CleanupRenderTarget()
 #define WM_GC_SAVE_INI  (WM_USER + 1145)
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-DWORD WINAPI WindowProcessMessagesThread(LPVOID lpParam)
-{
-    string name = "  ";
-    IsCreateWindowSussce = false;
-    HICON hIcon = LoadIcon(GCInstance, MAKEINTRESOURCE(GC_ICON));
-    wcex.cbSize = sizeof(WNDCLASSEX);
-    wcex.style = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc = WndProc;
-    wcex.cbClsExtra = 0;
-    wcex.cbWndExtra = 0;
-    wcex.hInstance = GCInstance;
-    wcex.hIcon = hIcon;
-    wcex.hCursor = nullptr;
-    wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wcex.lpszMenuName = NULL;
-    wcex.lpszClassName = name.c_str();
-    wcex.hIconSm = hIcon;
-
-    WindowWidth = IsFirstRun ? 600 : 800;
-    WindowHeight = IsFirstRun ? 400 : 500;
-    {
-        RegisterClassEx(&wcex);
-        GCHWND = CreateWindow(wcex.lpszClassName,
-            name.c_str(), WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_CAPTION & WS_POPUP /* & WS_EX_LAYERED*/ & WS_EX_ACCEPTFILES,
-            (ScreenWidth - WindowWidth) / 2, ScreenHeigth + 40, WindowWidth, WindowHeight,
-            NULL, NULL, wcex.hInstance, NULL);
-
-        LONG_PTR Style = GetWindowLongPtr(GCHWND, GWL_STYLE);
-        Style = Style & ~WS_CAPTION & ~WS_SYSMENU & ~WS_SIZEBOX;
-        SetWindowLongPtr(GCHWND, GWL_STYLE, Style);
-
-        //SetRoundRectRgn(GCHWND, SizeX, SizeY, 24);
-        SetWindowDisplayAffinity(GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
-        //SetLayeredWindowAttributes(GCHWND, 0, round(255 * WindowAlpha), LWA_ALPHA);
-
-        // 使用DWM扩展帧实现玻璃效果
-        /*
-        DwmEnableComposition(DWM_EC_ENABLECOMPOSITION);
-        MARGINS margins = { -1 };
-        DwmExtendFrameIntoClientArea(GCHWND, &margins);
-        UINT attribute = DWMSBT_TRANSIENTWINDOW;
-        DwmSetWindowAttribute(GCHWND, DWMWA_SYSTEMBACKDROP_TYPE, &attribute, sizeof(attribute));
-        DwmSetWindowAttribute(GCHWND, DWMWA_WINDOW_CORNER_PREFERENCE, &attribute, sizeof(attribute));
-        */
-
-        ShowWindow(GCHWND, SW_HIDE);
-        UpdateWindow(GCHWND);
-        PrintLog("[Render]创建窗口成功！", PL_INFO);
-    }
-    IsCreateWindowSussce = true;
-
-    PrintLog("[Render]开始消息循环", PL_INFO);
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
-    {
-        bool IsClicker = IsClickering.right || IsClickering.left;
-        switch (msg.message)
-        {
-        case WM_LBUTTONUP:
-        case WM_LBUTTONDOWN:
-        {
-            if (IsClicker && config.LClickerMode & C_MOUSESMODE && config.LClickerMode & C_ASSISTMODE)
-                continue;
-            break;
-        }
-        case WM_RBUTTONUP:
-        case WM_RBUTTONDOWN:
-        {
-            if (IsClicker && config.RClickerMode & C_MOUSESMODE && config.RClickerMode & C_ASSISTMODE)
-                continue;
-            break;
-        }
-        }
-
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-
-        if (GCExit)
-        {
-            PrintLog("[Render]消息循环线程退出", PL_INFO);
-            break;
-        }
-    }
-    return 0;
-}
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -2232,9 +2162,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (IsFirstRun)
         {
             DelFile(ConfigFile.c_str());
-            GCExit = true;
+            IsGCExit = true;
         }
-        ShowGui = false;
+        IsShowGui = false;
         ShowWindow(hWnd, SW_HIDE);
         return 0;
     }
@@ -2289,7 +2219,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         // 修复：原“设备切换”逻辑挂在 WH_KEYBOARD_LL 键盘钩子里，钩子根本收不到 DBT_* 设备广播
         // （wParam 只会是 WM_KEYDOWN/WM_KEYUP 等），是死代码。现改为在主窗口监听真正的设备插拔事件：
-        // RegisterDeviceNotification（WM_CREATE 中注册）→ 置 g_AudioDeviceChanged → ClickSound 线程统一重建
+        // RegisterDeviceNotification（WM_CREATE 中注册）→ 置 g_IsAudioDeviceChanged → ClickSound 线程统一重建
         if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE)
         {
             PDEV_BROADCAST_HDR pHdr = (PDEV_BROADCAST_HDR)lParam;
@@ -2300,7 +2230,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 {
                     PrintLog("[Sound] 音频设备发生变化，准备重新打开音频设备", PL_INFO);
                     RenderTip(config.UseChinese ? u8"正在切换音频设备" : "Switching audio device", 3.0f, PT_INFO);
-                    g_AudioDeviceChanged = true;
+                    g_IsAudioDeviceChanged = true;
                 }
             }
         }
@@ -2354,8 +2284,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
             delta *= ScrollAnim::SCROLL_MULTIPLIER;
 
             // 如果滚动方向改变，清零能量，防止卡顿
-            if (ScrollAnim::EnergyY * delta < 0.0f) ScrollAnim::EnergyY = 0.0f;
-            ScrollAnim::EnergyY += delta;
+            if (ScrollAnim::EnergyY.load() * delta < 0.0f) ScrollAnim::EnergyY.store(0.0f);
+            ScrollAnim::AddEnergy(ScrollAnim::EnergyY, delta);
             // 可选：横向滚动（需要WM_MOUSEHWHEEL）
             return 0; // 表示已处理
         }

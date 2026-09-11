@@ -68,7 +68,7 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 	RRecordsCPS.reserve(MAX_RECORDS);
 	LRecordsCPS.reserve(MAX_RECORDS);
 
-	while (!GCExit)
+	while (!IsGCExit)
 	{
 		// 统计实际人类点击的CPS，忽略连点器
 		if (GetKeyClick(Click::Left, true))

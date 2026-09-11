@@ -392,7 +392,6 @@ static void Cleanup()
     FreeFrames();
 }
 
-// 启动动画窗口（替换原先的 RenerStartupAnimation）
 static int RenerStartupAnimation(HINSTANCE hInstance)
 {
     CoInitialize(nullptr);
@@ -551,14 +550,14 @@ void WindowCloseAnimate(HWND Hwnd, POINT pos, float speed)
 
 DWORD WINAPI LoadAnimationThread(LPVOID lpParam)
 {
-    while (!IsCreateWindowSussce)
-        Sleep(1);
 #ifdef  GC_NO_ANIMATION
     ShowWindow(GCHWND, SW_SHOWDEFAULT);
     return 0;
 #endif // GC_NO_ANIMATION
-    Starting = true;
     RenerStartupAnimation(GCInstance);
+
+	while (!IsCreatedWindow)
+		Sleep(10);
 
     ShowWindow(GCHWND, SW_SHOWDEFAULT);
 

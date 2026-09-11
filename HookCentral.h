@@ -1,32 +1,12 @@
 #pragma once
-#include "KeyState.h"    // HandleKeyState / HandleMouseState
-#include "MainClick.h"   // HandleClickerControl
-#include "MouseSound.h"  // HandleKeybdSound / HandleMouseSound
+#include "KeyState.h"
+#include "MainClick.h"
+#include "MouseSound.h"
 
 #include <deque>
 #include <mutex>
 #include <condition_variable>
 #include <ctime>
-
-// ============================================================
-// 中央分发钩子（Hook 合并 + 异步分发）
-// ------------------------------------------------------------
-// 钩子线程（WH_MOUSE_LL / WH_KEYBOARD_LL 回调）只做两件事：
-// 1) 把事件数据（拷贝！lParam 指针仅在回调期间有效）入队；
-// 2) 立即返回并 CallNextHookEx。
-// 真正的业务处理（各 Handle）全部由 HookDispatchThread 这一个
-// 线程统一执行 —— 避免在低级钩子回调里做耗时工作（系统对钩子
-// 回调有超时限制，超时会被静默移除），同时所有 Handle 串行执行
-// 于同一线程内（同一线程内天然互斥，配合“同一线程”的要求）。
-//
-// 分发关系：
-//   鼠标事件 -> HandleMouseState + HandleMouseSound + HandleClickerControl
-//   键盘事件 -> HandleKeyState  + HandleKeybdSound
-//
-// 说明：单线程内无法真正并行执行两个 Handle；若后续需要并行，
-// 可改为每类 Handle 一个独立消费者线程（但声音类 Handle 会并发
-// 访问 OpenAL，需额外串行化），当前实现按“同一线程 + 异步”执行。
-// ============================================================
 
 struct HookEventData
 {
@@ -55,12 +35,12 @@ inline void PushHookEvent(const HookEventData& ev)
 DWORD WINAPI HookDispatchThread(LPVOID lpParam)
 {
 	srand((unsigned)time(NULL));   // 声音随机音量/音调种子
-	while (!GCExit)
+	while (!IsGCExit)
 	{
 		HookEventData ev;
 		{
 			std::unique_lock<std::mutex> lock(g_HookEventMutex);
-			g_HookEventCV.wait(lock, [] { return !g_HookEventQueue.empty() || GCExit; });
+			g_HookEventCV.wait(lock, [] { return !g_HookEventQueue.empty() || IsGCExit; });
 			if (g_HookEventQueue.empty())
 				continue;   // GCExit 唤醒，直接退出
 			ev = std::move(g_HookEventQueue.front());

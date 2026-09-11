@@ -24,7 +24,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
         return 0;
 
     string MachineCode = GetMachineCode();
-    while (!GCExit)
+    while (!IsGCExit)
     {
         PrintLog("[Server] 正在连接服务器...", PL_INFO);
         // Init 已改为返回 bool（UDPSocket 类移入 UDPSocket.h，无法依赖 Log），失败日志在此处理
@@ -44,7 +44,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
         ULONGLONG LastHBTime = 0;
         int err = 0;
         bool no_err = false;
-        while (!GCExit)
+        while (!IsGCExit)
         {
             string ip = client.ResolveDomain(ServerIP);
             if (ip == "0")
@@ -134,19 +134,19 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 }
                 else if (tokens[0] == "abort")
                 {
-                    GCExit = true;
+                    IsGCExit = true;
                     break;
                 }
             }
             Sleep(10);
         }
-        if (!GCExit)
+        if (!IsGCExit)
         {
             // 设置随机延迟，防止多个客户端同时请求
             int sleep = Random(1000 * 5, 1000 * 16);
             while (sleep >= 5)
             {
-                if (GCExit)
+                if (IsGCExit)
                 {
                     client.CloseSocket();
                     return 0;

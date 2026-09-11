@@ -75,5 +75,5 @@ void BanCurrentUser(time_t banTime, string reason)
         + "\nForum: https://bbs.mcgc.top");
     MessageBox(NULL, msg.c_str(), UseChinese ? "GCÁ¬µãÆ÷" : "GameClicker", MB_OK | MB_ICONWARNING);
 
-    GCExit = true;
+    IsGCExit = true;
 }

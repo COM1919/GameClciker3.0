@@ -3,8 +3,6 @@
 #include "StartAnim.h"
 #include "Tray.h"
 #include "GetInfo.h"
-#include "Driver.h"
-#include "GameGui.h"
 #include "ScriptEditor.h"
 #include <ctime>
 #include "HookCentral.h"   // 中央分发钩子（4 个低级钩子合并为键盘/鼠标各 1 个）
@@ -159,6 +157,8 @@ int StartUpGC(HINSTANCE hInstance)
     //===============================结束===============================
     client.Send("exit");
     PrintLog("[Render] 释放GUI", PL_INFO);
+    // 先关闭脚本线程, 避免其仍在用 D3D 加载纹理(LoadTextureFromFile)时 ReleasGui 释放设备
+    CloseAllLua();
     ReleasGui(wcex, &MainGuiData);
 
     PrintLog("[Render] 释放Dx11", PL_INFO);
@@ -169,7 +169,6 @@ int StartUpGC(HINSTANCE hInstance)
 
     Shell_NotifyIcon(NIM_DELETE, &TrayNid);
     DeleteFile(ExitFlagFile.c_str());
-    CloseAllLua();
 
     // 关闭互斥量
     if (AntiMultiOpenMutex)
@@ -218,7 +217,7 @@ retry:
         colors[u8"重试"] = GuiColor[ImGuiCol_Button];
         if (RenderMessageBoxEx(config.UseChinese ? "无法设置全局钩子（HOOK），这会导致部分功能无法使用。" : 
             "Cannot set global hook.\nSome functions may not work!", config.UseChinese ? "错误" : "Error", 
-            button, colors, true) == IDRETRY);
+            button, colors, true) == IDRETRY)
         {
             IsRetry = true;
             goto retry;
@@ -238,7 +237,7 @@ retry:
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        if (GCExit)
+        if (IsGCExit)
             break;
     }
 
@@ -254,23 +253,23 @@ void ScrollAnim::HandleScrolling()
     ImGuiIO& io = ImGui::GetIO();
     // 处理垂直滚动
     float scroll_now_y = 0.0f;
-    if (fabs(ScrollAnim::EnergyY) > 0.001f)
+    if (fabs(ScrollAnim::EnergyY.load()) > 0.001f)
     {
-        scroll_now_y = ScrollAnim::EnergyY * io.DeltaTime * ScrollAnim::SMOOTHING;
-        ScrollAnim::EnergyY -= scroll_now_y;
+        scroll_now_y = ScrollAnim::EnergyY.load() * io.DeltaTime * ScrollAnim::SMOOTHING;
+        ScrollAnim::AddEnergy(ScrollAnim::EnergyY, -scroll_now_y);
     }
     else
-        ScrollAnim::EnergyY = 0.0f;
+        ScrollAnim::EnergyY.store(0.0f);
 
     // 处理水平滚动（如果有）
     float scroll_now_x = 0.0f;
-    if (fabs(ScrollAnim::EnergyX) > 0.001f)
+    if (fabs(ScrollAnim::EnergyX.load()) > 0.001f)
     {
-        scroll_now_x = ScrollAnim::EnergyX * io.DeltaTime * ScrollAnim::SMOOTHING;
-        ScrollAnim::EnergyX -= scroll_now_x;
+        scroll_now_x = ScrollAnim::EnergyX.load() * io.DeltaTime * ScrollAnim::SMOOTHING;
+        ScrollAnim::AddEnergy(ScrollAnim::EnergyX, -scroll_now_x);
     }
     else
-        ScrollAnim::EnergyX = 0.0f;
+        ScrollAnim::EnergyX.store(0.0f);
 
     // 将平滑值赋给 IO（注意符号：ImGui 的正方向与 Win32 可能相反）
     io.MouseWheel = scroll_now_y / 2.0f;   // 垂直（除以2来减少滑动距离）
@@ -320,10 +319,54 @@ int GCMainLoop()
     if (_access(Tmp_TempPath.c_str(), 0) != 0)
         CreateDirectory(Tmp_TempPath.c_str(), NULL);
 
-    CreateThreadSafe(WindowProcessMessagesThread, NULL, 0, "WindowProcessMessagesThread");
+    //===============================创建窗口===============================
+    {
+        HICON hIcon = LoadIcon(GCInstance, MAKEINTRESOURCE(GC_ICON));
+        wcex.cbSize = sizeof(WNDCLASSEX);
+        wcex.style = CS_HREDRAW | CS_VREDRAW;
+        wcex.lpfnWndProc = WndProc;
+        wcex.cbClsExtra = 0;
+        wcex.cbWndExtra = 0;
+        wcex.hInstance = GCInstance;
+        wcex.hIcon = hIcon;
+        wcex.hCursor = nullptr;
+        wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wcex.lpszMenuName = NULL;
+        wcex.lpszClassName = "  ";
+        wcex.hIconSm = hIcon;
 
-    while (!IsCreateWindowSussce)
-        Sleep(1);
+        WindowWidth = IsFirstRun ? 600 : 800;
+        WindowHeight = IsFirstRun ? 400 : 500;
+        {
+            RegisterClassEx(&wcex);
+            GCHWND = CreateWindow(wcex.lpszClassName,
+                "   ", WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_CAPTION & WS_POPUP /* & WS_EX_LAYERED*/ & WS_EX_ACCEPTFILES,
+                (ScreenWidth - WindowWidth) / 2, ScreenHeigth + 40, WindowWidth, WindowHeight,
+                NULL, NULL, wcex.hInstance, NULL);
+
+            LONG_PTR Style = GetWindowLongPtr(GCHWND, GWL_STYLE);
+            Style = Style & ~WS_CAPTION & ~WS_SYSMENU & ~WS_SIZEBOX;
+            SetWindowLongPtr(GCHWND, GWL_STYLE, Style);
+
+            //SetRoundRectRgn(GCHWND, SizeX, SizeY, 24);
+            SetWindowDisplayAffinity(GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+            //SetLayeredWindowAttributes(GCHWND, 0, round(255 * WindowAlpha), LWA_ALPHA);
+
+            // 使用DWM扩展帧实现玻璃效果
+            /*
+            DwmEnableComposition(DWM_EC_ENABLECOMPOSITION);
+            MARGINS margins = { -1 };
+            DwmExtendFrameIntoClientArea(GCHWND, &margins);
+            UINT attribute = DWMSBT_TRANSIENTWINDOW;
+            DwmSetWindowAttribute(GCHWND, DWMWA_SYSTEMBACKDROP_TYPE, &attribute, sizeof(attribute));
+            DwmSetWindowAttribute(GCHWND, DWMWA_WINDOW_CORNER_PREFERENCE, &attribute, sizeof(attribute));
+            */
+
+            ShowWindow(GCHWND, SW_HIDE);
+            UpdateWindow(GCHWND);
+            PrintLog("[Render]创建窗口成功！", PL_INFO);
+        }
+    }
 
     if (!CreateDeviceD3D(GCHWND))
     {
@@ -359,9 +402,42 @@ int GCMainLoop()
     int RenderSleepCount = 0;
     const int SleepFps = round(1000 / RenderFps);
     PrintLog("[Render] 开始渲染UI", PL_INFO);
-    while (!GCExit)
+    while (!IsGCExit)
     {
         LastTime = clock();
+        //===============================消息处理===============================
+        MSG msg;
+        while (GetMessage(&msg, NULL, 0, 0))
+        {
+            bool IsClicker = IsClickering.right || IsClickering.left;
+            switch (msg.message)
+            {
+            case WM_LBUTTONUP:
+            case WM_LBUTTONDOWN:
+            {
+                if (IsClicker && config.LClickerMode & C_MOUSESMODE && config.LClickerMode & C_ASSISTMODE)
+                    continue;
+                break;
+            }
+            case WM_RBUTTONUP:
+            case WM_RBUTTONDOWN:
+            {
+                if (IsClicker && config.RClickerMode & C_MOUSESMODE && config.RClickerMode & C_ASSISTMODE)
+                    continue;
+                break;
+            }
+            }
+
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+
+            if (IsGCExit)
+            {
+                PrintLog("[Render]消息循环线程退出", PL_INFO);
+                break;
+            }
+        }
+
         //===============================处理暂停渲染逻辑===============================
         bool IsWindowTopmost = (GetWindowLongPtr(GCHWND, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
         // 当程序最小化时，不渲染UI
@@ -376,29 +452,26 @@ int GCMainLoop()
                 LastTime = GetTickCount64();
             }
         }
-        if (!Starting)
+        if ((!IsShowGui || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
         {
-            if ((!ShowGui || IsMinWindows || IsCoveredWindows) && !IsWindowTopmost)
+            if (!RenderStoped)
+                RenderStoped = true;
+            if (RenderSleepCount >= 0)
             {
-                if (!RenderStoped)
-                    RenderStoped = true;
-                if (RenderSleepCount >= 0)
+                RenderSleepCount++;
+                if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
                 {
-                    RenderSleepCount++;
-                    if (RenderSleepCount > (1000 * 6) / 20) // 超过6秒不使用UI，就优化内存使用
-                    {
-                        ClearProcessMemory();
-                        RenderSleepCount = -1;
-                    }
+                    ClearProcessMemory();
+                    RenderSleepCount = -1;
                 }
-                Sleep(20);
-                continue;
             }
-            else if (RenderSleepCount != 0)
-                RenderSleepCount = 0;
-            else if (RenderStoped)
-                RenderStoped = false;
+            Sleep(20);
+            continue;
         }
+        else if (RenderSleepCount != 0)
+            RenderSleepCount = 0;
+        else if (RenderStoped)
+            RenderStoped = false;
         MainGuiData.SwapChainOccluded = false;
         //===============================处理其他渲染逻辑===============================
         // 处理窗口大小调整（我们不直接在WM_SIZE处理程序中调整大小）
@@ -424,8 +497,8 @@ int GCMainLoop()
             if (state == 1)
             {
                 IsFirstRun = false;
-                ReloadClicker = true;
-                StopClicker = false;
+                IsReloadClicker = true;
+                IsStopClicker = false;
 
                 SetWindowText(GCHWND, "  ");
                 // 设置窗口大小
@@ -442,7 +515,7 @@ int GCMainLoop()
                 IsNeedReshowAgreement = false; // 不再显示Agreement
             }
             else if (state == -1)
-                GCExit = true;
+                IsGCExit = true;
         }
         else
             RenderGui(io);
@@ -577,10 +650,9 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     // 修复：已安装列表恢复必须在 AvaiableScripts 填充之后（原逻辑在 LoadConfig 中因列表为空被跳过）
     RestoreInstalledScripts();
 
-    while (!IsCreateWindowSussce)
-        Sleep(2);
-    
     {
+        while (!IsCreatedWindow)
+            Sleep(50);
         lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
             InitSuccessTime = GetNowMs();
@@ -591,7 +663,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
 
 DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 {
-    while (!GCExit)
+    while (!IsGCExit)
     {
         // 修复：原代码无锁 push_back/erase，与主渲染线程的 back()/copy 并发时，
         // vector 扩容/缩容导致迭代与访问已释放内存 -> 0xC0000005。写入统一加写锁。
@@ -628,8 +700,8 @@ void RenderGui(ImGuiIO& io)
         // 持写锁重建：所有高频消费 config 的后台线程此时在循环体入口的读锁处被挡住，
         // 保证析构+原地构造期间没有任何后台线程读到 config 内部的 string/vector 成员。
         lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
-        StopClicker = true;
-        ReloadClicker = true; // 连点线程重载时会重新读取新配置
+        IsStopClicker = true;
+        IsReloadClicker = true; // 连点线程重载时会重新读取新配置
         config.~Config();     // 析构
         new (&config) Config(); // 原地构造
         RenderTip(config.UseChinese ? u8"重置成功" : "Reset success", 1.5f, PT_INFO);
@@ -650,9 +722,6 @@ void RenderGui(ImGuiIO& io)
         IsInit = true;
     }
 
-    if (IsKeyPressed(ImGuiKey_F3))
-        DebugInfo = !DebugInfo;
-
     //if (pb_message.open)
     //{
     //    RenderControl();
@@ -660,17 +729,21 @@ void RenderGui(ImGuiIO& io)
     //}
 
     if (IsKeyPressed(ImGuiKey_LeftCtrl) && IsKeyPressed(ImGuiKey_S))
-        ReloadClicker = true;
+        IsReloadClicker = true;
 
     PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Style.WindowPadding.x, 8));
     static const string label = StringToUTF8("       " + title).c_str();
-    Begin(label.c_str(), &ShowGui,
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoScrollWithMouse |
-        ImGuiWindowFlags_NoMove);
+
+    bool IsShowGuiCopy = IsShowGui.load(memory_order_relaxed);
+
+    Begin(label.c_str(), &IsShowGuiCopy,
+        ImGuiWindowFlags_NoResize |  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove);
+
+    // 把变化写回 atomic
+    if (IsShowGuiCopy != IsShowGui.load(memory_order_relaxed))
+        IsShowGui.store(IsShowGuiCopy, memory_order_relaxed);
+
     SetWindowSize({ 800, 500 });
     SetWindowPos({ 0, 0 });
     PopStyleVar();
@@ -727,11 +800,11 @@ void RenderGui(ImGuiIO& io)
         draw_list->AddRectFilled(ImVec2(0, 0), ImVec2(WindowWidth, WindowHeight), GetColorU32(ImVec4(0, 0, 0, BgImageAlpha)));
     }
     
-    static bool ShowGui_Backup = ShowGui;
-    if (ShowGui_Backup != ShowGui)
+    static bool IsShowGui_Backup = IsShowGui;
+    if (IsShowGui_Backup != IsShowGui)
     {
-        ShowWindow(GCHWND, ShowGui);
-        if (ShowGui)
+        ShowWindow(GCHWND, IsShowGui);
+        if (IsShowGui)
             SetForegroundWindow(GCHWND);
     }
 
@@ -862,13 +935,19 @@ void RenderGui(ImGuiIO& io)
         rect.Translate(ImVec2(RectSize.x + 20, 0));
     }
 
-    if (DebugInfo)
     {
-        SetCursorPos({ RectPos.x, RectPos.y + 16 });
-        Text("%.1f FPS", io.Framerate);
+        static bool IsShowDebugInfo = false;
+        if (IsKeyPressed(ImGuiKey_F3))
+            IsShowDebugInfo = !IsShowDebugInfo;
+
+        if (IsShowDebugInfo)
         {
-            shared_lock<shared_mutex> lock(HumanCPSMutex);
-            Text("Human:%d|%d", HumanCPS.left, HumanCPS.right);
+            SetCursorPos({ RectPos.x, RectPos.y + 16 });
+            Text("%.1f FPS", io.Framerate);
+            {
+                shared_lock<shared_mutex> lock(HumanCPSMutex);
+                Text("Human:%d|%d", HumanCPS.left, HumanCPS.right);
+            }
         }
     }
 
@@ -995,10 +1074,18 @@ void RenderGui(ImGuiIO& io)
                 SameLine();
 
                 RecordsCPSMutex.lock();
-                auto rtemp = max_element(RRecordsCPS.begin(), RRecordsCPS.end());
-                int Rmax = static_cast<int>(*rtemp);
-                auto ltemp = max_element(LRecordsCPS.begin(), LRecordsCPS.end());
-                int Lmax = static_cast<int>(*ltemp);
+                int Rmax = 0;
+                int Lmax = 0;
+                if (!RRecordsCPS.empty())
+                {
+                    auto rtemp = max_element(RRecordsCPS.begin(), RRecordsCPS.end());
+                    Rmax = static_cast<int>(*rtemp);
+                }
+                if (!LRecordsCPS.empty())
+                {
+                    auto ltemp = max_element(LRecordsCPS.begin(), LRecordsCPS.end());
+                    Lmax = static_cast<int>(*ltemp);
+                }
                 RecordsCPSMutex.unlock();
 
                 const float PosX2 = GetCursorPosX();
@@ -1012,11 +1099,11 @@ void RenderGui(ImGuiIO& io)
                 // 修复：读取端加读锁，避免与 RecordsPCRate 线程的 push_back/erase 并发（vector realloc → 悬垂访问）
                 shared_lock<shared_mutex> perfLock(PerformanceMutex);
                 {
-                    DrawRoundProgressBar(config.UseChinese ? u8"CPU" : "CPU", CpuRates.back(), ImVec2(150, 160), ImVec4(0.22f, 0.50f, 0.88f, 1.0f));
+                    DrawRoundProgressBar(config.UseChinese ? u8"CPU" : "CPU", (CpuRates.empty() ? 0.0f : CpuRates.back()), ImVec2(150, 160), ImVec4(0.22f, 0.50f, 0.88f, 1.0f));
                     SameLine();
-                    DrawRoundProgressBar(config.UseChinese ? u8"GPU" : "GPU", GpuRates.back(), ImVec2(150, 160), ImVec4(0.20f, 0.76f, 0.58f, 1.0f));
+                    DrawRoundProgressBar(config.UseChinese ? u8"GPU" : "GPU", (GpuRates.empty() ? 0.0f : GpuRates.back()), ImVec2(150, 160), ImVec4(0.20f, 0.76f, 0.58f, 1.0f));
                     SameLine();
-                    DrawRoundProgressBar(config.UseChinese ? u8"内存" : "Memory", MemRates.back(), ImVec2(150, 160), ImVec4(0.98f, 0.62f, 0.15f, 1.0f));
+                    DrawRoundProgressBar(config.UseChinese ? u8"内存" : "Memory", (MemRates.empty() ? 0.0f : MemRates.back()), ImVec2(150, 160), ImVec4(0.98f, 0.62f, 0.15f, 1.0f));
 
                     //-----------------------CPU/GPU---------------------------
 
@@ -1248,7 +1335,7 @@ void RenderGui(ImGuiIO& io)
             const ImVec2 Pos2 = GetCursorPos();
             SetCursorPos(ImVec2(Pos.x + 500, Pos.y + 10));
             if (Button(config.UseChinese ? u8"保存设置" : "Save", ImVec2(80, 40)))
-                ReloadClicker = true;
+                IsReloadClicker = true;
             SameLine();
             if (Button(config.UseChinese ? u8"重置配置" : "Reset", ImVec2(80, 40)))
             {
@@ -1465,7 +1552,7 @@ void RenderGui(ImGuiIO& io)
                                     config.CPSWaves.left = WaveList.left;
                                     config.CPSWaves.right = WaveList.right;
                                     IsCPSWaveSettingChanged = true;
-                                    ReloadClicker = true; // 重载配置 / 保存配置
+                                    IsReloadClicker = true; // 重载配置 / 保存配置
                                 }
                             }
 
@@ -2163,19 +2250,19 @@ void RenderGui(ImGuiIO& io)
                 {
                     static string InfoText = config.UseChinese ? u8"未读取" : "Unread";
                     static ImVec4 color;
-                    static bool Starting = false;
+                    static bool IsStarting = false;
                     static string GameWindowTitle = config.UseChinese ? u8"未知" : "Unknow";
-                    BeginDisabled(Starting);
+                    BeginDisabled(IsStarting);
                     {
                         if (Button(config.UseChinese ? u8"获取" : "Choice", ImVec2(100, 40)))
                         {
                             GettingGameState = -1;
-                            Starting = true;
+                            IsStarting = true;
 
                             thread GetHwndThread([]()
                                 {
                                     PrintLog("[Render]等待用户选择游戏窗口...", PL_INFO);
-                                    while (!GCExit)
+                                    while (!IsGCExit)
                                     {
                                         HWND FoundHwnd = GetForegroundWindow();
                                         HWND DesktopHwnd = GetDesktopWindow();
@@ -2203,7 +2290,7 @@ void RenderGui(ImGuiIO& io)
                     {
                         InfoText = config.UseChinese ? u8"获取成功" : "Get success";
                         color = (ImVec4)ImColor(149, 219, 125, 255);
-                        Starting = false;
+                        IsStarting = false;
 
                         char buf[MAX_BUF];
                         if (GetWindowText(GameHwnd, buf, MAX_BUF))
@@ -2217,17 +2304,17 @@ void RenderGui(ImGuiIO& io)
                     {
                         InfoText = config.UseChinese ? u8"获取失败" : "Get failed";
                         color = (ImVec4)ImColor(252, 62, 54, 255);
-                        Starting = false;
+                        IsStarting = false;
                         GettingGameState = -1;
                         GameHwnd = 0;
                     }
-                    else if (Starting)
+                    else if (IsStarting)
                     {
                         InfoText = config.UseChinese ? u8"正在获取中，请点击游戏窗口。" : "Getting, please click the game window.";
                         color = (ImVec4)ImColor(255, 214, 143, 255);
                     }
 
-                    if (GameGuiError)
+                    if (IsGameGuiError)
                     {
                         InfoText = config.UseChinese ? u8"无法在该窗口创建GUI" : "Cannot create GUI in this window";
                         color = (ImVec4)ImColor(252, 62, 54, 255);
@@ -5300,7 +5387,7 @@ void RenderGui(ImGuiIO& io)
         Toggle(config.UseChinese ? u8"我已阅读并同意用户协议" : "I have read and agree to the user agreement", &IsCheck, ToggleFlags);
 
         if (Button(config.UseChinese ? u8"不同意" : "Decline", ImVec2(70, 40)))
-            GCExit = true;
+            IsGCExit = true;
         SameLine();
         BeginDisabled(!IsCheck);
         {

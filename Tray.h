@@ -41,7 +41,7 @@ DWORD WINAPI CreateTrayIcon(LPVOID lpParam)
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        if (GCExit)
+        if (IsGCExit)
             break;
     }
     return 0;
@@ -108,7 +108,7 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
                     {
                         case MENU_EXIT:
                         {
-                            GCExit = true;
+                            IsGCExit = true;
                             break;
                         }
                         case MENU_SHOW:
