@@ -298,33 +298,30 @@ public:
     bool UseItembarSwitch = false;          //物品栏开关
     bool UseHumanOnlyTrigger = false;       //仅限人类触发连点器
 }config;
-// 修复：config 重建标记。原代码在 detach 线程中执行 config.~Config() + placement new，
+// config 重建标记。原代码在 detach 线程中执行 config.~Config() + placement new，
 // 与其他线程并发读写 config 各字段 -> 对象生命周期中断（0xC0000005）。
 // 改为后台线程只做用户确认，确认后置位此标记，由主渲染线程在帧边界执行重建。
 atomic<bool> IsNeedResetConfig = false;
-// 修复：config 访问互斥锁。重置时主线程持写锁重建 config，
-// 高频消费 config 的后台线程（ClickerControl/连点线程/声音线程）在循环体内持读锁，
-// 保证重建瞬间没有任何后台线程在读取 config 的 string/vector 成员（对象析构期间的并发读是 0xC0000005 来源）。
 shared_mutex ConfigAccessMutex;
 
 //--------------------个性化设置------------------------------
-int BgOffsetX = 0;                      //背景偏移X
-int BgOffsetY = 0;                      //背景偏移Y
-int BgScale = 100;                      //背景缩放百分比
-int BgLightness = 75;                   //背景亮度百分比
-int GuiItemAlpha = 40;                  //控件的透明度百分比（仅有背景图片时才能使用）
-bool BgAutoResize = true;               //自动调整背景大小
+int BgOffsetX = 0;                          //背景偏移X
+int BgOffsetY = 0;                          //背景偏移Y
+int BgScale = 100;                          //背景缩放百分比
+int BgLightness = 75;                       //背景亮度百分比
+int GuiItemAlpha = 40;                      //控件的透明度百分比（仅有背景图片时才能使用）
+bool BgAutoResize = true;                   //自动调整背景大小
 
-static const array<const char*, 2> RandomDistList = {
+inline const array<const char*, 2> RandomDistList = {
     (config.UseChinese ? u8"均匀整数分布"       : "Uniform Int Distribution"    ),
     (config.UseChinese ? u8"二项分布"           : "Binomial Distribution"       )
 };
-static const array<const char*, 3> BoolRandomDistList = {
+inline const array<const char*, 3> BoolRandomDistList = {
     (config.UseChinese ? u8"Bool类型分布"       : "Bernoulli Distribution"      ),
     (config.UseChinese ? u8"均匀整数分布"       : "Uniform Int Distribution"    ),
     (config.UseChinese ? u8"二项分布"           : "Binomial Distribution"       )
 };
-static const array<const char*, 3> RandomBoolModeList = {
+inline const array<const char*, 3> RandomBoolModeList = {
     (config.UseChinese ? u8"普通随机：使用自定义随机分布" : "Normal: Use custom random dist"                            ),
     (config.UseChinese ? u8"疲劳效应：随时间推移失误率上升" : "Fatigue: error rate increases over time"                 ),
     (config.UseChinese ? u8"仿生幽灵：疲劳、手抖、马尔可夫纠错" : "Ghost: Fatigue / Hand Shaking / Markov Error Correction" )
@@ -344,13 +341,12 @@ vector<vector<float>> ScriptCpuRates;   //脚本CPU占用率记录
 
 mutex RecordsCPSMutex;                  //RRecordsCPS/LRecordsCPS 的互斥锁
 
-
 shared_mutex PerformanceMutex;          //CpuRates/GpuRates/MemRates 的互斥锁（RecordsPCRate 线程写、主渲染线程读）
 atomic<bool> ThreadExitFlag(false);     //线程退出标志
 
-const vector<string> ScriptRestrictedFuncs = {
-        "SetClipboardText", "GetClipboardText",
-        "SimulatedInputText", "SetCursorPos"
+constexpr array<const char*, 4> ScriptRestrictedFuncs = {
+    "SetClipboardText", "GetClipboardText",
+    "SimulatedInputText", "SetCursorPos"
 };
 
 struct ScriptInfo
@@ -395,13 +391,13 @@ map<string, ScriptState> ScriptStates;  //脚本相关状态控制
 shared_mutex SponsorListMutex;
 vector<string> SponsorList;             //赞助列表
 
-const string version = "3.55";          //版本号
-string title = "GAMECLICKER 3.55";      //标题名字
-const int ConfigVersion = 5;            //配置文件版本号
-const int AgreementVersion = 8;         //协议文件版本号
+const string version = "3.56";          //版本号
+string title = "GAMECLICKER 3.56";      //标题名字
+constexpr int ConfigVersion = 5;        //配置文件版本号
+constexpr int AgreementVersion = 8;     //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
 
-const int RenderFps = 60;               //渲染帧率
+inline const int RenderFps = 60;        //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
 //#define GC_NO_HOOK                    //是否禁用HOOK
@@ -453,99 +449,79 @@ const string WorkPath = []() -> string {
 }();
 #endif // GC_USE_D_DRIVE
 
-const string FontFile =           "C:\\Windows\\Fonts\\msyhbd.ttc";
-const string ConfigPath =         WorkPath + "\\GameClicker";
-const string ConfigFile =         WorkPath + "\\GameClicker\\settings.ini";
-const string CustomConfigFile =   WorkPath + "\\GameClicker\\custom.ini";
-const string QQNumFile =          WorkPath + "\\GameClicker\\RunData";
-const string DownloadName =       config.UseChinese ? "GC连点器" : "GC Auto Click";
-const string DownloadPath =       WorkPath + "\\GameClicker\\GCDownloadFile";
-const string ConfigDownloadFile = WorkPath + "\\GameClicker\\GCDownloadFile\\Version.txt";
-const string ZipFileName =        WorkPath + "\\GameClicker\\GCDownloadFile\\gc.zip";
-const string IniFileVeision =     WorkPath + "\\GameClicker\\Version.dat";
-const string TempFile =           WorkPath + "\\GameClicker\\GCDownloadFile\\temp.dat";
-const string GCFollowBatFile =    WorkPath + "\\GameClicker\\GC Follow.bat";
-const string GameGuiFile =        "GameGui.exe";
-const string StatsRegPath =       "Software\\GameClicker\\Stats";
+inline const string FontFile =           "C:\\Windows\\Fonts\\msyhbd.ttc";
+inline const string ConfigPath =         WorkPath + "\\GameClicker";
+inline const string ConfigFile =         WorkPath + "\\GameClicker\\settings.ini";
+inline const string CustomConfigFile =   WorkPath + "\\GameClicker\\custom.ini";
+inline const string IniFileVeision =     WorkPath + "\\GameClicker\\Version.dat";
+inline const string StatsRegPath =       "Software\\GameClicker\\Stats";
 
-const string SoundPath =          "sound";
-const string Sound_Noise =        "sound\\noise.wav";
-const string Sound_MousePath =    "sound\\mouse";
-const string Sound_Enable =       "sound\\func\\enable.wav";
-const string Sound_Disable =      "sound\\func\\disable.wav";
-const string Sound_Warning =      "sound\\func\\warning.wav";
-const string Sound_CfgPath =      WorkPath + "\\GameClicker\\sound";
-const string Sound_KeybdPath =    WorkPath + "\\GameClicker\\sound\\keys";
+inline const string SoundPath =          "sound";
+inline const string Sound_Noise =        "sound\\noise.wav";
+inline const string Sound_MousePath =    "sound\\mouse";
+inline const string Sound_Enable =       "sound\\func\\enable.wav";
+inline const string Sound_Disable =      "sound\\func\\disable.wav";
+inline const string Sound_Warning =      "sound\\func\\warning.wav";
+inline const string Sound_CfgPath =      WorkPath + "\\GameClicker\\sound";
+inline const string Sound_KeybdPath =    WorkPath + "\\GameClicker\\sound\\keys";
+inline const string Tmp_KeySounds =      WorkPath + "\\GameClicker\\Temp\\KeySounds.zip";
 
-const string Tmp_TempPath =       WorkPath + "\\GameClicker\\Temp";
-const string Tmp_Ad =             WorkPath + "\\GameClicker\\Temp\\AdImage.dat";
-const string Tmp_MCServer =       WorkPath + "\\GameClicker\\Temp\\mcserver%d.json";
-const string Tmp_KeySounds =      WorkPath + "\\GameClicker\\Temp\\KeySounds.zip";
+inline const string PicsPath =           "res\\pics";
+inline const string Pics_Selected =      "res\\pics\\selected.png";
+inline const string Pics_Itembar =       "res\\pics\\itembar.png";
+inline const string Pics_Background =    WorkPath + "\\GameClicker\\bg.gcbg";
+inline const string Pics_GCLogo =        "res\\pics\\Logo.png";
+inline const string Pics_About =         "res\\pics\\ico\\About.png";
+inline const string Pics_Setting =       "res\\pics\\ico\\Setting.png";
+inline const string Pics_Home =          "res\\pics\\ico\\Home.png";
+inline const string Pics_Script =        "res\\pics\\ico\\Script.png";
+inline const string Pics_Info =          "res\\pics\\ico\\Info.png";
+inline const string Pics_Delete =        "res\\pics\\ico\\Delete.png";
+inline const string Pics_Add =           "res\\pics\\ico\\Add.png";
+inline const string Pics_Other =         "res\\pics\\ico\\Other.png";
+inline const string Pics_Refresh =       "res\\pics\\ico\\Refresh.png";
+inline const string Pics_FunSetting =    "res\\pics\\ico\\FunSetting.png";
+inline const string Pics_GCIcon =        "res\\pics\\ico\\GCIcon.png";
+inline const string Pics_ClearCache =    "res\\pics\\ico\\ClearCache.png";
+inline const string Pics_TipInfo =       "res\\pics\\ico\\TipInfo.png";
+inline const string Pics_TipError =      "res\\pics\\ico\\TipError.png";
+inline const string Pics_TipWarning =    "res\\pics\\ico\\TipWarning.png";
+inline const string Pics_Empyt =         "res\\pics\\ico\\Empyt.png";
+inline const string Pics_Book =          "res\\pics\\ico\\Book.png";
+inline const string Pics_Download =      "res\\pics\\ico\\Download.png";
+inline const string Pics_Run =           "res\\pics\\ico\\run.png";
+inline const string Pics_Stop =          "res\\pics\\ico\\stop.png";
+inline const string Pics_GCTitle =       "res\\pics\\GCTitle.png";
 
-const string PicsPath =           "res\\pics";
-const string Pics_Selected =      "res\\pics\\selected.png";
-const string Pics_Itembar =       "res\\pics\\itembar.png";
-const string Pics_Background =    WorkPath + "\\GameClicker\\bg.gcbg";
-const string Pics_GCLogo =        "res\\pics\\Logo.png";
-const string Pics_About =         "res\\pics\\ico\\About.png";
-const string Pics_Setting =       "res\\pics\\ico\\Setting.png";
-const string Pics_Home =          "res\\pics\\ico\\Home.png";
-const string Pics_Script =        "res\\pics\\ico\\Script.png";
-const string Pics_Info =          "res\\pics\\ico\\Info.png";
-const string Pics_Delete =        "res\\pics\\ico\\Delete.png";
-const string Pics_Add =           "res\\pics\\ico\\Add.png";
-const string Pics_Other =         "res\\pics\\ico\\Other.png";
-const string Pics_Refresh =       "res\\pics\\ico\\Refresh.png";
-const string Pics_FunSetting =    "res\\pics\\ico\\FunSetting.png";
-const string Pics_GCIcon =        "res\\pics\\ico\\GCIcon.png";
-const string Pics_ClearCache =    "res\\pics\\ico\\ClearCache.png";
-const string Pics_TipInfo =       "res\\pics\\ico\\TipInfo.png";
-const string Pics_TipError =      "res\\pics\\ico\\TipError.png";
-const string Pics_TipWarning =    "res\\pics\\ico\\TipWarning.png";
-const string Pics_Empyt =         "res\\pics\\ico\\Empyt.png";
-const string Pics_Book =          "res\\pics\\ico\\Book.png";
-const string Pics_Download =      "res\\pics\\ico\\Download.png";
-const string Pics_Run =           "res\\pics\\ico\\run.png";
-const string Pics_Stop =          "res\\pics\\ico\\stop.png";
-const string Pics_GCTitle =       "res\\pics\\GCTitle.png";
+inline const string StartupMov =         "res\\startup.webp";
 
-const string StartupMov =         "res\\startup.webp";
+inline const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
+inline const string ScriptTestFile =     WorkPath + "\\GameClicker\\Script\\test.lua";
+inline const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
+inline const string ScriptIconTemp =     WorkPath + "\\GameClicker\\Script\\shop\\icons";
+inline const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";
+inline const string ScriptShopDir =      WorkPath + "\\GameClicker\\Script\\shop";
+inline const string ScriptShopTemp =     WorkPath + "\\GameClicker\\Script\\shop\\temp";
 
-const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
-const string ScriptTestFile =     WorkPath + "\\GameClicker\\Script\\test.lua";
-const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
-const string ScriptIconTemp =     WorkPath + "\\GameClicker\\Script\\shop\\icons";
-const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";
-const string ScriptShopDir =      WorkPath + "\\GameClicker\\Script\\shop";
-const string ScriptShopTemp =     WorkPath + "\\GameClicker\\Script\\shop\\temp";
+inline const string LogPath =            WorkPath + "\\GameClicker\\Logs";
+inline const string LogFile =            WorkPath + "\\GameClicker\\GC.log";
+inline const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
 
-const string LogPath =            WorkPath + "\\GameClicker\\Logs";
-const string LogFile =            WorkPath + "\\GameClicker\\GC.log";
-const string ShaderLogFile =      WorkPath + "\\GameClicker\\Shader.log";
-const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
-const string GameGuiLogFile =     WorkPath + "\\GameClicker\\GameGui.log";
+string NoticeStr = config.UseChinese ?
+u8R"(公告加载失败
+===============================================
+本软件 完 全 免 费 ！如果你是通过购买获得的GC连点器，请及时退款并举报。
+)" :
+R"(Notice loading failed
+===============================================
+This software is completely free! If you obtained the GameClicker through purchase, please refund and report it promptly.
+)";
 
-string NoticeStr = config.UseChinese ? 
-u8"\
-GC连点器3.0！全新的UI体验，更好的设置内容。\n\
-并且GC连点器官网也上线了，欢迎访问：https://bbs.mcgc.top\n\
-本软件 完 全 免 费 ！如果你是通过购买获得的GC连点器，请及时退款并举报。"
-:
-"The official version 3.0\n\
-A brand new UI experience with better content settings. \n\
-And the GC connector official website has also been launched. \n\
-Welcome to visit: https://bbs.mcgc.top \n\
-This software is completely free! \n\
-If you obtained the GC connector through purchase, \n\
-please refund and report it promptly. \n\
-GC developer: COM1919 and supports English now! \n\
-using machine translation. If there are any errors, \n\
-please feel free to provide feedback.";
 // 修复：NoticeStr 由 GetInfo 线程写入、主线程每帧读取显示（c_str()），无锁时写线程 realloc
 // 会令主线程持悬垂指针 → 0xC0000005。
 shared_mutex NoticeMutex;
 
-array<string, 48> DailyMottos = {
+inline const array<string, 48> DailyMottos = {
     config.UseChinese ? u8"&b数字世界是风景，现实生活才是家园。" : "&bDigital world is scenery, real life is home.",
     config.UseChinese ? u8"&b每一次专注学习，都是对未来的投资。" : "&bEach study session invests in your future.",
     config.UseChinese ? u8"&b真正的挑战在屏幕外，别逃避成长。" : "&bReal challenges are off-screen - don't avoid growth.",
@@ -641,21 +617,21 @@ UDPSocket client;                                       //UDP 客户端（全局，所有
 vector<string> MouseSoundList;                          //可用的鼠标声音列表
 vector<string> KeybdSoundList;                          //可用的键盘声音列表
 
-namespace Overheat
+namespace OverheatTimer
 {
-    float Timer = 0;                                    //过热保护计时器
-    float CooldownTimer = 0;                            //过热保护冷却计时器
+    float Heat = 0;                                     //过热保护计时器
+    float Cooldown = 0;                                 //过热保护冷却计时器
 }
 int UseServerOfType = -1;                               //使用的服务器的类型
 int ItemBarPos = 1;                                     //物品栏位置
 
 shared_mutex CurrentCPSMutex;
-shared_mutex HumanCPSMutex;
 LRPair<int> CurrentCPS = {};                            //总实际CPS
+shared_mutex HumanCPSMutex;
 LRPair<int> HumanCPS = {};                              //人类CPS
 
-const int ScreenWidth = GetSystemMetrics(SM_CXSCREEN);
-const int ScreenHeigth = GetSystemMetrics(SM_CYSCREEN);
+inline const int ScreenWidth = GetSystemMetrics(SM_CXSCREEN);
+inline const int ScreenHeigth = GetSystemMetrics(SM_CYSCREEN);
 int WindowWidth = 800;
 int WindowHeight = 500;
 
@@ -664,7 +640,7 @@ struct AppStaus
     LRPair<ULONGLONG> ClickerClickCount ;               //连点次数
     LRPair<ULONGLONG> MouseClickCount;                  //鼠标点击次数
     unsigned int StartCount = 0;                        //启动次数
-    long double UsageDuration = 0;                            //使用连点器的时长(小时)
+    long double  UsageDuration = 0;                     //使用连点器的时长(小时)
 } app_status;
 
 shared_mutex InitSuccessTimeMutex;
@@ -686,12 +662,12 @@ namespace MessageBoxMsg
 namespace ProgressBarMsg
 {
     shared_mutex Mtx;
-    string  TitleName;
-    int     ReturnCode = 0;
-    double  MaxSize = 0.0;
-    double  ReadSize = 0.0;
-    bool    IsOpen = false;
-    bool    IsUnzip = false;
+    string       TitleName;
+    int          ReturnCode = 0;
+    double       MaxSize = 0.0;
+    double       ReadSize = 0.0;
+    bool         IsOpen = false;
+    bool         IsUnzip = false;
 }
 
 shared_mutex PopTipMutex;
@@ -703,10 +679,10 @@ struct PopTipMsg
 };
 vector<PopTipMsg> pt_message;
 
-const string ServerIP = "server.mcgc.top";
-const int ServerPort = 25564;
+inline const string ServerIP = "server.mcgc.top";
+inline const int ServerPort = 25564;
 
-const string ASCIITitle = R"(
+inline const string ASCIITitle = R"(
    ______                        _________      __
   / ____/___ _____ ___  ___     / ____/ (_)____/ /_____  _____
  / / __/ __ `/ __ `__ \/ _ \   / /   / / / ___/ //_/ _ \/ ___/

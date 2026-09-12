@@ -58,6 +58,16 @@ unordered_map<string, array<ALuint, 256>> g_KeybdSoundSourceList;
 vector<ALuint> g_KeybdSoundBufferList; // 修复：原为 vector<ALuint*>，保存局部变量的地址（悬垂指针），改为存值
 array<ALuint, 256> g_CurrentKeybdSource;
 ALCcontext* g_pALContext = nullptr;
+
+// Hook thread (HandleMouseSound/KeybdSound) calls alcMakeContextCurrent(g_pALContext),
+// which makes the context current on the hook thread and sets NULL on ClickSound thread.
+// Call this on ClickSound thread before al* calls (after locking g_ALSoundMtx) to restore.
+inline void EnsureALContextCurrent()
+{
+	if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+		alcMakeContextCurrent(g_pALContext);
+}
+
 std::recursive_mutex g_ALSoundMtx;   // 序列化所有OpenAL上下文/源访问（挂钩线程与ClickSound线程）    保存全局 context
 
 atomic<bool> g_IsLoadedSounds = false;  //音效是否加载完成
@@ -85,8 +95,6 @@ inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam);   // 鼠标
 
 void DownloadKeybdSounds()
 {
-	if (_access(Tmp_TempPath.c_str(), 0) != 0)
-		CreateDirectory(Tmp_TempPath.c_str(), NULL);
 	if (_access(Sound_KeybdPath.c_str(), 0) != 0)
 		CreateDirectory(Sound_KeybdPath.c_str(), NULL);
 
@@ -131,7 +139,11 @@ void DownloadKeybdSounds()
 
 void LoadSounds()
 {
+	// Lock order: ConfigAccessMutex -> g_ALSoundMtx (same as ClickSound loop) to avoid deadlock,
+	// and protects config.MouseSoundType/KeybdSoundType writes during reload.
+	lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
 	lock_guard<recursive_mutex> alLock(g_ALSoundMtx);
+	EnsureALContextCurrent();
 	PrintLog("[Sound] 开始加载音频", PL_INFO);
 
 	vector<string> dirs;
@@ -601,13 +613,17 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 	ALFWInit();
 
-	PrintLog("[Sound]开始初始化OpenAL", PL_INFO);
-	if (!InitOpenAL())
 	{
-		PrintLog("[Sound]无法初始化OpenAL", PL_ERROR);
-		RenderTip(u8"[Sound]无法初始化鼠标声音(OpenAL)", 2.0f, PT_ERROR);
-		ShutdownOpenAL();
-		return -1;
+		lock_guard<recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
+		if (!InitOpenAL())
+		{
+			PrintLog("[Sound] 无法初始化OpenAL", PL_ERROR);
+			RenderTip(u8"[Sound] 无法初始化鼠标声音(OpenAL)", 2.0f, PT_ERROR);
+			ShutdownOpenAL();
+			return -1;
+		}
+		PrintLog("[Sound] 初始化OpenAL成功", PL_INFO);
 	}
 
 	ALuint NoisBuffer;
@@ -615,8 +631,8 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 	if (!LoadWaveData(Sound_Noise, &NoisBuffer))
 	{
-		RenderTip(u8"[Sound]无法初始化无法加载wav文件:" + Sound_Noise, 2.0f, PT_ERROR);
-		PrintLog("[Sound]无法加载wav文件:" + Sound_Noise, PL_ERROR);
+		RenderTip(u8"无法加载wav文件:" + Sound_Noise, 2.0f, PT_ERROR);
+		PrintLog("[Sound] 无法加载wav文件:" + Sound_Noise, PL_ERROR);
 		return -2;
 	}
 
@@ -644,6 +660,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (VarHasChanged(config.UseMouseSound, "EnableUseMouseSound"))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			if(config.UseMouseSound)
 				alSourcePlay(NoisSource);
 			else
@@ -653,12 +670,14 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (VarHasChanged(config.NoiseVolume, "NoiseVolume", true))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			alSourcef(NoisSource, AL_GAIN, config.NoiseVolume / 100.0f);
 		}
 
 		if (VarHasChanged(config.MouseSoundVolume, "MouseSoundVolume", true))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			float volume = config.MouseSoundVolume / 100.0f;
 			for (auto& sources : g_MouseSoundSourceList)
 			{
@@ -669,6 +688,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (VarHasChanged(config.MouseSoundType, "MouseSoundType", true))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			auto it = g_MouseSoundSourceList.find(config.MouseSoundType);
 			if (it == g_MouseSoundSourceList.end())
 				g_CurrentMouseSource.clear();   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
@@ -679,6 +699,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (VarHasChanged(config.KeybdSoundVolume, "KeybdSoundVolume", true))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			float volume = (config.KeybdSoundVolume / 100.0f) * 1.2f;
 			for (auto& sources : g_KeybdSoundSourceList)
 			{
@@ -692,6 +713,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (VarHasChanged(config.KeybdSoundType, "KeybdSoundType", true))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			auto it = g_KeybdSoundSourceList.find(config.KeybdSoundType);
 			if (it == g_KeybdSoundSourceList.end())
 				g_CurrentKeybdSource.fill(0);   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
@@ -701,6 +723,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 		if (g_IsAudioDeviceChanged.exchange(false))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+			EnsureALContextCurrent();
 			// 修复：设备切换统一在 ClickSound 线程重建（唯一执行 OpenAL 生命周期管理的线程），
 			// 避免 detach 线程并发 Shutdown/Init 与其它线程持有失效上下文的竞态
 			g_IsLoadedSounds = false;
@@ -716,6 +739,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		for (auto& sources : g_MouseSoundSourceList)
 		{
 			for (auto& source : sources.second)
@@ -724,6 +748,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	}
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		for (ALuint buffer : g_MouseSoundBufferList)
 		{
 			if (buffer != 0)
@@ -733,6 +758,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		for (auto& sources : g_KeybdSoundSourceList)
 		{
 			for (auto& source : sources.second)
@@ -744,6 +770,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	}
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		for (ALuint buffer : g_KeybdSoundBufferList)
 		{
 			if (buffer != 0)
@@ -754,6 +781,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	// 修复：噪声源/缓冲此前从未释放
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		alDeleteSources(1, &NoisSource);
 		alDeleteBuffers(1, &NoisBuffer);
 	}
@@ -763,6 +791,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	// 统一只调用一次自带判空的 ShutdownOpenAL()。
 	{
 		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+		EnsureALContextCurrent();
 		ShutdownOpenAL();
 	}
 	ALFWShutdown();
@@ -850,7 +879,7 @@ inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam)
 
 	bool UseKeybdSoundNow = false, UseMouseSoundNow = false;
 	{
-		// 修复：低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
+		// 低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
 		// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
 		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		UseKeybdSoundNow = config.UseKeybdSound;
@@ -895,7 +924,7 @@ inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam)
 					KeyPhysicalState[rawVk] = true;// 标记为已按下
 
 					ALuint src = g_CurrentKeybdSource[vk];
-					// 修复：当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
+					// 当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
 					if (src == 0)
 					{
 						for (int i = 1; i < 256; ++i)

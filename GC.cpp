@@ -308,10 +308,6 @@ int GCMainLoop()
 
     if (_access(LogPath.c_str(), 0) != 0)
         CreateDirectory(LogPath.c_str(), NULL);
-    if (_access(ShaderLogFile.c_str(), 0) != 0)
-        CreateFile(ShaderLogFile);
-    if (_access(Tmp_TempPath.c_str(), 0) != 0)
-        CreateDirectory(Tmp_TempPath.c_str(), NULL);
 
     //===============================创建窗口===============================
     {
@@ -564,8 +560,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     PrintLog("[Init] 检查文件完整性 - InitThread", PL_INFO);
     // 安装的脚本会在配置文件读取的函数中，获取到
     //RefreshScriptList(InstallScriptList, InstallTextureList, InstallScriptInfo, InstallScriptName);
-    if (_access(DownloadPath.c_str(), 0) != 0)
-        CreateDirectory(DownloadPath.c_str(), NULL);
+
     if (_access(ScriptPath.c_str(), 0) != 0)
     {
         CreateDirectory(ScriptPath.c_str(), NULL);
@@ -693,7 +688,7 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 
 void RenderGui(ImGuiIO& io)
 {
-    // 修复：config 重置在帧边界由主线程执行（后台线程只负责弹窗确认并置位标记）。
+    // config 重置在帧边界由主线程执行（后台线程只负责弹窗确认并置位标记）。
     // 重建前先停止连点器并触发重载，尽量缩小与后台线程读 config 的竞态窗口。
     if (IsNeedResetConfig.exchange(false))
     {
@@ -702,7 +697,7 @@ void RenderGui(ImGuiIO& io)
         lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
         IsStopClicker = true;
         IsReloadClicker = true; // 连点线程重载时会重新读取新配置
-        config.~Config();     // 析构
+        config.~Config();       // 析构
         new (&config) Config(); // 原地构造
         RenderTip(config.UseChinese ? u8"重置成功" : "Reset success", 1.5f, PT_INFO);
     }
@@ -1333,22 +1328,31 @@ void RenderGui(ImGuiIO& io)
             TabsText((ICON_FA_GEAR + (config.UseChinese ? u8"设置"s : "Setting"s)).c_str());
 
             const ImVec2 Pos2 = GetCursorPos();
-            SetCursorPos(ImVec2(Pos.x + 500, Pos.y + 10));
-            if (Button(config.UseChinese ? u8"保存设置" : "Save", ImVec2(80, 40)))
+            SetCursorPos(ImVec2(Pos.x + 540, Pos.y + 10));
+            if (Button((ICON_FA_FLOPPY_DISK + (config.UseChinese ? u8"保存设置"s : "Save"s)).c_str(), ImVec2(80, 40)))
                 IsReloadClicker = true;
             SameLine();
-            if (Button(config.UseChinese ? u8"重置配置" : "Reset", ImVec2(80, 40)))
+
+            static const ButtonPopupMenuItem menu_items[] = {
+                { ICON_FA_ARROW_ROTATE_LEFT + (config.UseChinese ? u8"重置配置"s : "Reset"s), true }
+            };
+            const int hit = ButtonPopupMenu(ICON_FA_BARS, "OtherMenuAction", menu_items, IM_ARRAYSIZE(menu_items), 150.0f, ImVec2(40, 40));
+            switch (hit)
             {
-                // 修复：原 detach 线程在确认后直接执行 config.~Config()+placement new，
-                // 与 ClickerControl/MouseSoundThread/GetInfo 等线程并发读写 config → 0xC0000005。
-                // 线程只负责弹窗确认，真正的重建由主线程在下一帧 RenderGui 开头执行。
-                thread FunThread([]()
+                case 0:
+                {
+                    // 修复：原 detach 线程在确认后直接执行 config.~Config()+placement new，
+                    // 与 ClickerControl/MouseSoundThread/GetInfo 等线程并发读写 config -> 0xC0000005。
+                    // 线程只负责弹窗确认，真正的重建由主线程在下一帧 RenderGui 开头执行。
+                    thread FunThread([]()
                     {
                         if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to\nreset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
                             IsNeedResetConfig = true;
                     });
-                FunThread.detach();
+                    FunThread.detach();
+                }
             }
+
             SetCursorPos(Pos2);
 
             BeginTabBar("##Script");
@@ -1929,8 +1933,8 @@ void RenderGui(ImGuiIO& io)
                             SameLine();
                             Combo("##OverheatSoundType", &config.OverheatSoundType, OverheatSoundTypeListText.data(), 3);
 
-                            Text(config.UseChinese ? u8"过热计时器值：%.2f" : "Overheat Timer: %.2f", Overheat::Timer);
-                            Text(config.UseChinese ? u8"冷却计时器值：%.2f" : "Cooldown Timer: %.2f", Overheat::CooldownTimer);
+                            Text(config.UseChinese ? u8"过热计时器值：%.2f" : "Overheat Timer: %.2f", OverheatTimer::Heat);
+                            Text(config.UseChinese ? u8"冷却计时器值：%.2f" : "Cooldown Timer: %.2f", OverheatTimer::Cooldown);
                         }
                         EndDisabled();
                     }
@@ -3200,75 +3204,6 @@ void RenderGui(ImGuiIO& io)
             //-------------------------连点控制--------------------------
             if (BeginTabItem((ICON_FA_CIRCLE_PLAY + (config.UseChinese ? u8"连点控制"s : "Click Control"s)).c_str()))
             {
-                //-----------------------自动开关连点---------------------------
-                /*
-                DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-                TabsText(config.UseChinese ? u8"自动开关连点" : "Auto click switch");
-
-                TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"提示：使用内存搜索可以实现0误\n但是重新进入 存档/服务器 需要重新搜索，有点麻烦。\n如果不开启内存搜索将使用按键判断方法来判断，误差可能会比较大。" : "Note: Using memory search can achieve 0 error\nBut you need to search again when you enter the save/server, which is a bit troublesome.\nIf you do not turn on memory search, the key judgment method will be used to determine, \nand the error may be a bit larger.");
-
-                Checkbox(config.UseChinese ? u8"使用内存搜索" : "Use memory search", &UseItembarUseMemSearch);
-                AttachTooltip(config.UseChinese ? u8"在游戏窗口的内存中搜索物品栏的位置信息，\n实现0误差判断物品栏位置。" : "Search the position information of the item bar in the game window memory\nto achieve 0 error judgment of the item bar position.");
-
-                BeginDisabled(!UseItembarUseMemSearch);
-                {
-                    if (GameHwnd == NULL)
-                        TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"请先去 基本设置 里面获取游戏窗口！" : "Please go to the BasicSetting to get the game window!");
-
-                    static bool WillStart = false;
-                    BeginDisabled(IsMemSearch || GameHwnd == NULL);
-                    {
-                        if (Button(config.UseChinese ? u8"开始内存搜索" : "Start mem search", ImVec2(100, 40)))
-                            WillStart = true;
-                    }
-                    EndDisabled();
-
-                    if (WillStart)
-                    {
-                        int ret = MessageBox(config.UseChinese ? u8"请注意！如果要开始搜索，请注意以下几点：\n    1.在搜索过程中请勿乱动，保持在游戏里面就行，也不要打开背包等UI。\n    2.确保物品栏开关的快捷键都设置正确，否则GC无法切换物品栏。\n是否继续？" : "Please note that if you want to start the search, please pay attention to the following points: \n    1. Do not move during the search, just stay in the game. \n    2. Make sure that the shortcut keys for the item bar switch are set correctly, otherwise GC cannot switch the item bar. \nDo you want to continue?",
-                            config.UseChinese ? u8"提示" : "Reminder", MB_OKCANCEL);
-                        if (ret == IDOK)
-                        {
-                            IsMemSearch = true;
-                            WillStart = false;
-                        }
-                    }
-
-                    ImVec4 color;
-                    string str;
-
-                    switch (IsSearchState)
-                    {
-                        case MS_ERROR:
-                            color = (ImVec4)ImColor(252, 62, 54, 255);
-                            str = config.UseChinese ? u8"内存搜索失败" : "Memory search failed";
-                            break;
-                        case MS_SEARCHING:
-                            color = (ImVec4)ImColor(255, 214, 143, 255);
-                            str = config.UseChinese ?
-                                (u8"已开始内存搜索的第 " + to_string(MemSearchCount) + u8" 次"s) :
-                                ("Memory search at ") + to_string(MemSearchCount) + " count";
-                            break;
-                        case MS_SUCCESS:
-                            color = (ImVec4)ImColor(149, 219, 125, 255);
-                            str = config.UseChinese ? u8"内存搜索成功！" : "Memory search success!";
-                            break;
-                    }
-
-                    TextColored(color, (u8"内存搜索状态：" + str).c_str());
-
-                    Text(config.UseChinese ? u8"内存搜索的延迟" : "Memory search delay");
-                    SameLine();
-                    SetNextItemWidth(300);
-                    SetCursorPosX(300);
-                    SliderInt(u8"##MemSearchSleep", &MemSearchSleep, 1, 500, "%d", ImGuiSliderFlags_AlwaysClamp);
-                    AttachTooltip(config.UseChinese ? u8"延迟越低，性能开销越大，判断的速度越快。" : "The lower the delay the higher the performance \noverhead and the faster the judgment speed.");
-                }
-                EndDisabled();
-
-                InvisibleButton("##PaddingButton1", ImVec2(1, 10));
-                */
-
                 //-------------------------GUI检测&其他--------------------------
                 SetCursorPosY(GetCursorPosY() + 10.0f);
 
@@ -3492,201 +3427,6 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
 
-            //-------------------------信息显示--------------------------
-            /*if (BeginTabItem(config.UseChinese ? u8"视觉效果" : "Visual effect"))
-            {
-                Text(u8"还没做好呢");
-                //BeginDisabled(GameHwnd == NULL);
-                BeginDisabled(true);
-                Checkbox(config.UseChinese ? u8"启用信息显示" : "Enable visual effect", &UseEnableGameGui);
-
-                EndDisabled();
-
-                string str;
-                ImVec4 color;
-                switch (GameGuiState)
-                {
-                    case GAMEGUI_ERROR:
-                        color = (ImVec4)ImColor(252, 62, 54, 255);
-                        str = config.UseChinese ? u8"启动失败": "Fail to start";
-                        break;
-                    case GAMEGUI_ALREADY:
-                        color = (ImVec4)ImColor(255, 214, 143, 255);
-                        str = config.UseChinese ? u8"准备就绪" : "ready to go";
-                        break;
-                    case GAMEGUI_SUCCES:
-                        color = (ImVec4)ImColor(149, 219, 125, 255);
-                        str = config.UseChinese ? u8"启动成功" : "Successfully started";
-                        break;
-                }
-                if (GameGuiState == GAMEGUI_ERROR)
-                {
-                    switch (GameGui_ErrorCode)
-                    {
-                        case 0:
-                            str += config.UseChinese ? u8" - 无法创建进程" : " - Unable to create process";
-                            break;
-                        case -1:
-                            str += config.UseChinese ? u8" - 已经启动了一个进程" : " - A process has already been started";
-                            break;
-                        case -2:
-                            str += config.UseChinese ? u8" - 无法识别GC连点器进程" : " - Unable to recognize GaemClicker process";
-                            break;
-                        case -3:
-                            str += config.UseChinese ? u8" - 启动参数错误" : " - Startup parameter error";
-                            break;
-                        case -4:
-                            str += config.UseChinese ? u8" - 无法识别游戏窗口" : " - Unable to recognize game window";
-                            break;
-                    }
-                }
-                Text(config.UseChinese ? u8"状态：" : "state:");
-                SameLine();
-                TextColored(color, str.c_str());
-
-                BeginDisabled(GameHwnd == NULL);
-                {
-                    static string GameTitle;
-                    char buf[MAX_BUF];
-
-                    if (GameTitle.empty())
-                    {
-                        try{
-                            GameTitle = StringToUTF8(GameWindowTitle);
-                        }catch (...){
-                            GameTitle = GameWindowTitle;
-                        }
-                        try {
-                            *buf = *StringToUTF8(buf).c_str();
-                        }
-                        catch (...)
-                        {
-                            *buf = config.UseChinese ? (char)u8"错误" : (char)"ERROR";
-                        }
-                    }
-
-                    Text(config.UseChinese ? u8"修改游戏标题" : "Edit game title");
-                    SameLine();
-                    
-                    SetNextItemWidth(800);
-                    InputText("##ChangeTitle", buf, MAX_BUF);
-                    try{
-                        GameTitle = StringToUTF8(buf);
-                    }catch (...){
-                        GameTitle = buf;
-                    }
-                    try {
-                        *buf = *StringToUTF8(buf).c_str();
-                    }
-                    catch (...)
-                    {
-                        *buf = config.UseChinese ? (char)u8"错误" : (char)"ERROR";
-                    }
-                    SameLine();
-                    if(Button(config.UseChinese ? u8"确定" : "OK", ImVec2(50, 28)))
-                    {
-                        SetWindowText(GameHwnd, GameTitle.c_str());
-                    }
-                }
-                EndDisabled();
-
-                if (GameHwnd == NULL)
-                    TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"请先去 基本设置 里面获取游戏窗口！" : "Please go to the Basic Settings to get the game window!");
-
-                EndTabItem();
-            }*/
-            /*
-            //-----------------------驱动保护---------------------------
-            if (BeginTabItem(config.UseChinese ? u8"绕过检测" : "Driver protection"))
-            {
-                if (!config.UseChinese)
-                    Text("This feature can only be used to bypass the detection of the Chinese version of Minecraft (NetEase)");
-
-                static bool IsStartingDriver = false;
-                static bool IsLoadDriver = false;
-                static bool FirstStart = true;
-                const static ImVec2 pos = GetCursorPos();
-
-                const static bool RunAdmin = UseRunAdmin();
-
-                if (!RunAdmin || FirstStart)
-                {
-                    if (!RunAdmin)
-                        FirstStart = false;
-                    const static ImVec2 size = GetWindowSize();
-                    const static ImVec2 pos = { 102, 100 };
-                    const static ImVec4 color(
-                        GuiColor[ImGuiCol_WindowBg].x,
-                        GuiColor[ImGuiCol_WindowBg].y,
-                        GuiColor[ImGuiCol_WindowBg].z,
-                        GuiColor[ImGuiCol_WindowBg].w * 0.7f
-                    );
-                    ImDrawList* draw_list = GetForegroundDrawList();
-
-                    string str = FirstStart ?
-                        (config.UseChinese ? u8"免责声明：对于部分电脑可能出现蓝屏的情况，但不会损坏您的电脑\n但如果第一次使用后蓝屏，后续请谨慎开启。\n因为本功能导致的损失开发者不负责。" : "Disclaimer: Some computers may cause a blue screen, but they will not damage your computer.\nHowever, if the first time you use it, please be cautious to turn it on. \nThe loss caused by this function is not the responsibility of the developer.") :
-                        (config.UseChinese ? u8"请以管理员身份运行" : "Please run as administrator");
-                    
-                    ImVec2 textSize = CalcTextSize(str.c_str());
-                    ImVec2 textPos = { (size.x - textSize.x) / 2, (size.y - textSize.y) / 2 - (FirstStart ? 15 : 0) };
-                    draw_list->AddText(textPos, GetColorU32(GuiColor[ImGuiCol_Text]), str.c_str());
-
-                    if (FirstStart)
-                    {
-                        SetCursorPos({ textPos.x + ((textSize.x - textPos.x) / 2) - 80, textPos.y + 40 });
-                        if (Button(config.UseChinese ? u8"同意" : "Agree", ImVec2(80, 30)))
-                            FirstStart = false;
-                    }
-                }
-
-                SetCursorPos(pos);
-                BeginDisabled(FirstStart);
-                {
-                    TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"注意：启动后，很可能无法关闭，不影响正常使用，但会被腾讯等大型游戏检测到作弊\n所以如果你不用GC了，请重启电脑来关闭绕过" : "Note: After starting, it is possible to not be able to close, but it will be detected by Tencent and other large games.\nSo if you do not use GC anymore, please restart your computer to close the bypass.");
-                    Checkbox(config.UseChinese ? u8"隐藏GC进程(谨慎开启)" : "Hide GC process (caution)", &UseHiddenProcess);
-                    AttachTooltip(config.UseChinese ? u8"开启后，GC进程将会隐藏，但是如果关闭GC就会蓝屏！" : "Turn on this function to hide the GC process and prevent it from crashing. \nHowever if you turn off the GC it will cause a blue screen!");
-
-                    SameLine();
-
-                    Checkbox(config.UseChinese ? u8"挂起网易进程" : "Suspend Netease process", &UseSuspendNetease);
-                    AttachTooltip(config.UseChinese ? u8"开启后，网易进程会被挂起，此时你无法使用网易，等于将网易停止运行！" : "Turn on this function to suspend the Netease process and prevent you from using Netease. \nIt is equivalent to stopping Netease.");
-
-                    BeginDisabled(IsStartingDriver);
-                    {
-                        if (Button(config.UseChinese ? u8"启动" : "Start", { 70, 40 }))
-                        {
-                            CreateThreadSafe(StartDriver, NULL, 0);
-                            IsStartingDriver = true;
-                        }
-                    }
-                    EndDisabled();
-
-                    SameLine();
-
-                    BeginDisabled(!IsStartingDriver);
-                    {
-                        if (Button(config.UseChinese ? u8"停止" : "Stop", { 70, 40 }))
-                        {
-                            CreateThreadSafe(UnLoadDriver, NULL, 0);
-                            IsStartingDriver = false;
-                        }
-                    }
-                    EndDisabled();
-
-                    Text(u8"驱动状态:%s",
-                        (DriverStatus == DRIVER_ERROR) ? (config.UseChinese ? u8"错误" : "Error") :
-                        (DriverStatus == DRIVER_SUCCESS) ? (config.UseChinese ? u8"准备就绪" : "Ready") :
-                        (DriverStatus == DRIVER_STOPPED) ? (config.UseChinese ? u8"已停止" : "Stopped") :
-                        (config.UseChinese ? u8"正在运行" : "Running")
-                    );
-                    AttachTooltip(u8"开启驱动保护，可以保护GC进程不会被网易检测到。\n简称绕过网易，防止封号。\n使用该功能的后果由使用者承担。开发者不承担任何责任。");
-                }
-                EndDisabled();
-
-                EndTabItem();
-            }
-            */
-            
             EndTabBar();
             break;
         }

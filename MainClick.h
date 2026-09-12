@@ -156,9 +156,9 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				{
 					if (IsClickering.right || IsClickering.left)
 					{
-						if (Overheat::Timer <= 0)
-							Overheat::CooldownTimer = 0;
-						if (Overheat::Timer >= config.OverheatTime)
+						if (OverheatTimer::Heat <= 0)
+							OverheatTimer::Cooldown = 0;
+						if (OverheatTimer::Heat >= config.OverheatTime)
 						{
 							EnableFlags.right.push_back(false);
 							EnableFlags.left.push_back(false);
@@ -191,18 +191,18 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 							}
 						}
 						else
-							Overheat::Timer += 0.15f;
+							OverheatTimer::Heat += 0.15f;
 					}
 					else
 					{
-						if (Overheat::Timer >= 0)
-							Overheat::Timer = 0;
-						if (Overheat::CooldownTimer <= config.OverheatCooldownTime)
-							Overheat::CooldownTimer += 0.15f;
-						if (Overheat::CooldownTimer >= config.OverheatCooldownTime)
+						if (OverheatTimer::Heat >= 0)
+							OverheatTimer::Heat = 0;
+						if (OverheatTimer::Cooldown <= config.OverheatCooldownTime)
+							OverheatTimer::Cooldown += 0.15f;
+						if (OverheatTimer::Cooldown >= config.OverheatCooldownTime)
 						{
-							Overheat::Timer = 0;
-							Overheat::CooldownTimer = 0;
+							OverheatTimer::Heat = 0;
+							OverheatTimer::Cooldown = 0;
 							EnableFlags.right.push_back(true);
 							EnableFlags.left.push_back(true);
 							IsPlayedSound = false;

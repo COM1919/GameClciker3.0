@@ -31,7 +31,6 @@ int RenderMessageBoxEx(string message, const char* title, map<string, UINT> butt
 int RenderMessageBox(string message, const char* title, UINT type, bool wating);
 void RenderTip(string msg, float timeout, UINT type);
 void FindFilesWithExtension(const string& directory, const string& extension, vector<string>& files);
-bool IsContainsString(const string& str, const vector<string>& vec);
 string GetOpenFileName();
 string StringToUTF8(const string& str, bool NoCach = false);
 string UTF8ToString(const string& str, bool NoCach = false);
@@ -58,12 +57,10 @@ void ClearProcessMemory();
 string SelectFile(const char* filter);
 void UpdateScriptFromShop();
 POINT GetGameWindowCenter(HWND hwnd);
-void ShaderLog(string str);
 void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool UpdateScriptFromShop(const ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
-bool AddFollowStartup(const string& file);
 
 POINT GetGameWindowCenter(HWND hwnd)
 {
@@ -1247,8 +1244,7 @@ void PackageLogFile()
 	strftime(buffer, sizeof(buffer), LogFileZip.c_str(), &timeinfo);
 
 	vector<pair<string, string>> files ={
-		{ LogFile, "gc.log"},
-		{ GameGuiLogFile, "gamegui.log" }
+		{ LogFile, "gc.log"}
 	};
 
 	if(ZipFiles(files, LogPath + "\\" + buffer))
@@ -1532,12 +1528,6 @@ bool UseRunAdmin()
 		FreeSid(AdministratorsGroup);
 	}
 	return b == TRUE;
-}
-
-void ShaderLog(string str)
-{
-	static ofstream fLog(ShaderLogFile);
-	fLog << str;
 }
 
 int GetMemUsageRate(int sleep)
@@ -2170,78 +2160,6 @@ bool RemoveStartup(const string& file)
 		PrintLog("删除开机自动启动项失败："s + file, PL_ERROR);
 		return false;
 	}
-}
-
-/*
-@echo off
-(
-    echo Set WshShell = CreateObject("WScript.Shell")
-    echo Wscript.Sleep 100
-    echo WshShell.Run "cmd /c %~f0", 0
-    echo Set WshShell = Nothing
-) > "%temp%\hide.vbs"
-wscript "%temp%\hide.vbs"
-exit /b
-
-set target_process=chrome
-set command_to_run="C:\Tools\MyApp.exe"
-
-:check_process
-tasklist /FI "IMAGENAME eq %target_process%.exe" 2>NUL | find /I "%target_process%.exe" >NUL
-if %ERRORLEVEL% equ 0 (
-    echo 目标进程已启动，执行命令...
-    start "" %command_to_run%
-    goto :eof
-)
-
-timeout /t 2 /nobreak >nul
-goto :check_process
-*/
-bool AddFollowStartup(const string& file)
-{
-	char appPath[MAX_PATH];
-	char appName[MAX_PATH]{};
-	GetModuleFileName(NULL, appPath, MAX_PATH);
-	// 从路径中提取程序名
-	_splitpath_s(appPath, NULL, 0, NULL, 0, appName, MAX_PATH, NULL, 0);
-
-	string bat;
-	bat += \
-"\
-:: GC连点器“跟随游戏启动”功能，请勿乱动该文件！！！\n\
-@echo off\n\
-(\n\
-	echo Set WshShell = CreateObject(\"WScript.Shell\")\n\
-	echo Wscript.Sleep 100\n\
-	echo WshShell.Run \"cmd /c %~f0\", 0\n\
-	echo Set WshShell = Nothing\n\
-	) > \"%temp%\hideGCFollowBat.vbs\"\n\
-		wscript \"%temp%\hideGCFollowBat.vbs\"\n\
-		exit / b\n\
-		set target_process = " + file + "\n\
-		set command_to_run = " + appName + "\n\
-:check_process\n\
-tasklist / FI \"IMAGENAME eq %target_process%.exe\" 2 > NUL | find / I \"%target_process%.exe\" > NUL\n\
-if% ERRORLEVEL% equ 0 (\n\
-	start "" % command_to_run %\n\
-	goto :eof\n\
-	)\n\
-	timeout / t 2 / nobreak > nul\n\
-	goto :check_process\n\
-";
-
-	ofstream ofs(GCFollowBatFile, ios::out);
-	ofs << bat;
-	ofs.close();
-	PrintLog("[File]已创建" + GCFollowBatFile + "文件", PL_INFO);
-
-	return AddToStartup(GCFollowBatFile);
-}
-
-bool RemoveFollowStartup()
-{
-	DeleteFile(GCFollowBatFile.c_str());
-	return RemoveStartup(GCFollowBatFile);
 }
 
 string GetProcessPathFromPID(DWORD processId)

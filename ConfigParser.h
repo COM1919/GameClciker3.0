@@ -503,8 +503,8 @@ void LoadConfig()
 			int count = 0;
 			while (true)
 			{
-				GetPrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF, CIniPos);
-				if (strlen(buffer) <= 0)
+				DWORD len = GetPrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF, CIniPos);
+				if (len <= 0)
 					break;
 				vector<string> tokens;
 				SplitString(buffer, ",", tokens);

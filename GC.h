@@ -51,6 +51,12 @@ enum Tab
     About = 6
 };
 
+struct ButtonPopupMenuItem
+{
+    const string label;
+    bool enabled = true;
+};
+
 bool CreateDeviceD3D(HWND hWnd);
 void CreateSamplers();
 static void SetSamplerCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd);
@@ -102,14 +108,168 @@ int MessageBox(const char* message, const char* title, UINT type);
 void BeginCard(const char* label, ImVec2 size = ImVec2(0, 0), ImGuiChildFlags ChildFlags = ImGuiChildFlags_Borders, ImGuiWindowFlags flag = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 void DrawGlowBorder(ImVec2 min, ImVec2 max, ImU32 color, float thickness = 3.0f);
 void DrawSpiltLine(float lenght, ImVec4 color, float thickness = 1.0f, float SpitlSize = 200);
-void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor);
+inline void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor);
+inline int ButtonPopupMenu(const char* button_label, const char* popup_id, const ButtonPopupMenuItem* items, int item_count, float fixed_width = 150.0f, const ImVec2& button_size = ImVec2(0.0f, 0.0f));
 static Texture2D LoadTexture(unsigned char* data, int& image_width, int& image_height, int* w, int* h, const char* id);
 Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
 Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled = false, int* w = NULL, int* h = NULL);
 void ClearTextureCache();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor)
+inline int ButtonPopupMenu(const char* button_label, const char* popup_id, const ButtonPopupMenuItem* items, int item_count, float fixed_width, const ImVec2& button_size)
+{
+    int clicked_index = -1;
+
+    ImGuiIO& io = ImGui::GetIO();
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    // ---------- 状态（按 ID 唯一）----------
+    struct State
+    {
+        float anim = 0.0f;
+        bool  open = false;
+    };
+    static std::map<ImGuiID, State> s_states;
+
+    const ImGuiID sid = ImGui::GetID(popup_id);
+    State& st = s_states[sid];
+
+    // ---------- 1. 触发按钮 ----------
+    const bool   pressed = ImGui::Button(button_label, button_size);
+    const ImVec2 btn_min = ImGui::GetItemRectMin();
+    const ImVec2 btn_size = ImGui::GetItemRectSize();
+
+    const bool just_opened = pressed && !st.open;
+    if (pressed)
+        st.open = !st.open;
+
+    // ---------- 2. 推进动画 ----------
+    const float target = st.open ? 1.0f : 0.0f;
+    const float k = 1.0f - std::exp(-22.0f * io.DeltaTime);
+    st.anim += (target - st.anim) * k;
+
+    if (std::fabs(st.anim - target) < 0.002f)
+        st.anim = target;
+
+    if (st.anim <= 0.0f && !st.open)
+        return -1;
+
+    const float alpha = st.anim;
+
+    // ---------- 3. 位置：按钮左下方，右侧放不下则右对齐 ----------
+    float       x = btn_min.x;
+    const float y = btn_min.y + btn_size.y;
+
+    if (x + fixed_width > io.DisplaySize.x - 4.0f)
+        x = btn_min.x + btn_size.x - fixed_width;
+    if (x < 4.0f)
+        x = 4.0f;
+
+    // ---------- 4. 尺寸（高度按 anim 缩放）----------
+    // 菜单项的内边距（左右 12px，上下 10px）
+    constexpr float kItemPadX = 12.0f;
+    constexpr float kItemPadY = 10.0f;
+
+    const float row_h = ImGui::GetTextLineHeight() + kItemPadY * 2.0f;
+    const float target_h = row_h * (float)item_count;
+    const float current_h = target_h * st.anim;
+
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(fixed_width, current_h), ImGuiCond_Always);
+
+    if (just_opened)
+        ImGui::SetNextWindowFocus();
+
+    // ---------- 5. 窗口样式入栈 ----------
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse |
+        ImGuiWindowFlags_NoCollapse;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(0.0f, 0.0f));
+
+    constexpr int kOuterVar = 5;
+    constexpr int kOuterCol = 1;
+
+    // 强制不透明（alpha 只由动画驱动）
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.16f, 0.17f, 0.21f, alpha));
+
+    // ---------- 6. 绘制菜单窗口 ----------
+    char win_name[256];
+    std::snprintf(win_name, sizeof(win_name), "##bpm_%s", popup_id);
+
+    if (ImGui::Begin(win_name, nullptr, flags))
+    {
+        // 外部点击 / ESC 关闭
+        if (st.open)
+        {
+            const bool hovered = ImGui::IsWindowHovered(
+                ImGuiHoveredFlags_ChildWindows |
+                ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+            const bool on_button = ImGui::IsMouseHoveringRect(
+                btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y));
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !hovered && !on_button)
+                st.open = false;
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                st.open = false;
+        }
+
+        // 菜单项：平铺填满宽度、贴左侧、零圆角、自定内边距
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kItemPadX, kItemPadY));
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.08f * alpha));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.16f * alpha));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.93f, 0.95f, alpha));
+
+        const float row_w = ImGui::GetContentRegionAvail().x;
+
+        for (int i = 0; i < item_count; ++i)
+        {
+            ImGui::PushID(i);
+            if (!items[i].enabled)
+                ImGui::BeginDisabled();
+
+            if (ImGui::Button(items[i].label.c_str(), ImVec2(row_w, row_h)))
+            {
+                clicked_index = i;
+                st.open = false;
+            }
+
+            if (!items[i].enabled)
+                ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+
+        ImGui::PopStyleColor(4);
+        ImGui::PopStyleVar(3);
+
+        ImGui::End();
+    }
+    else
+    {
+        ImGui::End();
+    }
+
+    ImGui::PopStyleColor(kOuterCol);
+    ImGui::PopStyleVar(kOuterVar);
+
+    return clicked_index;
+}
+
+inline void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor)
 {
     ImGuiWindow* window = GetCurrentWindow();
     ImDrawList* dl = window->DrawList;
@@ -213,11 +373,6 @@ struct MarkdownRenderClass : public imgui_md
     }
 }MarkdownRender;
 
-struct BeginCard_element
-{
-    ImVec4 t;
-    ImVec4 b;
-};
 static ImVec4 EndCardColor;
 void BeginCard(const char* label, ImVec2 size, ImGuiChildFlags ChildFlags, ImGuiWindowFlags WindowFlags)
 {
@@ -225,7 +380,12 @@ void BeginCard(const char* label, ImVec2 size, ImGuiChildFlags ChildFlags, ImGui
     BeginChild(label, size, ChildFlags, WindowFlags);
     PopStyleVar();
     ImGuiID id = GetID(label);
-    static map <ImGuiID, BeginCard_element> anim;
+    struct AnimState
+    {
+        ImVec4 t;
+        ImVec4 b;
+    };
+    static map <ImGuiID, AnimState> anim;
     auto it_anim = anim.find(id);
     if (it_anim == anim.end())
     {
@@ -589,10 +749,6 @@ string GetVkeyName(int vk)
     return "None";
 }
 
-struct InputKey_element
-{
-    ImVec4 B;
-};
 bool InputKey(const char* label, int* key, const char* press_tip)
 {
     ImGuiContext& g = *GImGui;
@@ -688,11 +844,6 @@ bool InputKey(const char* label, int* key, const char* press_tip)
     return value_changed;
 }
 
-struct PopupWindow_element
-{
-    float pos;
-    float alpha;
-};
 bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
 {
     ImGuiWindow* window = GetCurrentWindow();
@@ -701,7 +852,12 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     const ImGuiIO& io = GetIO();
     const ImGuiID id = GetID(name);
 
-    static map <ImGuiID, PopupWindow_element> anim;
+    struct AnimState
+    {
+        float pos;
+        float alpha;
+    };
+    static map <ImGuiID, AnimState> anim;
     static map <ImGuiID, bool> end_anim; // false不播放淡出动画，要么是结束了或者刚刚开始
     const bool IsClose = p_open && !*p_open;
     const bool IsPlayingEndAnim = end_anim[id];
@@ -988,17 +1144,6 @@ void RenderControl()
     }
 }
 
-struct PopTipState
-{
-    int      seq;        // 创建顺序编号，用于保证高度累加顺序正确
-    int      height;     // 窗口高度
-    bool     alive;      // 是否存活（处于移出态时为 false）
-    int      endtime;    // 计时器
-    ImVec2   pos;        // 当前实时位置
-    float    alpha;      // 当前透明度
-    float    targetY;    // 锁定的目标 Y 坐标（防止移出时被其它提示顶下去）
-};
-
 bool PopTip(string msg, float timeout, UINT type)
 {
     ImGuiWindow* window = GetCurrentWindow();
@@ -1011,7 +1156,17 @@ bool PopTip(string msg, float timeout, UINT type)
     constexpr unsigned int MaxTextLength = 48 * 3;  // 最大文本长度
 
     // 统一状态管理容器
-    static std::unordered_map<ImGuiID, PopTipState> g_popTipStates;
+    struct State
+    {
+        int      seq;        // 创建顺序编号，用于保证高度累加顺序正确
+        int      height;     // 窗口高度
+        bool     alive;      // 是否存活（处于移出态时为 false）
+        int      endtime;    // 计时器
+        ImVec2   pos;        // 当前实时位置
+        float    alpha;      // 当前透明度
+        float    targetY;    // 锁定的目标 Y 坐标（防止移出时被其它提示顶下去）
+    };
+    static std::unordered_map<ImGuiID, State> g_popTipStates;
     static int s_nextSeq = 0;        // 全局递增序号，用于保证层叠顺序
 
     // 如果文本过长，就开始分割为多行
@@ -1050,7 +1205,7 @@ bool PopTip(string msg, float timeout, UINT type)
     if (it_state == g_popTipStates.end())
     {
         // 新建提示状态
-        PopTipState newState;
+        State newState;
         newState.seq = s_nextSeq++; // 分配单调递增的序号
         newState.height = (int)WindowSize.y;
         newState.alive = true;
@@ -1063,7 +1218,7 @@ bool PopTip(string msg, float timeout, UINT type)
         it_state = g_popTipStates.find(id);
     }
 
-    PopTipState& state = it_state->second;
+    State& state = it_state->second;
     state.height = (int)WindowSize.y; // 每帧更新高度，防止窗口尺寸变化
 
     // 计时逻辑
@@ -1290,12 +1445,6 @@ int MessageBox(const char* message, const char* title, UINT type)
     return MessageBoxEx(message, title, button, colors);
 }
 
-struct MessageBox_element
-{
-    ImVec2 size;
-    int alpha;
-};
-
 // 返回-1是没有点击按钮
 int MessageBoxEx(const char* message, const char* title, map<string, UINT> button, map<string, ImVec4> colors)
 {
@@ -1321,7 +1470,12 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
     ImVec2 WindowSize((PosX < ButtonPosX) ? ButtonPosX + 26 : PosX, TextSize.y + TitleSize.y + 30 * 3 + 70);
 
     static map<ImGuiID, int> RetValueList;
-    static map<ImGuiID, MessageBox_element> anim;
+    struct AnimState
+    {
+        ImVec2 size;
+        int alpha;
+    };
+    static map<ImGuiID, AnimState> anim;
 
     if (RetValueList.find(id) == RetValueList.end())
         RetValueList[id] = -1;
@@ -1443,13 +1597,6 @@ int MessageBoxEx(const char* message, const char* title, map<string, UINT> butto
 
 void ReleasGui(WNDCLASSEX wcex, GuiData* gui)
 {
-    // 先唤醒并等待窗口消息线程退出, 避免它仍在 WndProc(ImGui_ImplWin32_WndProcHandler) 中
-    // 访问即将销毁的 ImGui 上下文 / D3D 资源 -> UAF
-    if (GCHWND)
-        PostMessage(GCHWND, WM_NULL, 0, 0);
-    if (WindowMsgThreadHandle)
-        WaitForSingleObject(WindowMsgThreadHandle, 2000);
-
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     DestroyContext();
@@ -1740,11 +1887,6 @@ auto GetGuiStyle(ImGuiStyle& Style)
     return Style;
 }
 
-struct ProgressBar_element
-{
-    float progress;
-};
-
 void DrawProgressBar(const char* label, float progress, ImVec2 size, ImVec4 Color, ImVec4 bgColor, float thickness)
 {
     PushID(label);
@@ -1803,7 +1945,11 @@ void DrawProgressBar(const char* label, float progress, ImVec2 size, ImVec4 Colo
             GetColorU32(ImGuiCol_FrameBg), thickness);
     }
 
-    static map <ImGuiID, ProgressBar_element> anim;
+    struct AnimState
+    {
+        float progress;
+    };
+    static map <ImGuiID, AnimState> anim;
     auto it_anim = anim.find(id);
     if (it_anim == anim.end())
     {
@@ -2081,7 +2227,10 @@ void CreateRenderTarget()
     ID3D11Texture2D* pBackBuffer = nullptr;
     HRESULT hr = MainGuiData.pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
     if (FAILED(hr) || pBackBuffer == nullptr)
+    {
+        MainGuiData.mainRenderTargetView = nullptr;
         return;
+    }
     hr = MainGuiData.pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &MainGuiData.mainRenderTargetView);
     pBackBuffer->Release();
     if (FAILED(hr))
