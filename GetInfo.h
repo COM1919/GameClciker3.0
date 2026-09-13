@@ -36,7 +36,7 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
 
     if (UseServerOfType == 1) // gitee
     {
-        if (!ReadURLDatas(URL_GITEE_INFO, content))
+        if (ReadURLDatas(URL_GITEE_INFO, content) <= 0)
         {
             PrintLog("[Init] Gitee: 获取 赞助 列表失败", PL_ERROR);
             return 0;
@@ -44,20 +44,20 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         else
         {
             string SpoonsText = ExtractString(content, "=spoons=", "=spoons-end=");
-            // 修复：gitee 分支无锁写入 SponsorList，与主线程（持 SponsorListMutex 读锁）并发 → 竞争
-            lock_guard<shared_mutex> lock(SponsorListMutex);
-            SplitString(SpoonsText, "\n", SponsorList);
+            // 修复：gitee 分支无锁写入 Sponsor::List，与主线程（持 Sponsor::Mtx 读锁）并发 → 竞争
+            lock_guard<shared_mutex> lock(Sponsor::Mtx);
+            SplitString(SpoonsText, "\n", Sponsor::List);
         }
         // 修复：NoticeStr 写入时加锁（ReadURLDatas 内部直接写入 NoticeStr），与主线程每帧读取（c_str()）并发安全
         {
             lock_guard<shared_mutex> lock(NoticeMutex);
-            if (!ReadURLDatas(URL_GITEE_NOTICE, NoticeStr))
+            if (ReadURLDatas(URL_GITEE_NOTICE, NoticeStr) <= 0)
             {
                 PrintLog("[Init] Gitee: 获取公告失败", PL_ERROR);
                 return 0;
             }
         }
-        if (!ReadURLDatas(URL_GITEE_POPUP, content))
+        if (ReadURLDatas(URL_GITEE_POPUP, content) <= 0)
         {
             PrintLog("[Init] Gitee: 获取弹窗信息失败", PL_ERROR);
             return 0;
@@ -99,8 +99,8 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
             content = RemoveSubString(content, "<span style=\"color:#81bf7e\">");
             ReplaceString(content, "&amp;", "&");
             // 写入锁
-            lock_guard<shared_mutex> lock(SponsorListMutex);
-            SplitString(content, "\n", SponsorList);
+            lock_guard<shared_mutex> lock(Sponsor::Mtx);
+            SplitString(content, "\n", Sponsor::List);
         }
 
         if (ReadURLDatas(URL_LZY_POPUP, content) <= 0)
@@ -130,12 +130,14 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
 DWORD WINAPI Updata(LPVOID lpParam)
 {
 #ifndef USE_IN_MICROSOFT
-    while (UseServerOfType == -1)
+    while (UseServerOfType == -1 && !IsGCExit)
         Sleep(200);
+    if (IsGCExit)
+        return 0;
     
     PrintLog("[Updata] 检查版本", PL_INFO);
     string content;
-    if (!ReadURLDatas((UseServerOfType == 2) ? URL_LZY_VER : URL_GITEE_UPDATA, content))
+    if (ReadURLDatas((UseServerOfType == 2) ? URL_LZY_VER : URL_GITEE_UPDATA, content) <= 0)
     {
         PrintLog("[Updata] 检查版本失败", PL_ERROR);
         return 2;
@@ -166,6 +168,14 @@ DWORD WINAPI Updata(LPVOID lpParam)
         DownloadURL   = ExtractString(content, "<downloadurl>", "</downloadurl>");
         IsForceUpdata = ExtractString(content, "<force>", "</force>").find("1") != string::npos;
     }
+    // 清洗版本号：只保留数字和 '.'，去掉 <br />、换行、空格等，避免拼进文件名导致下载/改名失败
+    {
+        string clean;
+        for (char c : NewVersionStr)
+            if ((c >= '0' && c <= '9') || c == '.')
+                clean += c;
+        NewVersionStr = clean;
+    }
     int newVerH = 0;
     int newVerL = 0;
     int curVerH = 0;
@@ -188,8 +198,8 @@ DWORD WINAPI Updata(LPVOID lpParam)
     }
     {
         size_t dotPos = NewVersionStr.find('.');
-        string majorVersion = NewVersionStr.substr(0, dotPos);
-        string minorVersion = NewVersionStr.substr(dotPos + 1);
+        string majorVersion = (dotPos == string::npos) ? NewVersionStr : NewVersionStr.substr(0, dotPos);
+        string minorVersion = (dotPos == string::npos) ? string("0") : NewVersionStr.substr(dotPos + 1);
         try
         {
             newVerH = stoi(majorVersion);
@@ -203,32 +213,29 @@ DWORD WINAPI Updata(LPVOID lpParam)
         }
     }
 
-    if ((newVerL <= curVerL) && (newVerH <= curVerH))
+    if (newVerH < curVerH || (newVerH == curVerH && newVerL <= curVerL))
     {
         PrintLog("[Updata] 当前版本已是最新版本。", PL_INFO);
         return 0;
     }
 
-    while (Starting)
-        Sleep(100);
-   
     map<string, UINT> button;
     map<string, ImVec4> colors;
     if (IsForceUpdata)
     {
         button[config.UseChinese ? u8"立即更新" : "Update now"] = IDOK;
-        colors[config.UseChinese ? u8"立即更新" : "Update now"] = GuiColor[ImGuiCol_ButtonHovered];
+        colors[config.UseChinese ? u8"立即更新" : "Update now"] = GuiColor ? GuiColor[ImGuiCol_ButtonHovered] : ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
     }
     else
     {
         button[config.UseChinese ? u8"现在更新" : "Update now"] = IDOK;
         button[config.UseChinese ? u8"下次一定" : "Later"] = IDCANCEL;
-        colors[config.UseChinese ? u8"现在更新" : "Update now"] = GuiColor[ImGuiCol_ButtonHovered];
-        colors[config.UseChinese ? u8"下次一定" : "Later"] = GuiColor[ImGuiCol_Button];
+        colors[config.UseChinese ? u8"现在更新" : "Update now"] = GuiColor ? GuiColor[ImGuiCol_ButtonHovered] : ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
+        colors[config.UseChinese ? u8"下次一定" : "Later"] = GuiColor ? GuiColor[ImGuiCol_Button] : ImVec4(0.26f, 0.59f, 0.98f, 0.4f);
     }
     int lost_ver = newVerL - curVerL;
     string msg = (config.UseChinese ? u8"发现新版本 " : "New version ") + NewVersionStr;
-    if (newVerL - 2 >= curVerL)
+    if (newVerH == curVerH && newVerL - 2 >= curVerL)
     {
         if(config.UseChinese)
             msg += u8"\n你已经落后了 " + to_string(lost_ver) + u8" 个版本\n建议更新！";
@@ -242,13 +249,26 @@ DWORD WINAPI Updata(LPVOID lpParam)
         return 3;
     }
 
-    string filename = DownloadPath + "\\" + DownloadName + NewVersionStr + ".exe";
+    string filename = ConfigPath + "\\" + "gc-pack" + NewVersionStr + ".exe";
 
     string temp_url;
     if (DownloadURL.find("lanzouu.com") == string::npos)
         temp_url = DownloadURL;
     else
         temp_url = URL_RESOLVE + DownloadURL;
+
+    {
+        string probe = ConfigPath + "\\~update_probe.tmp";
+        FILE* pf = nullptr;
+        fopen_s(&pf, probe.c_str(), "wb");
+        if (!pf)
+        {
+            RenderMessageBox(config.UseChinese ? u8"更新目录不可写\n请以管理员身份运行GC连点器后重试" : "Update directory is not writable\nPlease run GameClicker as administrator and retry", config.UseChinese ? u8"错误" : "Error", MB_OK);
+            return -1;
+        }
+        fclose(pf);
+        DeleteFileA(probe.c_str());
+    }
 
     bool IsDownloadSuccess = DownloadURLFiles(temp_url.c_str(), filename.c_str());
     if (_access(filename.c_str(), 0) != 0 || !IsDownloadSuccess)
@@ -257,18 +277,17 @@ DWORD WINAPI Updata(LPVOID lpParam)
         return -1;
     }
 
-    char CurrentPath[MAX_PATH];
+    // 用程序所在目录（WorkPath），而不是当前工作目录（CWD 可能不同或被改过）
+    string FilePath = WorkPath;
+    PrintLog(("[Updata] 当前GC连点器目录 " + FilePath).c_str(), PL_INFO);
 
-    if (GetCurrentDirectory(MAX_PATH, CurrentPath) == 0)
+    FilePath = (FilePath + "\\" + "gc-pack" + NewVersionStr + ".exe");
+    if (!MoveFileExA(filename.c_str(), FilePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED))
     {
-        PrintLog("[Updata] 获取当前工作目录失败。", PL_ERROR);
+        PrintLog("[Updata] 移动更新文件失败，错误代码：" + to_string(GetLastError()) + " 源：" + filename + " 目标：" + FilePath, PL_ERROR);
+        RenderMessageBox(config.UseChinese ? u8"移动更新文件失败" : "Failed to move update file", config.UseChinese ? u8"错误" : "Error", MB_OK);
         return -1;
     }
-    string FilePath = CurrentPath;
-    PrintLog(("[Updata] 当前GC连点器工作目录 " + FilePath).c_str(), PL_INFO);
-
-    FilePath = (FilePath + "\\" + DownloadName + NewVersionStr + ".exe");
-    MoveFile(filename.c_str(), FilePath.c_str());
 
     PrintLog("[Updata] 移动GC文件到 " + FilePath, PL_INFO);
 
@@ -279,7 +298,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
     ShExecInfo.lpVerb = "runas"; // 以管理员身份运行
     ShExecInfo.lpFile = FilePath.c_str();
     ShExecInfo.lpParameters = ""; // 参数
-    ShExecInfo.lpDirectory = NULL;
+    ShExecInfo.lpDirectory = WorkPath.c_str(); // 让新版以程序目录为工作目录启动
     ShExecInfo.nShow = SW_SHOW;
     ShExecInfo.hInstApp = NULL;
 
@@ -290,8 +309,11 @@ DWORD WINAPI Updata(LPVOID lpParam)
 
     if (!ShellExecuteEx(&ShExecInfo))
     {
-        PrintLog("[Updata] 无法打开更新后的GC连点器，错误代码：" + GetLastError() + string("文件：") + FilePath, PL_ERROR);
-        MessageBox(NULL, config.UseChinese ? u8"无法打开更新后的GC连点器\n你可以手动打开新版本GC连点器。" : "Failed to open the updated GC Linker\nYou can manually open the new version of GameClicker.", config.UseChinese ? u8"错误" : "Error", MB_OK | MB_ICONERROR);
+        PrintLog("[Updata] 无法打开更新后的GC连点器，错误代码：" + to_string(GetLastError()) + " 文件：" + FilePath, PL_ERROR);
+        if (ShExecInfo.hProcess)
+            CloseHandle(ShExecInfo.hProcess);
+        MessageBox(NULL, config.UseChinese ? u8"自动运行失败\n请手动重新打开GC连点器" : "Failed to auto-run\nPlease reopen GameClicker manually", config.UseChinese ? u8"错误" : "Error", MB_OK | MB_ICONERROR);
+        return -1;
     }
     if (ShExecInfo.hProcess)
         CloseHandle(ShExecInfo.hProcess);

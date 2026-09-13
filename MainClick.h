@@ -37,384 +37,386 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 	while (!IsGCExit)
 	{
 		// 修复：循环体持续读取 config（快捷键/CPS/模式等），持读锁保证与主线程 config 重置（写锁）互斥
-		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		{
-			static ULONGLONG LastTime = GetTickCount64() + 3000;
-
-			if (LastTime <= GetTickCount64()) // 3秒一次
 			{
-				// 自动清理本进程内存
-				size_t MemSize = 0;
-				PROCESS_MEMORY_COUNTERS pmc;
-				if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
-					MemSize = pmc.WorkingSetSize / (1024 * 1024); // 单位转换为MB
-				if (MemSize > 240)
-					ClearProcessMemory();
-				LastTime = GetTickCount64() + 3000;
-			}
-		}
+				static ULONGLONG LastTime = GetTickCount64() + 3000;
 
-		HWND CurrForegroundHwnd = GetForegroundWindow(); // 防止重复获取
-
-		static HWND LastHwnd = NULL;
-		if (LastHwnd == GCHWND && LastHwnd != CurrForegroundHwnd)
-			IsReloadClicker = true;
-		LastHwnd = CurrForegroundHwnd;
-
-		if (IsReloadClicker)
-		{
-			IsClickerSuccess = false;
-			IsReloadClicker = false;
-			
-			// 没什么用，保留就行
-			srand(time(NULL));
-
-			SaveConfig();
-			RenderTip(config.UseChinese ? u8"已保存配置" : "Successfully saved config", 4.0f, PT_INFO);
-
-			InitRandom();
-			ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
-			ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
-			IsClickerSuccess = true;
-			PrintLog("[Clicker] 重新加载连点成功", PL_INFO);
-		}
-
-		// 一些快捷键处理
-		if (GetKeyClick(config.SetGameWindowKey))
-		{
-			GameHwnd = CurrForegroundHwnd;
-			PrintLog("[Clicker] 已设置游戏窗口", PL_INFO);
-		}
-		if (GetKeyClick(config.HideClickerKey))
-		{
-			PrintLog("[Clicker] 已隐藏GC窗口", PL_INFO);
-			ShowWindow(GCHWND, SW_HIDE);
-		}
-		if (CurrForegroundHwnd != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
-		{
-			IsGCExit = true;
-			PrintLog("[Clicker] 程序退出，用户按下了自毁键", PL_INFO);
-			return 0;
-		}
-
-		// 统一处理IsOpenGui和IsMoving
-		IsJumping = GetKeyDown(VK_SPACE);
-		IsMoving = GetKeyDown('W') || GetKeyDown('S') || GetKeyDown('D') || GetKeyDown('A') || IsJumping;
-		// GUI是否打开的检测
-		{
-			// 用0来初始化，启动了GC就会初始化IsOpenGui和IsCursorHidden的内部
-			static ULONGLONG LastTime = 0;
-			// 每40ms检测一次
-			if (LastTime < GetTickCount64())
-			{
-				IsOpenGui = !IsCursorHidden(); // 不要忘记感叹号（not），已经出现过一次这个BUG了
-				LastTime = GetTickCount64() + 40;
-			}
-		}
-
-		{
-			LRPair<vector<bool>> EnableFlags;
-			// 仅移动连点
-			if (config.UseROnlyMoveClicker)
-				EnableFlags.right.push_back(IsMoving);
-			if (config.UseLOnlyMoveClicker)
-				EnableFlags.left.push_back(IsMoving);
-			// 仅跳跃触发连点
-			if (config.UseROnlyJumpClicker && !config.UseROnlyMoveClicker)
-				EnableFlags.right.push_back(IsJumping);
-			if (config.UseLOnlyJumpClicker && !config.UseLOnlyMoveClicker)
-				EnableFlags.left.push_back(IsJumping);
-
-			// GUI检测 - 注意和（仅移动连点 & 仅跳跃连点）的顺序，GUI检测权重要大，所以放这个后面
-			if (config.UseGUIDetection)
-			{
-				EnableFlags.right.push_back(!IsOpenGui);
-				EnableFlags.left.push_back(!IsOpenGui);
-			}
-
-			// 物品栏开关 & 物品栏预设CPS切换
-			if (config.UseItembarSwitch)
-			{
-				Clamp(ItemBarPos, 0, 8);
-				EnableFlags.right.push_back(config.ItemEnableClicker.right[ItemBarPos]);
-				EnableFlags.left.push_back(config.ItemEnableClicker.left[ItemBarPos]);
-				if (!config.UseBrutalMode && VarHasChanged(ItemBarPos, "ItemBarPos"))
+				if (LastTime <= GetTickCount64()) // 3秒一次
 				{
-					if (config.ItemBarEnablePresetCPS.right[ItemBarPos])
-						config.RCPS = config.ItemBarPresetCPS.right[ItemBarPos];
-					if (config.ItemBarEnablePresetCPS.left[ItemBarPos])
-						config.LCPS = config.ItemBarPresetCPS.left[ItemBarPos];
-
+					// 自动清理本进程内存
+					size_t MemSize = 0;
+					PROCESS_MEMORY_COUNTERS pmc;
+					if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+						MemSize = pmc.WorkingSetSize / (1024 * 1024); // 单位转换为MB
+					if (MemSize > 240)
+						ClearProcessMemory();
+					LastTime = GetTickCount64() + 3000;
 				}
 			}
-			// 过热保护
-			if (config.UseOverheatProtec)
+
+			HWND CurrForegroundHwnd = GetForegroundWindow(); // 防止重复获取
+
+			static HWND LastHwnd = NULL;
+			if (LastHwnd == GCHWND && LastHwnd != CurrForegroundHwnd)
+				IsReloadClicker = true;
+			LastHwnd = CurrForegroundHwnd;
+
+			if (IsReloadClicker)
 			{
-				static ULONGLONG OverTime = GetTickCount64() + 100;
-				static bool IsPlayedSound = false;
-				if (GetTickCount64() >= OverTime)
+				IsClickerSuccess = false;
+				IsReloadClicker = false;
+
+				// 没什么用，保留就行
+				srand(time(NULL));
+
+				SaveConfig(GetPresetFile(PresetConfig::CurrentName));
+				RenderTip(config.UseChinese ? u8"已保存配置" : "Successfully saved config", 4.0f, PT_INFO);
+
+				InitRandom();
+				ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
+				ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
+				IsClickerSuccess = true;
+				PrintLog("[Clicker] 重新加载连点成功", PL_INFO);
+			}
+
+			// 一些快捷键处理
+			if (GetKeyClick(config.SetGameWindowKey))
+			{
+				GameHwnd = CurrForegroundHwnd;
+				PrintLog("[Clicker] 已设置游戏窗口", PL_INFO);
+			}
+			if (GetKeyClick(config.HideClickerKey))
+			{
+				PrintLog("[Clicker] 已隐藏GC窗口", PL_INFO);
+				ShowWindow(GCHWND, SW_HIDE);
+			}
+			if (CurrForegroundHwnd != GCHWND && config.SelfDestructionKey > 6 && GetKeyDown(config.SelfDestructionKey))
+			{
+				IsGCExit = true;
+				PrintLog("[Clicker] 程序退出，用户按下了自毁键", PL_INFO);
+				return 0;
+			}
+
+			// 统一处理IsOpenGui和IsMoving
+			IsJumping = GetKeyDown(VK_SPACE);
+			IsMoving = GetKeyDown('W') || GetKeyDown('S') || GetKeyDown('D') || GetKeyDown('A') || IsJumping;
+			// GUI是否打开的检测
+			{
+				// 用0来初始化，启动了GC就会初始化IsOpenGui和IsCursorHidden的内部
+				static ULONGLONG LastTime = 0;
+				// 每40ms检测一次
+				if (LastTime < GetTickCount64())
 				{
-					if (IsClickering.right || IsClickering.left)
+					IsOpenGui = !IsCursorHidden(); // 不要忘记感叹号（not），已经出现过一次这个BUG了
+					LastTime = GetTickCount64() + 40;
+				}
+			}
+
+			{
+				LRPair<vector<bool>> EnableFlags;
+				// 仅移动连点
+				if (config.UseROnlyMoveClicker)
+					EnableFlags.right.push_back(IsMoving);
+				if (config.UseLOnlyMoveClicker)
+					EnableFlags.left.push_back(IsMoving);
+				// 仅跳跃触发连点
+				if (config.UseROnlyJumpClicker && !config.UseROnlyMoveClicker)
+					EnableFlags.right.push_back(IsJumping);
+				if (config.UseLOnlyJumpClicker && !config.UseLOnlyMoveClicker)
+					EnableFlags.left.push_back(IsJumping);
+
+				// GUI检测 - 注意和（仅移动连点 & 仅跳跃连点）的顺序，GUI检测权重要大，所以放这个后面
+				if (config.UseGUIDetection)
+				{
+					EnableFlags.right.push_back(!IsOpenGui);
+					EnableFlags.left.push_back(!IsOpenGui);
+				}
+
+				// 物品栏开关 & 物品栏预设CPS切换
+				if (config.UseItembarSwitch)
+				{
+					Clamp(ItemBarPos, 0, 8);
+					EnableFlags.right.push_back(config.ItemEnableClicker.right[ItemBarPos]);
+					EnableFlags.left.push_back(config.ItemEnableClicker.left[ItemBarPos]);
+					if (!config.UseBrutalMode && VarHasChanged(ItemBarPos, "ItemBarPos"))
 					{
-						if (OverheatTimer::Heat <= 0)
-							OverheatTimer::Cooldown = 0;
-						if (OverheatTimer::Heat >= config.OverheatTime)
+						if (config.ItemBarEnablePresetCPS.right[ItemBarPos])
+							config.RCPS = config.ItemBarPresetCPS.right[ItemBarPos];
+						if (config.ItemBarEnablePresetCPS.left[ItemBarPos])
+							config.LCPS = config.ItemBarPresetCPS.left[ItemBarPos];
+
+					}
+				}
+				// 过热保护
+				if (config.UseOverheatProtec)
+				{
+					static ULONGLONG OverTime = GetTickCount64() + 100;
+					static bool IsPlayedSound = false;
+					if (GetTickCount64() >= OverTime)
+					{
+						if (IsClickering.right || IsClickering.left)
 						{
-							EnableFlags.right.push_back(false);
-							EnableFlags.left.push_back(false);
+							if (OverheatTimer::Heat <= 0)
+								OverheatTimer::Cooldown = 0;
+							if (OverheatTimer::Heat >= config.OverheatTime)
 							{
-								switch (config.OverheatSoundType)
+								EnableFlags.right.push_back(false);
+								EnableFlags.left.push_back(false);
 								{
-								case WARNING_NONE:
-									break;
-								default:
-								case WARNING_SOUND:
-								{
-									if (!IsPlayedSound)
+									switch (config.OverheatSoundType)
 									{
-										PlaySound(Sound_Warning.c_str(), NULL, SND_FILENAME | SND_ASYNC);
-										IsPlayedSound = true;
-									}
-									break;
-								}
-								case WARNING_SYSTEM:
-								{
-									static ULONGLONG LastTime = 0;
-									if (LastTime + 800 <= GetTickCount64())
+									case WARNING_NONE:
+										break;
+									default:
+									case WARNING_SOUND:
 									{
-										MessageBeep(MB_ICONWARNING);
-										LastTime = GetTickCount64();
+										if (!IsPlayedSound)
+										{
+											PlaySound(Sound_Warning.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+											IsPlayedSound = true;
+										}
+										break;
 									}
-									break;
-								}
+									case WARNING_SYSTEM:
+									{
+										static ULONGLONG LastTime = 0;
+										if (LastTime + 800 <= GetTickCount64())
+										{
+											MessageBeep(MB_ICONWARNING);
+											LastTime = GetTickCount64();
+										}
+										break;
+									}
+									}
 								}
 							}
+							else
+								OverheatTimer::Heat += 0.15f;
 						}
 						else
-							OverheatTimer::Heat += 0.15f;
-					}
-					else
-					{
-						if (OverheatTimer::Heat >= 0)
-							OverheatTimer::Heat = 0;
-						if (OverheatTimer::Cooldown <= config.OverheatCooldownTime)
-							OverheatTimer::Cooldown += 0.15f;
-						if (OverheatTimer::Cooldown >= config.OverheatCooldownTime)
 						{
-							OverheatTimer::Heat = 0;
-							OverheatTimer::Cooldown = 0;
-							EnableFlags.right.push_back(true);
-							EnableFlags.left.push_back(true);
-							IsPlayedSound = false;
-							PlaySound(NULL, NULL, 0);
+							if (OverheatTimer::Heat >= 0)
+								OverheatTimer::Heat = 0;
+							if (OverheatTimer::Cooldown <= config.OverheatCooldownTime)
+								OverheatTimer::Cooldown += 0.15f;
+							if (OverheatTimer::Cooldown >= config.OverheatCooldownTime)
+							{
+								OverheatTimer::Heat = 0;
+								OverheatTimer::Cooldown = 0;
+								EnableFlags.right.push_back(true);
+								EnableFlags.left.push_back(true);
+								IsPlayedSound = false;
+								PlaySound(NULL, NULL, 0);
+							}
+						}
+						OverTime = GetTickCount64() + 100;
+					}
+				}
+
+				// 仅限游戏中连点
+				if (config.UseInGameOnlyClicker)
+				{
+					const bool IsInGame = (CurrForegroundHwnd == GameHwnd);
+					EnableFlags.right.push_back(IsInGame);
+					EnableFlags.left.push_back(IsInGame);
+				}
+
+				if (config.AllowSetLClicker)
+				{
+					bool state = true;
+					for (const bool& v : EnableFlags.left)
+					{
+						if (v == false) // 必须全部都是true，如果有一个false就说明需要关闭连点
+							state = false;
+					}
+					if (!EnableFlags.left.empty())
+						config.EnableLeftClicker = state;
+				}
+				if (config.AllowSetRClicker)
+				{
+					bool state = true;
+					for (const bool& v : EnableFlags.right)
+					{
+						if (v == false) // 和上面同理
+							state = false;
+					}
+					if (!EnableFlags.right.empty())
+						config.EnableRightClicker = state;
+				}
+
+				// 强制开关连点 - 这个权重大于一切
+				if (GetKeyClick(config.EnableRightClickerKey))
+				{
+					config.EnableRightClicker = !config.EnableRightClicker;
+					if (config.EnableRightClicker) PlayEnableSound();
+					else PlayDisableSound();
+				}
+				if (GetKeyClick(config.EnableLeftClickerKey))
+				{
+					config.EnableLeftClicker = !config.EnableLeftClicker;
+					if (config.EnableLeftClicker) PlayEnableSound();
+					else PlayDisableSound();
+				}
+			}
+
+			// 物品栏切换的同步逻辑
+			if (!IsOpenGui || (GCHWND == CurrForegroundHwnd)) //  GCHWND = CurrForegroundHwnd用于在GC设置里面耶可以通过快捷键切换，方便设置
+			{
+				for (int i = 0; i < 9; i++)
+				{
+					if (GetKeyClick(config.ItemBarKey[i]))
+						ItemBarPos = i;
+				}
+			}
+
+			// 快速切换CPS
+			for (int i = 0; i < config.QuickSwitchTotal; i++)
+			{
+				if (GetKeyClick(config.QuickSwitchKey[i]))
+				{
+					config.RCPS = config.RQuickSwitch[i];
+					config.LCPS = config.LQuickSwitch[i];
+					ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
+					ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
+					PlayEnableSound();
+				}
+			}
+
+			// CPS波动
+			/*
+			static ULONGLONG LastRightTime = 0;
+			if (GetTickCount64() - LastRightTime >= 900)
+			{
+				if (config.UseRFluctuation)
+				{
+					const int cps = Random(config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
+					ClickerDynamicDelay.right = round(1000.0f / max(cps, 0));
+					LastRightTime = GetTickCount64();
+				}
+				else
+					ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
+			}
+			static ULONGLONG LastLeftTime = 0;
+			if (GetTickCount64() - LastLeftTime >= 900)
+			{
+				if (config.UseLFluctuation)
+				{
+					const int cps = Random(config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
+					ClickerDynamicDelay.left = round(1000.0f / max(cps, 0));
+					LastLeftTime = GetTickCount64();
+				}
+				else
+					ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
+			}*/
+
+			static LRPair<SmoothCPS> CPSSmooth;
+			if (IsCPSWaveSettingChanged || VarHasChanged(config.LCPS, "LCPS", true))
+			{
+				CPSSmooth.left.BaseCPS = config.LCPS;
+				CPSSmooth.left.MinCPS = config.LCPS - config.LFluctuationCPS;
+				CPSSmooth.left.MaxCPS = config.LCPS + config.LFluctuationCPS;
+				if (IsCPSWaveSettingChanged || CPSSmooth.left.GetWaveCount() <= 0)
+					IsCPSWaveSettingChanged = true;
+			}
+			if (IsCPSWaveSettingChanged || VarHasChanged(config.RCPS, "RCPS", true))
+			{
+				CPSSmooth.right.BaseCPS = config.RCPS;
+				CPSSmooth.right.MinCPS = config.RCPS - config.RFluctuationCPS;
+				CPSSmooth.right.MaxCPS = config.RCPS + config.RFluctuationCPS;
+				if (CPSSmooth.right.GetWaveCount() <= 0)
+					IsCPSWaveSettingChanged = true;
+			}
+			if (IsCPSWaveSettingChanged)
+			{
+				CPSSmooth.left.SetWaveList(config.CPSWaves.left);
+				CPSSmooth.right.SetWaveList(config.CPSWaves.right);
+				IsCPSWaveSettingChanged = false;
+			}
+
+			if (IsClickering.right)
+			{
+				if (config.UseRFluctuation)
+				{
+					const float ResultCPS = CPSSmooth.right.CalcCPS();
+					const int CPS = clamp(ResultCPS, config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS);
+					ClickerDynamicDelay.right = int(1000.0f / CPS);
+				}
+				else if (VarHasChanged(config.RCPS, "config.LCPS", true))
+					ClickerDynamicDelay.right = int(1000.0f / max(config.RCPS, 0));
+			}
+			if (IsClickering.left)
+			{
+				if (config.UseLFluctuation)
+				{
+					const float ResultCPS = CPSSmooth.left.CalcCPS();
+					const int CPS = clamp(ResultCPS, config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS);
+					ClickerDynamicDelay.left = int(1000.0f / CPS);
+				}
+				else if (VarHasChanged(config.LCPS, "config.LCPS", true))
+					ClickerDynamicDelay.left = int(1000.0f / max(config.LCPS, 0));
+			}
+
+			// ===== 过热降频：连点持续达到过热点后，CPS 线性下降直到最低限制（停止连点即恢复）=====
+			// 参考 CPS 波动的写法在 ClickerControl 主循环统一计算（连点线程只负责消费 ClickerDynamicDelay）。
+			{
+				// 用"最近点击时间"判断连点会话：IsClickering 是瞬时点击状态（空刀时为 false），
+				// 不能直接用它计时，超过 IdleThreshold 无点击才视为会话结束。
+				static ULONGLONG LastClickTime = 0;      // 最近一次实际点击的时间
+				static ULONGLONG OverheatStartTime = 0;  // 当前连点会话的开始时间
+				static const ULONGLONG IdleThreshold = 500;   // 超过该时长无点击 = 连点结束
+
+				const bool IsClicking = IsClickering.right || IsClickering.left;
+				if (IsClicking)
+				{
+					const ULONGLONG Now = GetTickCount64();
+					if (Now - LastClickTime > IdleThreshold)   // 新的连点会话开始
+						OverheatStartTime = Now;
+					LastClickTime = Now;
+
+					if (config.UseOverheatThrottle && config.Overheat_Time > 0.0f)
+					{
+						const float ElapsedSec = (Now - OverheatStartTime) / 1000.0f;
+						if (ElapsedSec >= config.Overheat_Time)   // 到达过热点后才开始降频
+						{
+							// 在 Overheat_ThrottleTime 秒内线性降到 MinCPS（过热时优先于 CPS 波动）
+							const float Throttle = min(1.0f, (ElapsedSec - config.Overheat_Time) / max(config.Overheat_ThrottleTime, 0.1f));
+							const float RCurCPS = config.RCPS - (config.RCPS - config.Overheat_MinCPS) * Throttle;
+							const float LCurCPS = config.LCPS - (config.LCPS - config.Overheat_MinCPS) * Throttle;
+							ClickerDynamicDelay.right = 1000.0f / max(RCurCPS, 1.0f);
+							ClickerDynamicDelay.left = 1000.0f / max(LCurCPS, 1.0f);
 						}
 					}
-					OverTime = GetTickCount64() + 100;
 				}
 			}
 
-			// 仅限游戏中连点
-			if (config.UseInGameOnlyClicker)
+			// 拒绝默认模式下，快捷键为左/右键
 			{
-				const bool IsInGame = (CurrForegroundHwnd == GameHwnd);
-				EnableFlags.right.push_back(IsInGame);
-				EnableFlags.left.push_back(IsInGame);
+				if ((config.LClickerMode & C_BUTTONMODE || config.LClickerMode & C_SWITCHMODE) && config.LKEY == 1)
+					config.LKEY = MAIN_L_KEY;
+				if ((config.RClickerMode & C_BUTTONMODE || config.RClickerMode & C_SWITCHMODE) && config.RKEY == 2)
+					config.RKEY = MAIN_R_KEY;
 			}
 
-			if (config.AllowSetLClicker)
 			{
-				bool state = true;
-				for (const bool& v : EnableFlags.left)
-				{
-					if (v == false) // 必须全部都是true，如果有一个false就说明需要关闭连点
-						state = false;
-				}
-				if (!EnableFlags.left.empty())
-					config.EnableLeftClicker = state;
+				static ULONGLONG LastTime = GetTickCount64();
+				// RecordTime为1小时
+				static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
+				if (GetTickCount64() - LastTime >= RecordTime)
+					app_status.UsageDuration += 0.1; // 10秒
 			}
-			if (config.AllowSetRClicker)
-			{
-				bool state = true;
-				for (const bool& v : EnableFlags.right)
-				{
-					if (v == false) // 和上面同理
-						state = false;
-				}
-				if (!EnableFlags.right.empty())
-					config.EnableRightClicker = state;
-			}
+			//处理溢出(没用，+0.1，一百年都到不了)
+			//if (LMouseClickCount >= LDBL_MAX - 2) LMouseClickCount = 0;
+			/*
+			* 关于人类在打游戏时点击鼠标的次数，根据不同的数据源，结果有所不同。以下是一些相关的信息：
+			* 1. 普通人使用鼠标的日常点击次数大约是1000次左右。如果是用于办公或玩游戏，这个数字可能会增加1.5到2倍，大约在1500次左右。
+			* 2. 在玩游戏时，正常人的手速大约是每秒5到8次，这包括鼠标点击和键盘敲击。特别是在玩即时战略游戏如星际争霸或魔兽争霸时，每分钟操作数（APM）可以达到110左右，这反映了玩家的操作速度。
+			* 3. 对于专业玩家来说，APM（每分钟操作数）通常在350到400次左右，这意味着平均每秒大约有6到7次鼠标点击和键盘敲击。
+			* 基于这些数据，我们可以估算，如果一个玩家每天玩游戏10小时，每分钟点击鼠标350次，那么一天内的点击次数将是350次/分钟 × 60分钟/小时 × 10小时/天 = 210,000次。这样的点击频率下，
+			* unsigned long long 类型（通常为64位，最大值约为18,446,744,073,709,551,615）会在大约 86,542,663.67 天后溢出。
+			* 这远远超过了实际可能的游戏时间，因此在使用 unsigned long long 类型记录鼠标点击次数时，溢出的风险非常低。
+			*/
 
-			// 强制开关连点 - 这个权重大于一切
-			if (GetKeyClick(config.EnableRightClickerKey))
-			{
-				config.EnableRightClicker = !config.EnableRightClicker;
-				if (config.EnableRightClicker) PlayEnableSound();
-				else PlayDisableSound();
-			}
-			if (GetKeyClick(config.EnableLeftClickerKey))
-			{
-				config.EnableLeftClicker = !config.EnableLeftClicker;
-				if (config.EnableLeftClicker) PlayEnableSound();
-				else PlayDisableSound();
-			}
-		}
-		
-		// 物品栏切换的同步逻辑
-		if (!IsOpenGui || (GCHWND == CurrForegroundHwnd)) //  GCHWND = CurrForegroundHwnd用于在GC设置里面耶可以通过快捷键切换，方便设置
-		{
-			for (int i = 0; i < 9; i++)
-			{
-				if (GetKeyClick(config.ItemBarKey[i]))
-					ItemBarPos = i;
-			}
-		}
-
-		// 快速切换CPS
-		for (int i = 0; i < config.QuickSwitchTotal; i++)
-		{
-			if (GetKeyClick(config.QuickSwitchKey[i]))
-			{
-				config.RCPS = config.RQuickSwitch[i];
-				config.LCPS = config.LQuickSwitch[i];
-				ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
-				ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0)); 
-				PlayEnableSound();
-			}
-		}
-
-		// CPS波动
-		/*
-		static ULONGLONG LastRightTime = 0;
-		if (GetTickCount64() - LastRightTime >= 900)
-		{
-			if (config.UseRFluctuation)
-			{
-				const int cps = Random(config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
-				ClickerDynamicDelay.right = round(1000.0f / max(cps, 0));
-				LastRightTime = GetTickCount64();
-			}
-			else
-				ClickerDynamicDelay.right = round(1000.0f / max(config.RCPS, 0));
-		}
-		static ULONGLONG LastLeftTime = 0;
-		if (GetTickCount64() - LastLeftTime >= 900)
-		{
-			if (config.UseLFluctuation)
-			{
-				const int cps = Random(config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS, config.MouseShake_RandomGen, config.MouseShake_RandomDist);
-				ClickerDynamicDelay.left = round(1000.0f / max(cps, 0));
-				LastLeftTime = GetTickCount64();
-			}
-			else
-				ClickerDynamicDelay.left = round(1000.0f / max(config.LCPS, 0));
-		}*/
-		
-		static LRPair<SmoothCPS> CPSSmooth;
-		if (IsCPSWaveSettingChanged || VarHasChanged(config.LCPS, "LCPS", true))
-		{
-			CPSSmooth.left.BaseCPS = config.LCPS;
-			CPSSmooth.left.MinCPS = config.LCPS - config.LFluctuationCPS;
-			CPSSmooth.left.MaxCPS = config.LCPS + config.LFluctuationCPS;
-			if (IsCPSWaveSettingChanged || CPSSmooth.left.GetWaveCount() <= 0)
-				IsCPSWaveSettingChanged = true;
-		}
-		if (IsCPSWaveSettingChanged || VarHasChanged(config.RCPS, "RCPS", true))
-		{
-			CPSSmooth.right.BaseCPS = config.RCPS;
-			CPSSmooth.right.MinCPS = config.RCPS - config.RFluctuationCPS;
-			CPSSmooth.right.MaxCPS = config.RCPS + config.RFluctuationCPS;
-			if (CPSSmooth.right.GetWaveCount() <= 0)
-				IsCPSWaveSettingChanged = true;
-		}
-		if (IsCPSWaveSettingChanged)
-		{
-			CPSSmooth.left.SetWaveList(config.CPSWaves.left);
-			CPSSmooth.right.SetWaveList(config.CPSWaves.right);
-			IsCPSWaveSettingChanged = false;
-		}
-
-		if (IsClickering.right)
-		{
-			if (config.UseRFluctuation)
-			{
-				const float ResultCPS = CPSSmooth.right.CalcCPS();
-				const int CPS = clamp(ResultCPS, config.RCPS - config.RFluctuationCPS, config.RCPS + config.RFluctuationCPS);
-				ClickerDynamicDelay.right = int(1000.0f / CPS);
-			}
-			else if (VarHasChanged(config.RCPS, "config.LCPS", true))
-				ClickerDynamicDelay.right = int(1000.0f / max(config.RCPS, 0));
-		}
-		if (IsClickering.left)
-		{
-			if (config.UseLFluctuation)
-			{
-				const float ResultCPS = CPSSmooth.left.CalcCPS();
-				const int CPS = clamp(ResultCPS, config.LCPS - config.LFluctuationCPS, config.LCPS + config.LFluctuationCPS);
-				ClickerDynamicDelay.left = int(1000.0f / CPS);
-			}
-			else if (VarHasChanged(config.LCPS, "config.LCPS", true))
-				ClickerDynamicDelay.left = int(1000.0f / max(config.LCPS, 0));
-		}
-
-		// ===== 过热降频：连点持续达到过热点后，CPS 线性下降直到最低限制（停止连点即恢复）=====
-		// 参考 CPS 波动的写法在 ClickerControl 主循环统一计算（连点线程只负责消费 ClickerDynamicDelay）。
-		{
-			// 用"最近点击时间"判断连点会话：IsClickering 是瞬时点击状态（空刀时为 false），
-			// 不能直接用它计时，超过 IdleThreshold 无点击才视为会话结束。
-			static ULONGLONG LastClickTime = 0;      // 最近一次实际点击的时间
-			static ULONGLONG OverheatStartTime = 0;  // 当前连点会话的开始时间
-			static const ULONGLONG IdleThreshold = 500;   // 超过该时长无点击 = 连点结束
-
-			const bool IsClicking = IsClickering.right || IsClickering.left;
-			if (IsClicking)
-			{
-				const ULONGLONG Now = GetTickCount64();
-				if (Now - LastClickTime > IdleThreshold)   // 新的连点会话开始
-					OverheatStartTime = Now;
-				LastClickTime = Now;
-
-				if (config.UseOverheatThrottle && config.Overheat_Time > 0.0f)
-				{
-					const float ElapsedSec = (Now - OverheatStartTime) / 1000.0f;
-					if (ElapsedSec >= config.Overheat_Time)   // 到达过热点后才开始降频
-					{
-						// 在 Overheat_ThrottleTime 秒内线性降到 MinCPS（过热时优先于 CPS 波动）
-						const float Throttle = min(1.0f, (ElapsedSec - config.Overheat_Time) / max(config.Overheat_ThrottleTime, 0.1f));
-						const float RCurCPS = config.RCPS - (config.RCPS - config.Overheat_MinCPS) * Throttle;
-						const float LCurCPS = config.LCPS - (config.LCPS - config.Overheat_MinCPS) * Throttle;
-						ClickerDynamicDelay.right = 1000.0f / max(RCurCPS, 1.0f);
-						ClickerDynamicDelay.left = 1000.0f / max(LCurCPS, 1.0f);
-					}
-				}
-			}
-		}
-
-		// 拒绝默认模式下，快捷键为左/右键
-		{
-			if ((config.LClickerMode & C_BUTTONMODE || config.LClickerMode & C_SWITCHMODE) && config.LKEY == 1)
-				config.LKEY = MAIN_L_KEY;
-			if ((config.RClickerMode & C_BUTTONMODE || config.RClickerMode & C_SWITCHMODE) && config.RKEY == 2)
-				config.RKEY = MAIN_R_KEY;
-		}
-
-		{
-			static ULONGLONG LastTime = GetTickCount64();
-			// RecordTime为1小时
-			static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
-			if (GetTickCount64() - LastTime >= RecordTime)
-				app_status.UsageDuration += 0.1; // 10秒
-		}
-		//处理溢出(没用，+0.1，一百年都到不了)
-		//if (LMouseClickCount >= LDBL_MAX - 2) LMouseClickCount = 0;
-		/*
-		* 关于人类在打游戏时点击鼠标的次数，根据不同的数据源，结果有所不同。以下是一些相关的信息：
-		* 1. 普通人使用鼠标的日常点击次数大约是1000次左右。如果是用于办公或玩游戏，这个数字可能会增加1.5到2倍，大约在1500次左右。
-		* 2. 在玩游戏时，正常人的手速大约是每秒5到8次，这包括鼠标点击和键盘敲击。特别是在玩即时战略游戏如星际争霸或魔兽争霸时，每分钟操作数（APM）可以达到110左右，这反映了玩家的操作速度。
-		* 3. 对于专业玩家来说，APM（每分钟操作数）通常在350到400次左右，这意味着平均每秒大约有6到7次鼠标点击和键盘敲击。
-		* 基于这些数据，我们可以估算，如果一个玩家每天玩游戏10小时，每分钟点击鼠标350次，那么一天内的点击次数将是350次/分钟 × 60分钟/小时 × 10小时/天 = 210,000次。这样的点击频率下，
-		* unsigned long long 类型（通常为64位，最大值约为18,446,744,073,709,551,615）会在大约 86,542,663.67 天后溢出。
-		* 这远远超过了实际可能的游戏时间，因此在使用 unsigned long long 类型记录鼠标点击次数时，溢出的风险非常低。
-		*/
+		} // 释放 ConfigAccessMutex：避免在主循环 Sleep 期间持锁导致切换配置等锁卡顿
 
 		Sleep(10);
 	}
@@ -601,11 +603,6 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 
 		while (!IsGCExit && !IsReloadClicker && !IsStopClicker)
 		{
-			// 修复：点击循环内持续读取 config（模式/CPS/延迟等），持读锁与主线程 config 重置（写锁）互斥。
-			// 注意：不能把锁放在外层循环入口——IsStopClicker 时线程会长期停在等待循环（Sleep(20)），
-			// 会把读锁占死导致重置线程饿死。因此只覆盖真正读 config 的点击循环。
-			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
-
 			// 优先级处理
 			if (config.ClickerPriorityMode == CP_LC && IsClickering.left)
 			{
@@ -718,7 +715,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
-					else IsClickering.right = false;
+					else
+					{
+						SetKeyUp(Click::Right, config.SimulateClickMode);
+						IsClickering.right = false;
+					}
 				}
 				else
 				{
@@ -727,8 +728,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					if (!IsStopedClicker)
 					{
 						IsStopedClicker = true;
-						if (IsKeyPressed) if (!config.UseRClickerTrigInter)
-							SetKeyDown(Click::Right, config.SimulateClickMode);
+						if (IsKeyPressed) SetKeyDown(Click::Right, config.SimulateClickMode);
 						else SetKeyUp(Click::Right, config.SimulateClickMode);
 					}
 				}
@@ -842,12 +842,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 	while (!IsGCExit)
 	{
 		while (!IsClickerSuccess || IsStopClicker)
-			Sleep(10);
+			Sleep(20);
 
 		RandomBoolManager rbm;
 		if (config.UseLEmptyRate)
 		{
-			// 修复：原代码误用 config.REmptyRateValue（右键空刀概率）——左键连点应使用左键空刀概率
 			rbm.SetErrorRate(config.LEmptyRateValue / 100.0f);
 			rbm.SetMode((RandomBoolMode)config.EmptyRate_RandomMode);
 			rbm.SetDistribution(config.EmptyRate_RandomDist);
@@ -860,9 +859,6 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 
 		while (!IsGCExit && !IsReloadClicker && !IsStopClicker)
 		{
-			// 修复：点击循环内持续读取 config，持读锁与主线程 config 重置（写锁）互斥（同 RClickRun）
-			shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
-
 			// 优先级处理
 			if (config.ClickerPriorityMode == CP_RC && IsClickering.right)
 			{
@@ -972,7 +968,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
-					else IsClickering.left = false;
+					else
+					{
+						SetKeyUp(Click::Left, config.SimulateClickMode);
+						IsClickering.left = false;
+					}
 				}
 				else
 				{
@@ -981,7 +981,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					if (!IsStopedClicker)
 					{
 						IsStopedClicker = true;
-						if (IsKeyPressed) if (!config.UseLClickerTrigInter) SetKeyDown(Click::Left, config.SimulateClickMode);
+						if (IsKeyPressed) SetKeyDown(Click::Left, config.SimulateClickMode);
 						else SetKeyUp(Click::Left, config.SimulateClickMode);
 					}
 				}

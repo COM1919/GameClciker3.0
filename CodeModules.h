@@ -12,6 +12,8 @@
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "wbemuuid.lib")
 
+bool IsRunningAsElevatedAdmin();
+DWORD RequestAdminAndRestart();
 int GetCaptionHeight();
 void SetupCrashHandler();
 inline void Sleep(DWORD ms);
@@ -27,52 +29,90 @@ void ExceptionHandling(DWORD code, string what);
 LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo);
 inline void BeginSleep(const char* flag);
 inline void EndSleep(const char* flag, int time);
-wstring UTF8ToWString(const string& utf8Str);
 
-// 弹窗请求管理员权限并重启自身
-int RequestAdminAndRestart()
+bool IsRunningAsElevatedAdmin()
 {
-    wchar_t szPath[MAX_PATH];
-    // 获取当前可执行文件的完整路径
-    if (GetModuleFileNameW(NULL, szPath, ARRAYSIZE(szPath)))
+    HANDLE hToken = nullptr;
+
+    // 打开当前进程令牌，只需要查询权限
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+        return false;
+
+    bool result = false;
+    DWORD size = 0;
+
+    // ---------- 主判据：TokenElevation ----------
+    TOKEN_ELEVATION elevation = {};
+    if (!GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &size))
     {
-        SHELLEXECUTEINFOW sei = { sizeof(sei) };
-        sei.lpVerb = L"runas";      // 关键：这个动词会触发UAC弹窗请求管理员权限
-        sei.lpFile = szPath;        // 要运行的程序（即自身）
-        sei.hwnd = NULL;
-        sei.nShow = SW_NORMAL;
-        // 执行提权启动
-        if (ShellExecuteExW(&sei)) // 成功以管理员权限启动了新进程，退出当前普通权限的进程
-            ExitProcess(0);
-        else
+        CloseHandle(hToken);
+        return false; // 查询失败，保守返回 false
+    }
+
+    if (elevation.TokenIsElevated != 0) // 已提权：拥有完整管理员令牌
+        result = true;
+    else
+    {
+        // ---------- 未提权：区分两种可能 ----------
+        TOKEN_ELEVATION_TYPE type = TokenElevationTypeDefault;
+        if (!GetTokenInformation(hToken, TokenElevationType, &type, sizeof(type), &size))
         {
-            DWORD err = GetLastError();
-            if (err == ERROR_CANCELLED)
-                return err;
+            CloseHandle(hToken);
+            return false; // 查询失败，保守返回 false
+        }
+
+        if (type == TokenElevationTypeLimited) // 筛选令牌：UAC 启用但未提权（典型"清单要求管理员但被拒绝/未提权"）
+            result = false;
+        else // TokenElevationTypeDefault
+        {
+            // UAC 完全禁用的情况：此时令牌就是完整令牌
+            // 但必须确认用户确实是管理员，否则是标准用户
+            BOOL isAdmin = FALSE;
+            SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+            PSID adminSid = nullptr;
+
+            if (AllocateAndInitializeSid(&ntAuth, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &adminSid))
+            {
+                CheckTokenMembership(hToken, adminSid, &isAdmin);
+                FreeSid(adminSid);
+            }
+            result = (isAdmin == TRUE);
         }
     }
-    return 0;
+
+    CloseHandle(hToken);
+    return result;
 }
 
-bool IsRunAsAdmin()
+DWORD RequestAdminAndRestart()
 {
-    bool fIsRunAsAdmin = FALSE;
-    HANDLE hToken = NULL;
+    wchar_t szPath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, szPath, ARRAYSIZE(szPath)) == 0)
+        return GetLastError();
 
-    // 打开当前进程的令牌
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    // 关键：附加一个防重入标记，重启后如果看到它就不再请求提权
+    // 如果需要保留原始参数，从这里解析 GetCommandLineW() 并拼接
+    std::wstring params = L"--elevated-retry";
+
+    SHELLEXECUTEINFOW sei = {};
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS; // 拿到 hProcess 便于后续处理
+    sei.lpVerb = L"runas";  // 触发 UAC 提权
+    sei.lpFile = szPath;
+    sei.lpParameters = params.c_str();
+    sei.hwnd = GetActiveWindow();  // 让 UAC 对话框附着到当前窗口
+    sei.nShow = SW_NORMAL;
+
+    if (!ShellExecuteExW(&sei))
+        return GetLastError();   // 用户取消 -> ERROR_CANCELLED；其他 -> 对应错误码
+
+    // 启动成功。如果不需要等待子进程，直接关闭句柄即可
+    if (sei.hProcess)
     {
-        TOKEN_ELEVATION elevation;
-        DWORD cbSize = sizeof(TOKEN_ELEVATION);
-        // 查询令牌的提升信息
-        if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &cbSize))
-            fIsRunAsAdmin = elevation.TokenIsElevated;
+        CloseHandle(sei.hProcess);
     }
 
-    if (hToken)
-        CloseHandle(hToken);
-
-    return fIsRunAsAdmin;
+    return 0;   // 告诉调用者：新进程已启动，可以退出了
 }
 
 string BytesToHex(const unsigned char* data, size_t len)
@@ -281,7 +321,7 @@ LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo)
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-wstring UTF8ToWString(const string& utf8Str)
+static wstring UTF8ToWString(const string& utf8Str)
 {
     if (utf8Str.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), (int)utf8Str.size(), nullptr, 0);
@@ -412,9 +452,9 @@ public:
     }
     inline void EndSleep(ULONGLONG time)
     {
-        const time_t deltaTime = GetNowMs() - LastTime;
+        const ULONGLONG deltaTime = GetNowMs() - LastTime;
         if (deltaTime < time)
-            Sleep(time - deltaTime);
+            Sleep(static_cast<DWORD>(time - deltaTime));
     }
     inline ~PreciseSleep()
     {

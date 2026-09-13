@@ -54,14 +54,14 @@ int StartUpGC(HINSTANCE hInstance)
         if (AntiMultiOpenMutex)
             CloseHandle(AntiMultiOpenMutex);
         MessageBox(NULL, config.UseChinese ? "你已经打开了一个GC连点器了!" : "You can only run one instance of GC at a time.", config.UseChinese ? "提示" : "Warning", MB_OK | MB_ICONQUESTION);
-        return -1;
+        return 30;
     }
 
 #ifdef GC_DEBUG_CMD
     if (!AllocConsole())
     {
         OutputDebugString("[Init] 无法分配控制台窗口");
-        return -2;
+        return 20;
     }
     // 设置标准输入输出错误句柄到新控制台
     FILE* stream;
@@ -82,7 +82,7 @@ int StartUpGC(HINSTANCE hInstance)
     if (WorkPath.empty())
     {
         MessageBox(NULL, ((config.UseChinese ? "无法获取工作目录：" : "Oops!\nFailed to obtain the working directory:") + to_string(GetLastError())).c_str(), config.UseChinese ? "错误" : "Error", MB_OK | MB_ICONERROR);
-        return -3;
+        return 50;
     }
     {
         char TempPath[MAX_PATH] = { 0 };
@@ -94,7 +94,7 @@ int StartUpGC(HINSTANCE hInstance)
         if (exe.find(temp) == 0)
         {
             MessageBox(NULL, config.UseChinese ? "请解压文件后使用！" : "Please unzip the program file,\nand then you can run it.", "错误", MB_OK | MB_ICONERROR);
-            return -4;
+            return 60;
         }
     }
 
@@ -107,18 +107,22 @@ int StartUpGC(HINSTANCE hInstance)
     }
     InitLogSystem(LogFile); // 初始化日志系统，启动日志线程
 
-    if (!IsRunAsAdmin())
+    if (!IsRunningAsElevatedAdmin())
     {
-        const int ret = MessageBox(NULL, config.UseChinese ? "该程序需要管理员权限才能运行。\n但拒绝后你仍然可以使用，但可能不会正常工作。\n点击确定自动请求权限" : "This program requires admin privileges to run. \nBut even if you refuse, you can still use it,\nbut it may not work properly.\nClick OK to auto request permissions.", config.UseChinese ? "警告" : "Warning", MB_OKCANCEL);
+        const int ret = MessageBox(NULL, config.UseChinese ? "该程序需要管理员权限才能运行。\n但拒绝后你仍然可以使用，但可能不会正常工作。\n点击确定自动请求权限" : "This program requires admin privileges to run. \nBut even if you refuse, you can still use it,\nbut it may not work properly.\nClick OK to auto request permissions.", config.UseChinese ? "GameClicker警告" : "GameClicker Warning", MB_OKCANCEL);
         if (ret == IDOK)
         {
-            const int err = RequestAdminAndRestart();
+            CloseHandle(AntiMultiOpenMutex);
+            const DWORD err = RequestAdminAndRestart();
             if (err != 0)
             {
                 PrintLog("请求管理员权限失败，错误代码：" + to_string(err), PL_ERROR);
-                MessageBox(NULL, config.UseChinese ? "请求管理员权限失败，\n请尝试手动选择管理员身份运行。" : "Failed to request administrator privileges.\nPlease try manually selecting the administrator identity to run.", config.UseChinese ? "错误" : "Error", MB_OK);
+                MessageBox(NULL, config.UseChinese ? "请求管理员权限失败，\n请尝试手动选择管理员身份运行。" : "Failed to request administrator privileges.\nPlease try manually selecting the administrator identity to run.", config.UseChinese ? "GameClicker错误" : "GameClicker Error", MB_OK);
+                return 80;
             }
+		    return 81; // 成功请求权限并重启，退出当前进程
         }
+		MessageBox(NULL, config.UseChinese ? "你拒绝了管理员权限请求，\n程序将继续运行，但可能不会正常工作。" : "You refused the administrator privilege request,\nthe program will continue to run, but it may not work properly.", config.UseChinese ? "GameClicker提示" : "GameClicker Warning", MB_OK);
     }
 
     PrintLog("[Init] 开始加载动画", PL_INFO);
@@ -144,14 +148,14 @@ int StartUpGC(HINSTANCE hInstance)
         ExceptionHandling(GetLastError(), e.what() + " - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因："s + e.what(), PL_ERROR);
         client.Send("exit");
-        return -5;
+        return 70;
     }
     catch (...)
     {
         ExceptionHandling(GetLastError(), "未知原因 - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因很神秘", PL_ERROR);
         client.Send("exit");
-        return -6;
+        return 71;
     }
 
     //===============================结束===============================
@@ -175,12 +179,12 @@ int StartUpGC(HINSTANCE hInstance)
     // 清除符号处理
     SymCleanup(GetCurrentProcess());
 
-    SaveConfig();
+    SaveConfig(GetPresetFile(PresetConfig::CurrentName));
 
     PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
     Sleep(450);
     PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
-    return 7;
+    return 1919;
 }
 
 DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
@@ -304,7 +308,9 @@ int GCMainLoop()
         PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
     if (_access(ConfigPath.c_str(), 0) != 0)
         CreateDirectory(ConfigPath.c_str(), NULL);
+
     LoadConfig();
+    PresetConfig::Presets = ScanPresets();
 
     if (_access(LogPath.c_str(), 0) != 0)
         CreateDirectory(LogPath.c_str(), NULL);
@@ -393,7 +399,7 @@ int GCMainLoop()
     const int SleepFps = round(1000 / RenderFps);
     PrintLog("[Render] 开始渲染UI", PL_INFO);
 
-    WindowInitSuccessful = true;
+    IsWindowInitSuccessful = true;
 
     while (!IsGCExit)
     {
@@ -564,7 +570,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     if (_access(ScriptPath.c_str(), 0) != 0)
     {
         CreateDirectory(ScriptPath.c_str(), NULL);
-        InstalledScripts.clear();
+        ScriptData::Installed.clear();
         LuaStates.clear();
     }
     if (_access(ScriptPath.c_str(), 0) != 0)
@@ -624,14 +630,14 @@ DWORD WINAPI InitGC(LPVOID lpParam)
 
     {
         // 写入锁
-        lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
+        lock_guard<shared_mutex> lock1(ScriptData::InstalledMtx);
         // 修复：删除"脚本自启动"功能（废弃且不能正常工作）——启动程序不再自动运行所有已安装脚本。
         // 改为由用户在"已安装"列表的"启用"开关手动启动。
-        for (const ScriptInfo& script : InstalledScripts)
+        for (const ScriptInfo& script : ScriptData::Installed)
         {
             // 确保 ScriptState 条目存在（供"启用"开关/启动按键显示，IsRunning=false -> 显示"关闭"）
-            lock_guard<shared_mutex> lock2(ScriptStatesMtx);
-            ScriptStates[script.file];
+            lock_guard<shared_mutex> lock2(ScriptData::StatesMtx);
+            ScriptData::States[script.file];
         }
     }
 
@@ -642,11 +648,11 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     CreateDirectory(ScriptShopTemp.c_str(), NULL);
     CreateDirectory(ScriptTemp.c_str(), NULL);
     RefushScriptList();
-    // 修复：已安装列表恢复必须在 AvaiableScripts 填充之后（原逻辑在 LoadConfig 中因列表为空被跳过）
-    RestoreInstalledScripts();
+    // 修复：已安装列表恢复必须在 ScriptData::Avaiable 填充之后（原逻辑在 LoadConfig 中因列表为空被跳过）
+    //RestoreInstalledScripts();
 
     {
-        while (!WindowInitSuccessful)
+        while (!IsWindowInitSuccessful)
             Sleep(50);
         lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
@@ -688,13 +694,8 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 
 void RenderGui(ImGuiIO& io)
 {
-    // config 重置在帧边界由主线程执行（后台线程只负责弹窗确认并置位标记）。
-    // 重建前先停止连点器并触发重载，尽量缩小与后台线程读 config 的竞态窗口。
     if (IsNeedResetConfig.exchange(false))
     {
-        // 持写锁重建：所有高频消费 config 的后台线程此时在循环体入口的读锁处被挡住，
-        // 保证析构+原地构造期间没有任何后台线程读到 config 内部的 string/vector 成员。
-        lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
         IsStopClicker = true;
         IsReloadClicker = true; // 连点线程重载时会重新读取新配置
         config.~Config();       // 析构
@@ -1328,13 +1329,64 @@ void RenderGui(ImGuiIO& io)
             TabsText((ICON_FA_GEAR + (config.UseChinese ? u8"设置"s : "Setting"s)).c_str());
 
             const ImVec2 Pos2 = GetCursorPos();
+            // 配置预设下拉列表（位于“保存”按钮的左侧）
+            const float presetW = 110.0f;
+            SetCursorPos(ImVec2(Pos.x + 540 - presetW - 8, Pos.y + 10));
+            {
+                string presetName;
+                const int presetHit = PresetDropdownMenu("PresetMenu", presetW, ImVec2(presetW, 40), presetName);
+                if (presetHit == PRESET_ACTION_SWITCH)
+                {
+                    if (presetName != PresetConfig::CurrentName)
+                    {
+                        // 切换丢到后台线程执行，UI 线程不再长时间持有 ConfigAccessMutex。
+                        string FromName;
+                        string ToName = presetName;
+                        {
+                            FromName = PresetConfig::CurrentName;
+                            PresetConfig::CurrentName = ToName;
+                        }
+                        thread th([FromName, ToName]()
+                        {
+                            SwitchPreset(FromName, ToName);
+                            IsReloadClicker = true;   // 载入完成后才通知点击线程保存
+                        });
+                        th.detach();
+                    }
+                }
+                else if (presetHit == PRESET_ACTION_DELETE)
+                {
+                    const bool wasCurrent = (presetName == PresetConfig::CurrentName);
+                    string delName = presetName;
+                    if (wasCurrent)
+                        PresetConfig::CurrentName = PresetDefaultName;
+                    thread th([delName, wasCurrent]()
+                    {
+                        LoadConfig(ConfigFile);
+                        IsReloadClicker = true;
+                        DeletePreset(delName);
+                    });
+                    th.detach();
+                    RenderTip(config.UseChinese ? u8"已删除配置预设" : "Preset deleted", 1.5f, PT_INFO);
+                }
+                else if (presetHit == PRESET_ACTION_ADD)
+                {
+                    PresetConfig::ShowAdd = true;
+                    PresetConfig::NameBuf[0] = '\0';
+                    PresetConfig::ErrorTime = 0.0f;
+                }
+            }
+
             SetCursorPos(ImVec2(Pos.x + 540, Pos.y + 10));
             if (Button((ICON_FA_FLOPPY_DISK + (config.UseChinese ? u8"保存设置"s : "Save"s)).c_str(), ImVec2(80, 40)))
                 IsReloadClicker = true;
             SameLine();
 
             static const ButtonPopupMenuItem menu_items[] = {
-                { ICON_FA_ARROW_ROTATE_LEFT + (config.UseChinese ? u8"重置配置"s : "Reset"s), true }
+                { ICON_FA_ARROW_ROTATE_LEFT + (config.UseChinese ? u8" 重置配置"s : " Reset"s), true },
+                { ICON_FA_FOLDER_OPEN + (config.UseChinese ? u8" 打开配置目录"s : " Explore Config"s), true },
+                { ICON_FA_FILE_EXPORT + (config.UseChinese ? u8" 导出当前配置"s : " Export Current Config"s), true },
+                { ICON_FA_FILE_IMPORT + (config.UseChinese ? u8" 导入配置"s : " Import Config"s), true }
             };
             const int hit = ButtonPopupMenu(ICON_FA_BARS, "OtherMenuAction", menu_items, IM_ARRAYSIZE(menu_items), 150.0f, ImVec2(40, 40));
             switch (hit)
@@ -1346,12 +1398,180 @@ void RenderGui(ImGuiIO& io)
                     // 线程只负责弹窗确认，真正的重建由主线程在下一帧 RenderGui 开头执行。
                     thread FunThread([]()
                     {
-                        if (RenderMessageBox(config.UseChinese ? u8"真的要重置连点器的设置吗？" : "Are you sure you want to\nreset the clicker settings?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
+                        if (RenderMessageBox(config.UseChinese ? u8"真的要重置当前配置吗？" : "Are you sure\nto reset the current config?", config.UseChinese ? u8"提示" : "TIPS", MB_OKCANCEL, true) == IDOK)
                             IsNeedResetConfig = true;
                     });
                     FunThread.detach();
+                    break;
+                }
+                case 1:
+                {
+                    thread t([](){ ShellExecute(NULL, "open", ConfigPath.c_str(), NULL, NULL, SW_SHOW); });
+                    t.detach();
+                    break;
+                }
+                case 2:
+                {
+                    // 打开文件保存对话框，保存当前预设配置的文件
+                    // 不使用异步，因为保持逻辑统一，下面都没使用异步，那在这里有什么理由使用呢？
+                    const string TargetFile = GetPresetFile(PresetConfig::CurrentName);
+
+                    OPENFILENAME ofn;
+                    char szFileName[MAX_PATH]{};
+                    strncpy_s(szFileName, sizeof(szFileName), (UTF8ToString(PresetConfig::CurrentName) + ".ini").c_str(), _TRUNCATE);
+
+                    ZeroMemory(&ofn, sizeof(ofn));
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = NULL; // 可以设置为你的窗口句柄
+                    ofn.lpstrFilter = "GC Config Files (*.ini)\0*.ini\0All Files (*.*)\0*.*\0";
+                    ofn.lpstrFile = szFileName;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.hwndOwner = GCHWND;
+                    // 设置对话框标志，例如提示覆盖等
+                    ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
+                    ofn.lpstrDefExt = "ini"; // 默认扩展名
+
+                    if (GetSaveFileName(&ofn))
+                    {
+                        string destinationPath = ofn.lpstrFile; // 用户选择的完整目标路径
+                        if (CopyFile(TargetFile.c_str(), destinationPath.c_str(), FALSE) == FALSE)
+                        {
+                            DWORD error = GetLastError();
+                            PrintLog("[Preset] 导出配置失败，错误码: " + to_string(error), PL_ERROR);
+                        }
+                    }
+                    break;
+                }
+                case 3:
+                {
+                    // 打开文件选择对话框，选择一个配置文件导入
+					// 但不使用异步，而是同时设置hwndOwner = GCHWND，选择文件时不能操作GC窗口，这样可以避免线程问题
+                    OPENFILENAME ofn;
+                    char szFileName[MAX_PATH]{};
+                    ZeroMemory(&ofn, sizeof(ofn));
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = NULL; // 可以设置为你的窗口句柄
+                    ofn.lpstrFilter = "GC Config Files (*.ini)\0*.ini\0";
+                    ofn.lpstrFile = szFileName;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.hwndOwner = GCHWND;
+                    // 设置对话框标志，例如提示覆盖等
+                    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+                    ofn.lpstrDefExt = "ini"; // 默认扩展名
+                    if (GetOpenFileName(&ofn))
+                    {
+                        string SourcePath = ofn.lpstrFile; // 用户选择的完整源路径
+                        string PresetName = [&SourcePath]() -> string {
+                            size_t pos = SourcePath.find_last_of("\\");
+                            size_t dotPos = SourcePath.find_last_of(".");
+                            if (pos != string::npos)
+                                return SourcePath.substr(pos + 1, dotPos - pos - 1); // 获取文件名部分
+                            else
+                                return SourcePath.substr(0, 12); // 随便使用名字，但要限制长度为12，超过部分直接截断
+                        }();
+                        if (CopyFile(SourcePath.c_str(), GetPresetFile(PresetName).c_str(), TRUE)) // 设置TRUE表示不覆盖已经存在的目标文件
+                        {
+                            PresetConfig::Presets.push_back(PresetName);
+                            SwitchPreset(PresetConfig::CurrentName, PresetName);
+                            RenderTip(config.UseChinese ? u8"导入配置成功" : "Preset imported successfully", 2.0f, PT_INFO);
+                        }
+                        else
+                        {
+                            DWORD error = GetLastError();
+                            if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS) // 这样就不用遍历寻找列表有没有存在的了，提高性能
+                            {
+                                RenderTip((config.UseChinese ? u8"导入配置失败，名称已存在" : "Failed to import preset, name already exists"), 3.0f, PT_ERROR);
+                                PrintLog("[Preset] 导入配置失败，名称已存在: " + PresetName, PL_ERROR);
+                            }
+                            else
+                            {
+                                RenderTip((config.UseChinese ? u8"导入配置失败" : "Failed to import preset") + " ("s + to_string(error) + ")", 3.0f, PT_ERROR);
+                                PrintLog("[Preset] 导入配置失败，错误码: " + to_string(error), PL_ERROR);
+                            }
+                        }
+                    }
+                    break;
                 }
             }
+
+            //=======================新建配置预设弹窗===========================
+            if (BeginPopupWindow(config.UseChinese ? u8"新建配置预设" : "New Config Preset", &PresetConfig::ShowAdd, ImVec2(400, 200), POPUP_ANIM_FADE, POPUP_OPT_HIDE_CLOSE | POPUP_OPT_SHADOW))
+            {
+                Text(config.UseChinese ? u8"请输入配置预设名称：" : "Enter a preset name:");
+
+                SetNextItemWidth(-1);
+                InputText("##preset_name", PresetConfig::NameBuf, IM_ARRAYSIZE(PresetConfig::NameBuf));
+
+                // 右下角操作按钮（网页风格布局）
+                const ImGuiStyle& pstyle = GetStyle();
+                const float btnW = 92.0f, btnH = 34.0f;
+                const float totalW = btnW * 2.0f + pstyle.ItemSpacing.x;
+                const float btnY = ImGui::GetWindowHeight() - btnH - 16.0f;
+
+                // 内联校验提示，显示在输入框下方（3 秒后自动淡出）
+                if (PresetConfig::ErrorTime > 0.0f)
+                {
+                    PresetConfig::ErrorTime -= ImGui::GetIO().DeltaTime;
+                    const float errAlpha = ImClamp(PresetConfig::ErrorTime / 0.5f, 0.0f, 1.0f);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.93f, 0.42f, 0.42f, errAlpha));
+                    ImGui::SetCursorPosY(btnY - ImGui::GetTextLineHeight() - 6.0f);
+                    ImGui::TextUnformatted(PresetConfig::ErrorMsg.c_str());
+                    ImGui::PopStyleColor();
+                }
+
+                ImGui::SetCursorPosY(btnY);
+                ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - totalW);
+
+                if (Button(config.UseChinese ? u8"确定" : "OK", ImVec2(btnW, btnH)))
+                {
+                    string NameStr = PresetConfig::NameBuf;
+                    const size_t s = NameStr.find_first_not_of(" \t");
+                    const size_t e = NameStr.find_last_not_of(" \t");
+                    NameStr = (s == string::npos) ? string() : NameStr.substr(s, e - s + 1);
+
+                    if (NameStr.empty())
+                    {
+                        PresetConfig::ErrorMsg = config.UseChinese ? u8"名称不能为空" : "Name cannot be empty";
+                        PresetConfig::ErrorTime = 3.0f;
+                    }
+                    if (NameStr.length() > 13)
+                    {
+                        PresetConfig::ErrorMsg = config.UseChinese ? u8"名称太长" : "Name is too long";
+                        PresetConfig::ErrorTime = 3.0f;
+                    }
+                    else
+                    {
+                        if (AddPreset(NameStr))
+                        {
+                            // 新建后的切换同样放后台线程。
+                            string FromName, ToName = NameStr;
+                            {
+                                FromName = PresetConfig::CurrentName;
+                                PresetConfig::CurrentName = ToName;
+                            }
+                            thread th([FromName, ToName]()
+                            {
+                                SwitchPreset(UTF8ToString(FromName), UTF8ToString(ToName));
+                                IsReloadClicker = true;
+                            });
+                            th.detach();
+                            RenderTip(config.UseChinese ? u8"创建预设配置成功" : "Preset created successfully", 2.0f, PT_INFO);
+                            PresetConfig::ShowAdd = false;
+                        }
+                        else
+                        {
+                            PresetConfig::ErrorMsg = config.UseChinese ? u8"名称已存在或无效" : "Name already exists or is invalid";
+                            PresetConfig::ErrorTime = 3.0f;
+                        }
+                    }
+                }
+                SameLine();
+                if (Button(config.UseChinese ? u8"取消" : "Cancel", ImVec2(btnW, btnH)))
+                    PresetConfig::ShowAdd = false;
+
+                EndPopupWindow();
+            }
+
 
             SetCursorPos(Pos2);
 
@@ -1617,14 +1837,14 @@ void RenderGui(ImGuiIO& io)
                                                 {
                                                     NewWave.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
                                                     NewWave.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
-                                                    NewWave.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+                                                    NewWave.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
                                                     NewWave.enabled = true;
                                                 }
                                                 else
                                                 {
                                                     NewWave.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
                                                     NewWave.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
-                                                    NewWave.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+                                                    NewWave.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
                                                     NewWave.enabled = true;
                                                 }
                                                 waveList.push_back(NewWave);
@@ -2106,100 +2326,104 @@ void RenderGui(ImGuiIO& io)
                     }
                     AttachTooltip(config.UseChinese ? u8"将对应物品格子的按钮关闭，连点器就会在你手拿对应物品时关闭连点。\n其中的快捷键必须设置，主要用于判断物品栏位置！" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
 
-                    if (Button(config.UseChinese ? u8"全部启用" : "Enable All"))
+					BeginDisabled(!config.UseItembarSwitch);
                     {
-                        for (unsigned int i = 0; i < 9; i++)
+                        if (Button(config.UseChinese ? u8"全部启用" : "Enable All"))
                         {
-                            config.ItemEnableClicker.left[i] = true;
-                            config.ItemEnableClicker.right[i] = true;
-                        }
-                    }
-                    SameLine();
-                    if (Button(config.UseChinese ? u8"重置全部CPS" : "Reset All CPS"))
-                    {
-                        for (unsigned int i = 0; i < 9; i++)
-                        {
-                            config.ItemBarPresetCPS.left[i] = config.LCPS;
-                            config.ItemBarPresetCPS.right[i] = config.RCPS;
-                        }
-                    }
-
-                    PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5, 5));
-                    BeginChild("##ItembarChild", ImVec2(680, 250), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-                    {
-                        ImDrawList* DrawList = GetWindowDrawList();
-                        for (unsigned int j = 0; j < 2; j++)
-                        {
-                            PushID(j);
-                            const char* text = config.UseChinese ? (j == 0 ? u8"左键设置" : u8"右键设置") : (j == 0 ? "LMB Settings" : "RMB Settings");
-                            Text(text);
-                            SameLine();
-                            DrawSpiltLine(528 - CalcTextSize(text).x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-
-                            const ImVec2 pos1 = GetCursorPos();
-                            {
-                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
-                                Image((ImTextureID)ImageItembar, ImVec2(178 * 3, 19 * 3));
-                                DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
-                            }
-                            const ImVec2 pos2 = GetCursorPos();
-
-                            SetCursorPos(ImVec2(GetCursorPosX() + ((60 - 40) / 2.0f) + 3, GetCursorPosY() - 55));
-
-                            auto& IsEnableClicker = (j == 0) ? config.ItemEnableClicker.left : config.ItemEnableClicker.right;
-                            auto& IsEnablePresetCPS = (j == 0) ? config.ItemBarEnablePresetCPS.left : config.ItemBarEnablePresetCPS.right;
-                            auto& PresetCPS = (j == 0) ? config.ItemBarPresetCPS.left : config.ItemBarPresetCPS.right;
-
                             for (unsigned int i = 0; i < 9; i++)
                             {
-                                PushID(i);
-                                // 每个格子的左侧X坐标
-                                const float PosX = pos1.x + (i * 60.0f);
-                                if (ItemBarPos == i)
+                                config.ItemEnableClicker.left[i] = true;
+                                config.ItemEnableClicker.right[i] = true;
+                            }
+                        }
+                        SameLine();
+                        if (Button(config.UseChinese ? u8"重置全部CPS" : "Reset All CPS"))
+                        {
+                            for (unsigned int i = 0; i < 9; i++)
+                            {
+                                config.ItemBarPresetCPS.left[i] = config.LCPS;
+                                config.ItemBarPresetCPS.right[i] = config.RCPS;
+                            }
+                        }
+
+                        PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5, 5));
+                        BeginChild("##ItembarChild", ImVec2(680, 250), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                        {
+                            ImDrawList* DrawList = GetWindowDrawList();
+                            for (unsigned int j = 0; j < 2; j++)
+                            {
+                                PushID(j);
+                                const char* text = config.UseChinese ? (j == 0 ? u8"左键设置" : u8"右键设置") : (j == 0 ? "LMB Settings" : "RMB Settings");
+                                Text(text);
+                                SameLine();
+                                DrawSpiltLine(528 - CalcTextSize(text).x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
+
+                                const ImVec2 pos1 = GetCursorPos();
                                 {
-                                    const ImVec2 pos2 = GetCursorPos();
-                                    SetCursorPos(ImVec2(PosX - 1, pos1.y));
+                                    DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                                    Image((ImTextureID)ImageItembar, ImVec2(178 * 3, 19 * 3));
+                                    DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                                }
+                                const ImVec2 pos2 = GetCursorPos();
+
+                                SetCursorPos(ImVec2(GetCursorPosX() + ((60 - 40) / 2.0f) + 3, GetCursorPosY() - 55));
+
+                                auto& IsEnableClicker = (j == 0) ? config.ItemEnableClicker.left : config.ItemEnableClicker.right;
+                                auto& IsEnablePresetCPS = (j == 0) ? config.ItemBarEnablePresetCPS.left : config.ItemBarEnablePresetCPS.right;
+                                auto& PresetCPS = (j == 0) ? config.ItemBarPresetCPS.left : config.ItemBarPresetCPS.right;
+
+                                for (unsigned int i = 0; i < 9; i++)
+                                {
+                                    PushID(i);
+                                    // 每个格子的左侧X坐标
+                                    const float PosX = pos1.x + (i * 60.0f);
+                                    if (ItemBarPos == i)
                                     {
-                                        DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
-                                        Image((ImTextureID)ImageSelected, ImVec2(18 * 3, 19 * 3));
-                                        DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                                        const ImVec2 pos2 = GetCursorPos();
+                                        SetCursorPos(ImVec2(PosX - 1, pos1.y));
+                                        {
+                                            DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
+                                            Image((ImTextureID)ImageSelected, ImVec2(18 * 3, 19 * 3));
+                                            DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
+                                        }
+                                        SetCursorPos(pos2);
                                     }
-                                    SetCursorPos(pos2);
+
+                                    // pos.y的值是格子的顶部Y坐标
+                                    SetCursorPos(ImVec2(PosX + 7, pos1.y + 28));
+                                    Toggle("##ItembarToggle", &IsEnableClicker[i], ToggleFlags);
+                                    SameLine(0, 20);
+                                    PopID();
                                 }
 
-                                // pos.y的值是格子的顶部Y坐标
-                                SetCursorPos(ImVec2(PosX + 7, pos1.y + 28));
-                                Toggle("##ItembarToggle", &IsEnableClicker[i], ToggleFlags);
-                                SameLine(0, 20);
-                                PopID();
-                            }
-
-                            SetCursorPos(ImVec2(pos1.x + 540 + 2, pos1.y));
-                            PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-                            BeginChild("##ItembarChildIn", ImVec2(130, 19 * 3), false);
-                            {
-                                BeginDisabled(!config.UseItembarSwitch);
+                                SetCursorPos(ImVec2(pos1.x + 540 + 2, pos1.y));
+                                PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+                                BeginChild("##ItembarChildIn", ImVec2(130, 19 * 3), false);
                                 {
-                                    Toggle(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos], ToggleFlags);
-                                    AttachTooltip(config.UseChinese ? u8"可以让每一个格子对应不同的CPS\n如果使用了CPS波动，&d会自动计算波动范围&f，你只需要调整CPS就可以" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
-
-                                    BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
+                                    BeginDisabled(!config.UseItembarSwitch);
                                     {
-										SetNextItemWidth(100);
-                                        SliderInt("##itembar_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
+                                        Toggle(config.UseChinese ? u8"CPS切换" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos], ToggleFlags);
+                                        AttachTooltip(config.UseChinese ? u8"可以让每一个格子对应不同的CPS\n如果使用了CPS波动，&d会自动计算波动范围&f，你只需要调整CPS就可以" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
+
+                                        BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
+                                        {
+                                            SetNextItemWidth(100);
+                                            SliderInt("##itembar_cpsset", &PresetCPS[ItemBarPos], MIN_CPS, MAX_CPS, "%dCPS", ImGuiSliderFlags_AlwaysClamp);
+                                        }
+                                        EndDisabled();
                                     }
                                     EndDisabled();
                                 }
-                                EndDisabled();
-                            }
-                            EndChild();
-                            PopStyleColor();
+                                EndChild();
+                                PopStyleColor();
 
-                            PopID();
+                                PopID();
+                            }
                         }
+                        EndChild();
+                        PopStyleVar(); //ImGuiStyleVar_WindowPadding
                     }
-                    EndChild();
-                    PopStyleVar(); //ImGuiStyleVar_WindowPadding
+					EndDisabled();
                 }
                 EndCard();
 
@@ -3109,9 +3333,21 @@ void RenderGui(ImGuiIO& io)
                                     {
                                         IsOpen = true;
 
-                                        const string OriginFile = SelectFile("Zip压缩包\0*.zip\0\0");
-                                        if (!OriginFile.empty())
+                                        OPENFILENAME ofn;
+                                        char szFileName[MAX_PATH]{};
+                                        ZeroMemory(&ofn, sizeof(ofn));
+                                        ofn.lStructSize = sizeof(ofn);
+                                        ofn.hwndOwner = NULL; // 可以设置为你的窗口句柄
+                                        ofn.lpstrFilter = "Zip压缩包\0*.zip\0\0";
+                                        ofn.lpstrFile = szFileName;
+                                        ofn.nMaxFile = MAX_PATH;
+                                        ofn.hwndOwner = GCHWND;
+                                        // 设置对话框标志，例如提示覆盖等
+                                        ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+                                        ofn.lpstrDefExt = "ini"; // 默认扩展名
+                                        if (GetOpenFileName(&ofn))
                                         {
+                                            const string OriginFile = szFileName;
                                             size_t LastSlash = OriginFile.find_last_of("\\/");
                                             string FileName = (LastSlash == string::npos) ? OriginFile : OriginFile.substr(LastSlash + 1);
 
@@ -3139,7 +3375,7 @@ void RenderGui(ImGuiIO& io)
                                                 PrintLog("[File] 无法创建目录 " + TargetDir, PL_ERROR);
                                                 RenderTip(config.UseChinese ? u8"无法创建目录 " : "Failed to create directory " + TargetDir, 3.0f, PT_ERROR);
                                             }
-											RenderTip(config.UseChinese ? u8"导入成功！" : "Import success!", 3.0f, PT_INFO);
+                                            RenderTip(config.UseChinese ? u8"导入成功！" : "Import success!", 3.0f, PT_INFO);
 
                                             ReloadSoundFile();
 
@@ -3410,14 +3646,26 @@ void RenderGui(ImGuiIO& io)
                         if (!IsOpen)
                         {
                             thread th([]()
-                                {
-                                    IsOpen = true;
-                                    const string file = SelectFile("图片文件\0*.png;*.bmp;*.jpg\0\0");
-                                    CopyFile(file.c_str(), Pics_Background.c_str(), false);
-                                    PrintLog("[File] 复制文件 " + file + " 到 " + Pics_Background, PL_INFO);
-                                    IsBgImageRefresh = true;
-                                    IsOpen = false;
-                                });
+                            {
+                                IsOpen = true;
+                                OPENFILENAME ofn;
+                                char szFileName[MAX_PATH]{};
+                                ZeroMemory(&ofn, sizeof(ofn));
+                                ofn.lStructSize = sizeof(ofn);
+                                ofn.hwndOwner = NULL; // 可以设置为你的窗口句柄
+                                ofn.lpstrFilter = "图片文件\0*.png;*.bmp;*.jpg\0\0";
+                                ofn.lpstrFile = szFileName;
+                                ofn.nMaxFile = MAX_PATH;
+                                ofn.hwndOwner = GCHWND;
+                                // 设置对话框标志，例如提示覆盖等
+                                ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+                                ofn.lpstrDefExt = "ini"; // 默认扩展名
+                                if (GetOpenFileName(&ofn))
+                                CopyFile(szFileName, Pics_Background.c_str(), false);
+                                PrintLog("[File] 复制文件 "s + szFileName + " 到 " + Pics_Background, PL_INFO);
+                                IsBgImageRefresh = true;
+                                IsOpen = false;
+                            });
                             th.detach();
                         }
                     }
@@ -3525,15 +3773,15 @@ void RenderGui(ImGuiIO& io)
                         {
                             thread FuncThread([&]()
                             {
-                                // 修复：原代码在 detach 线程中无锁 clear/重填 ScriptShopList，
+                                // 修复：原代码在 detach 线程中无锁 clear/重填 ScriptData::ShopList，
                                 // 与主线程遍历、CheckUpdateScriptFromShop（另一 detach 线程）并发，
                                 // vector 扩容 -> 迭代器失效 -> 0xC0000005。
                                 // 改为先在临时列表填充，锁内一次性 swap。
                                 vector<ScriptInfo> tmpList;
                                 const int papers = RefushScriptShopList(tmpList, CurrentPaper, false, IsScriptUseGitee);
                                 {
-                                    lock_guard<shared_mutex> lock(ScriptShopListMtx);
-                                    ScriptShopList.swap(tmpList);
+                                    lock_guard<shared_mutex> lock(ScriptData::ShopListMtx);
+                                    ScriptData::ShopList.swap(tmpList);
                                     TotalPaper = papers;
                                     IsRefushSuccess = true;
                                     IsShopListLoaded = true;
@@ -3560,15 +3808,15 @@ void RenderGui(ImGuiIO& io)
                         if (IsRefushSuccess)
                         {
                             // 修复：遍历期间加读锁，防止刷新线程 swap 导致迭代器/元素引用失效
-                            shared_lock<shared_mutex> shopLock(ScriptShopListMtx);
-                            for (const ScriptInfo& script : ScriptShopList)
+                            shared_lock<shared_mutex> shopLock(ScriptData::ShopListMtx);
+                            for (const ScriptInfo& script : ScriptData::ShopList)
                             {
                                 PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
 
                                 PushID(count);
                                 ImVec2 AnimPos = CalcWidgetsAnimHoriz(GetID(label.c_str()));
                                 SetNextWindowPos(AnimPos);
-                                BeginChild("##ScriptShopList", ImVec2(673, 72), true, flags);
+                                BeginChild("##ScriptData::ShopList", ImVec2(673, 72), true, flags);
                                 {
                                     DisableAnimation(true);
                                     PopStyleColor(); // ImGuiCol_ChildBg
@@ -3727,20 +3975,20 @@ void RenderGui(ImGuiIO& io)
                         static bool IsCheckUpdate = false;
                         if (!IsCheckUpdate && IsShopListLoaded)
                         {
-                            // 修复：lambda 无需捕获任何局部变量（只访问全局 AvaiableScripts 与全局函数），
+                            // 修复：lambda 无需捕获任何局部变量（只访问全局 ScriptData::Avaiable 与全局函数），
                             // 空捕获列表避免未来误用悬垂引用
                             thread FuncThread([]() 
                             {
                                 // 写入锁
                                 {
-                                    lock_guard<shared_mutex> write_lock(AvaiableScriptsMtx);
-                                    for (ScriptInfo& script : AvaiableScripts)
+                                    lock_guard<shared_mutex> write_lock(ScriptData::AvaiableMtx);
+                                    for (ScriptInfo& script : ScriptData::Avaiable)
                                         CheckUpdateScriptFromShop(script);
                                 }
                                 // 同步检测已安装列表，使已安装页也能显示更新按钮
                                 {
-                                    lock_guard<shared_mutex> write_lock2(InstalledScriptsMtx);
-                                    for (ScriptInfo& script : InstalledScripts)
+                                    lock_guard<shared_mutex> write_lock2(ScriptData::InstalledMtx);
+                                    for (ScriptInfo& script : ScriptData::Installed)
                                         CheckUpdateScriptFromShop(script);
                                 }
                             });
@@ -3749,9 +3997,9 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         // 读取锁
-                        shared_lock<shared_mutex> read_lock(AvaiableScriptsMtx);
+                        shared_lock<shared_mutex> read_lock(ScriptData::AvaiableMtx);
 
-                        const int TotalScript = AvaiableScripts.size();
+                        const int TotalScript = ScriptData::Avaiable.size();
                         if (TotalScript == 0)
                             NothingsHereFunc();
                         //-------------------------脚本图片和信息--------------------------
@@ -3768,7 +4016,7 @@ void RenderGui(ImGuiIO& io)
                         const int MaxCount = min(PaperSize * CurrentPaper, TotalScript);
                         for (int count = (CurrentPaper - 1) * PaperSize; count < MaxCount; count++) // count不能等于MaxCount，不然会出现翻页后重复出现
                         {
-                            ScriptInfo& script = AvaiableScripts[count];
+                            ScriptInfo& script = ScriptData::Avaiable[count];
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
 
                             PushID(count);
@@ -3907,16 +4155,16 @@ void RenderGui(ImGuiIO& io)
                                                     ScriptCopy.hThread = hThread;
                                                     // 创建 ScriptState 条目（供"启用"开关/启动按键使用，IsRunning=false）
                                                     {
-                                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                                        ScriptStates[ScriptCopy.file];
+                                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                                                        ScriptData::States[ScriptCopy.file];
                                                     }
                                                     {
-                                                        lock_guard<shared_mutex> lock(InstalledScriptsMtx);
-                                                        InstalledScripts.push_back(ScriptCopy);
+                                                        lock_guard<shared_mutex> lock(ScriptData::InstalledMtx);
+                                                        ScriptData::Installed.push_back(ScriptCopy);
                                                     }
                                                     {
-                                                        lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                        for (ScriptInfo& s : AvaiableScripts)
+                                                        lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+                                                        for (ScriptInfo& s : ScriptData::Avaiable)
                                                         {
                                                             if (s.file == ScriptCopy.file)
                                                             {
@@ -3927,16 +4175,16 @@ void RenderGui(ImGuiIO& io)
                                                         }
                                                     }
                                                     {
-                                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                                        ScriptStates[ScriptCopy.file].IsRunning = true;
+                                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                                                        ScriptData::States[ScriptCopy.file].IsRunning = true;
                                                     }
                                                     {
                                                         // 保存线程句柄，删除脚本时才能正确终止线程
                                                         const HANDLE hThread = StartScript(ScriptCopy.file);
                                                         if (hThread != NULL)
                                                         {
-                                                            lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                            for (ScriptInfo& s : AvaiableScripts)
+                                                            lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+                                                            for (ScriptInfo& s : ScriptData::Avaiable)
                                                             {
                                                                 if (s.file == ScriptCopy.file)
                                                                 {
@@ -3960,16 +4208,16 @@ void RenderGui(ImGuiIO& io)
                                             {
                                                 DeleteDirectoryRecursively(ScriptTemp + "\\" + scriptCopy.name);
                                                 DelFile(ScriptPath + "\\" + scriptCopy.name + ".zip");
-                                                // 修复：原代码无锁 erase，与主线程（持读锁遍历 AvaiableScripts）并发 → 崩溃。
+                                                // 修复：原代码无锁 erase，与主线程（持读锁遍历 ScriptData::Avaiable）并发 → 崩溃。
                                                 // 写入必须加写锁（主线程释放读锁后本线程才能执行）；
                                                 // 同时不用外部捕获的旧索引 count，改为按名称查找后删除。
                                                 {
-                                                    lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                    for (auto it = AvaiableScripts.begin(); it != AvaiableScripts.end(); ++it)
+                                                    lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+                                                    for (auto it = ScriptData::Avaiable.begin(); it != ScriptData::Avaiable.end(); ++it)
                                                     {
                                                         if (it->name == scriptCopy.name)
                                                         {
-                                                            AvaiableScripts.erase(it);
+                                                            ScriptData::Avaiable.erase(it);
                                                             break;
                                                         }
                                                     }
@@ -3996,7 +4244,7 @@ void RenderGui(ImGuiIO& io)
 
                         if (ShowDocsScriptID >= 0)
                         {
-                            ScriptInfo& script = AvaiableScripts[ShowDocsScriptID];
+                            ScriptInfo& script = ScriptData::Avaiable[ShowDocsScriptID];
 
                             if (BeginPopupWindow(config.UseChinese ? u8"脚本文档" : "Script Document"))
                             {
@@ -4030,18 +4278,18 @@ void RenderGui(ImGuiIO& io)
                     {
                         IsShopTab = false;
                         // 读取锁（提前到 size() 检查之前，原代码在锁外读 size() 与安装线程 push_back 并发 → 数据竞争）
-                        shared_lock<shared_mutex> read_lock(InstalledScriptsMtx);
-                        if (InstalledScripts.size() == 0)
+                        shared_lock<shared_mutex> read_lock(ScriptData::InstalledMtx);
+                        if (ScriptData::Installed.size() == 0)
                             NothingsHereFunc();
                         int count = 0;
-                        for (const ScriptInfo& script : InstalledScripts)
+                        for (const ScriptInfo& script : ScriptData::Installed)
                         {
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
 
                             PushID(count);
                             ImVec2 AnimPos = CalcWidgetsAnimHoriz(GetID(label.c_str()));
                             SetNextWindowPos(AnimPos);
-                            BeginChild("##InstalledScripts", ImVec2(680, 72), true, flags);
+                            BeginChild("##ScriptData::Installed", ImVec2(680, 72), true, flags);
                             {
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
@@ -4104,10 +4352,10 @@ void RenderGui(ImGuiIO& io)
                                     SetNextItemWidth(InputKeyWidth);
                                     {
                                         // 写入锁
-                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
                                         // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
-                                        auto st = ScriptStates.find(script.file);
-                                        if (st != ScriptStates.end())
+                                        auto st = ScriptData::States.find(script.file);
+                                        if (st != ScriptData::States.end())
                                         {
                                             SetCursorPosY(WindowHeight - 26.0f);
                                             InputKey("##script_key", &st->second.key, config.UseChinese ? u8"请按下按键" : "Press a key");
@@ -4120,10 +4368,10 @@ void RenderGui(ImGuiIO& io)
                                     SetCursorPosY(WindowHeight - 24.0f);
                                     {
                                         // 写入锁
-                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
+                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
                                         // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
-                                        auto st = ScriptStates.find(script.file);
-                                        if (st != ScriptStates.end())
+                                        auto st = ScriptData::States.find(script.file);
+                                        if (st != ScriptData::States.end())
                                         {
                                             bool IsEnable = !st->second.IsSuspend;
                                             if (Toggle("##script_enable", &IsEnable, ToggleFlags))
@@ -4139,8 +4387,8 @@ void RenderGui(ImGuiIO& io)
                                                         const HANDLE hThread = StartScript(file);
                                                         if (hThread != NULL)
                                                         {
-                                                            lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-                                                            for (ScriptInfo& s : AvaiableScripts)
+                                                            lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+                                                            for (ScriptInfo& s : ScriptData::Avaiable)
                                                             {
                                                                 if (s.file == file)
                                                                 {
@@ -4150,8 +4398,8 @@ void RenderGui(ImGuiIO& io)
                                                             }
                                                         }
                                                         {
-                                                            lock_guard<shared_mutex> lock2(InstalledScriptsMtx);
-                                                            for (ScriptInfo& s : InstalledScripts)
+                                                            lock_guard<shared_mutex> lock2(ScriptData::InstalledMtx);
+                                                            for (ScriptInfo& s : ScriptData::Installed)
                                                             {
                                                                 if (s.file == file)
                                                                 {
@@ -4176,9 +4424,9 @@ void RenderGui(ImGuiIO& io)
                                     {
                                         ScriptSettingsSelected = count;
                                         // 打开设置时暂停脚本，避免脚本与设置界面并发操作
-                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                        auto st = ScriptStates.find(script.file);
-                                        if (st != ScriptStates.end())
+                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                                        auto st = ScriptData::States.find(script.file);
+                                        if (st != ScriptData::States.end())
                                             st->second.IsSuspend = true;
                                     }
                                     SameLine(0, spacing);
@@ -4196,9 +4444,9 @@ void RenderGui(ImGuiIO& io)
                                             {
                                                 // 修复：原代码用 shared_lock（读锁）却修改 s.IsInstalled 并调用
                                                 // CloseScriptThread（会写 s.hThread）→ 读锁内写的数据竞争。改为写锁。
-                                                lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
+                                                lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
                                                 // 将可用脚本列表的IsInstalled改为false
-                                                for (ScriptInfo& s : AvaiableScripts)
+                                                for (ScriptInfo& s : ScriptData::Avaiable)
                                                 {
                                                     if (s.file == script.file)
                                                     {
@@ -4221,15 +4469,15 @@ void RenderGui(ImGuiIO& io)
                                             }
                                             PrintLog("[Script] 已删除脚本：" + script.file, PL_INFO);
                                             {
-                                                // 修复：原代码在主线程 read_lock.unlock() 后 erase InstalledScripts 再重锁，
+                                                // 修复：原代码在主线程 read_lock.unlock() 后 erase ScriptData::Installed 再重锁，
                                                 // 重锁后 range-for 迭代器失效 -> 崩溃。改为在此 detach 线程内按 file 查找删除
                                                 // （独立加锁、不嵌套，避免与 ClearScriptCache 的锁序形成环）。
-                                                lock_guard<shared_mutex> lock(InstalledScriptsMtx);
-                                                for (auto it = InstalledScripts.begin(); it != InstalledScripts.end(); ++it)
+                                                lock_guard<shared_mutex> lock(ScriptData::InstalledMtx);
+                                                for (auto it = ScriptData::Installed.begin(); it != ScriptData::Installed.end(); ++it)
                                                 {
                                                     if (it->file == script.file)
                                                     {
-                                                        InstalledScripts.erase(it);
+                                                        ScriptData::Installed.erase(it);
                                                         break;
                                                     }
                                                 }
@@ -4336,11 +4584,11 @@ void RenderGui(ImGuiIO& io)
                     SetCursorPos(ImVec2(PosX, pos.y - 2));
                     SetNextItemWidth(100);
                     {
-                        // 修复：原代码 ScriptStates.count(ScriptTestFile) 在锁外执行（与 ScriptKeyControlThread
+                        // 修复：原代码 ScriptData::States.count(ScriptTestFile) 在锁外执行（与 ScriptKeyControlThread
                         // 的遍历、StartScript 线程的插入并发 → map 结构竞争）。移入写锁内。
                         // 写入锁
-                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                        const bool IsNoState = !IsRunning || (ScriptStates.count(ScriptTestFile) == 0);
+                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                        const bool IsNoState = !IsRunning || (ScriptData::States.count(ScriptTestFile) == 0);
                         InputKey("##script_tset_key", &StartKey, config.UseChinese ? u8"请按下按键" : "Press a key");
                     }
 
@@ -4367,10 +4615,10 @@ void RenderGui(ImGuiIO& io)
 
                                     ThreadHandle = StartScript(ScriptTestFile); // 自动创建state在ScriptStates中
                                     {
-                                        // 修复：原代码在 detach 线程中无锁 operator[] 插入/修改 ScriptStates，
+                                        // 修复：原代码在 detach 线程中无锁 operator[] 插入/修改 ScriptData::States，
                                         // 与 ScriptKeyControlThread 的遍历并发 → map 结构竞争。加写锁。
-                                        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                                        ScriptStates[ScriptTestFile].key = StartKey;  // 设置默认启动按键为End，方便一点，一定要在StartScript之后赋值（因为如果在StartScript之前，会导致ScriptStates[file]被创建，导致ScriptStates不初始化）
+                                        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                                        ScriptData::States[ScriptTestFile].key = StartKey;  // 设置默认启动按键为End，方便一点，一定要在StartScript之后赋值（因为如果在StartScript之前，会导致ScriptStates[file]被创建，导致ScriptStates不初始化）
                                     }
                                     RenderTip(config.UseChinese ? u8"脚本开始运行" : "Script starts running", 3.0f, PT_INFO);
                                     IsRunning = true;
@@ -4407,8 +4655,8 @@ void RenderGui(ImGuiIO& io)
                         {
                             ScriptSettingsSelected = 999999999;
                             // 写入锁
-                            lock_guard<shared_mutex> lock(ScriptStatesMtx);
-                            ScriptStates[ScriptTestFile].IsSuspend = true;
+                            lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+                            ScriptData::States[ScriptTestFile].IsSuspend = true;
                         }
                     }
                     EndDisabled();
@@ -4467,13 +4715,13 @@ void RenderGui(ImGuiIO& io)
                     if (!IsTestScript)
                     {
                         // 读取锁
-                        shared_lock<shared_mutex> lock(InstalledScriptsMtx);
+                        shared_lock<shared_mutex> lock(ScriptData::InstalledMtx);
                         // 修复：ScriptSelected 是打开设置时的列表索引，若期间脚本被删除（列表变短）
                         // 会越界访问 → 崩溃。加边界检查，越界则关闭设置。
-                        if (ScriptSettingsSelected >= (int)InstalledScripts.size())
+                        if (ScriptSettingsSelected >= (int)ScriptData::Installed.size())
                             ScriptSettingsSelected = -114514;
                         else
-                            script = InstalledScripts[ScriptSettingsSelected];
+                            script = ScriptData::Installed[ScriptSettingsSelected];
                     }
                     if (IsTestScript || ScriptSettingsSelected > -1)
                     {
@@ -4499,11 +4747,11 @@ void RenderGui(ImGuiIO& io)
                             FuncThread.detach();
                             {
                                 // 写入锁
-                                lock_guard<shared_mutex> lock2(ScriptStatesMtx);
+                                lock_guard<shared_mutex> lock2(ScriptData::StatesMtx);
                                 // find 替代 operator[] -- 脚本可能在弹窗期间被删除，
                                 // operator[] 会插入僵尸 ScriptState 条目
-                                auto st = ScriptStates.find(filename);
-                                if (st != ScriptStates.end())
+                                auto st = ScriptData::States.find(filename);
+                                if (st != ScriptData::States.end())
                                     st->second.IsSuspend = false;
                             }
                             PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
@@ -4636,10 +4884,10 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard(config.UseChinese ? u8"赞助列表(不分排名)" : "Sponsors (not ranked)", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (SponsorListMutex.try_lock_shared())
+                    if (Sponsor::Mtx.try_lock_shared())
                     {
                         int count = -1;
-                        for (string name : SponsorList)
+                        for (string name : Sponsor::List)
                         {
                             const float TextWidth = CalcTextSize(name.c_str()).x;
                             count += TextWidth + 10;
@@ -4649,7 +4897,7 @@ void RenderGui(ImGuiIO& io)
                                 SameLine(0, 10);
                             Text(name.c_str());
                         }
-                        SponsorListMutex.unlock_shared();
+                        Sponsor::Mtx.unlock_shared();
                     }
                 }
                 EndCard();
@@ -5100,7 +5348,9 @@ void RenderGui(ImGuiIO& io)
             if (Button(config.UseChinese ? u8"同意" : " Next", ImVec2(70, 40)) && IsCheck)
             {
                 IsNeedReshowAgreement = false;
-                thread th(SaveConfig);
+                thread th([](){
+                    SaveConfig(GetPresetFile(PresetConfig::CurrentName));
+                });
                 th.detach();
             }
         }
@@ -5110,7 +5360,6 @@ void RenderGui(ImGuiIO& io)
 
     //-----------------------绘制标题栏图标---------------------------
     static const Texture2D image_texture = LoadTextureFromFile(Pics_GCIcon);
-
     GetForegroundDrawList()->
         AddImage((ImTextureID)image_texture, ImVec2(4, 4), ImVec2(32, 32));
 

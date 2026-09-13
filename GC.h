@@ -96,7 +96,11 @@ bool PopTip(string msg, float timeout, UINT type);
 static int GetKeyPressed();
 void InitializationGui(ImGuiIO& imio);
 void RenderControl();
-bool BeginPopupWindow(const char* name, bool* p_open = NULL, ImVec2 size = ImVec2(720, 420));
+#define POPUP_ANIM_SLIDE 0   // 弹出：从底部上滑（原有模式）
+#define POPUP_ANIM_FADE  1   // 淡入：缩放 + 透明度，同 MessageBox
+#define POPUP_OPT_HIDE_CLOSE (1 << 0)  // 隐藏标题栏关闭按钮
+#define POPUP_OPT_SHADOW     (1 << 1)  // 不使用模态遮罩，改为绘制柔和阴影
+bool BeginPopupWindow(const char* name, bool* p_open = NULL, ImVec2 size = ImVec2(720, 420), int animMode = POPUP_ANIM_SLIDE, int options = 0);
 void EndPopupWindow();
 void NoticeFlag(const char* msg, UINT type = 0);
 bool InputKey(const char* label, int* key, const char* press_tip);
@@ -135,9 +139,14 @@ inline int ButtonPopupMenu(const char* button_label, const char* popup_id, const
     State& st = s_states[sid];
 
     // ---------- 1. 触发按钮 ----------
-    const bool   pressed = ImGui::Button(button_label, button_size);
+    ImGui::Button(button_label, button_size);
     const ImVec2 btn_min = ImGui::GetItemRectMin();
     const ImVec2 btn_size = ImGui::GetItemRectSize();
+    // 直接用鼠标按下位置判定切换：即使浮层菜单获得焦点也可靠
+    // （普通 ImGui::Button() 在焦点转移到菜单时可能丢失这次点击）。
+    const bool pressed = IsMouseHoveringRect(btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y))
+        && IsMouseClicked(ImGuiMouseButton_Left)
+        && GetTopMostPopupModal() == nullptr;
 
     const bool just_opened = pressed && !st.open;
     if (pressed)
@@ -216,9 +225,9 @@ inline int ButtonPopupMenu(const char* button_label, const char* popup_id, const
                 ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
 
             const bool on_button = ImGui::IsMouseHoveringRect(
-                btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y));
+                btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y), false);
 
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !hovered && !on_button)
+            if (!just_opened && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !hovered && !on_button)
                 st.open = false;
 
             if (ImGui::IsKeyPressed(ImGuiKey_Escape))
@@ -267,6 +276,230 @@ inline int ButtonPopupMenu(const char* button_label, const char* popup_id, const
     ImGui::PopStyleVar(kOuterVar);
 
     return clicked_index;
+}
+
+//======================= 配置预设下拉菜单 ===========================
+// 带动画的下拉菜单（与 ButtonPopupMenu 相同的高度缩放 + 透明度动画）
+// 列出所有配置预设。每行：[ 名称（点击=切换） ] ... [ 删除图标 ]。
+// 默认预设没有删除按钮。底部行：添加按钮（加号图标 + 文字）。
+// 返回动作码；outName 返回目标预设名。
+#define PRESET_ACTION_NONE   0
+#define PRESET_ACTION_SWITCH 1
+#define PRESET_ACTION_DELETE 2
+#define PRESET_ACTION_ADD    3
+
+// ImGui 的 label 会把 "##" 当作 ID 分隔符（其后文本不显示）；
+// 这里做转义，保证用户输入的预设名始终完整显示。
+inline string PresetLabelSafe(const string& s)
+{
+    string out = s;
+    size_t p = 0;
+    while ((p = out.find("##", p)) != string::npos)
+    {
+        out.replace(p, 2, "#");
+        p += 1;
+    }
+    return out;
+}
+
+inline int PresetDropdownMenu(const char* popup_id, float fixed_width, const ImVec2& button_size, string& outName)
+{
+    int action = PRESET_ACTION_NONE;
+    outName.clear();
+
+    ImGuiIO& io = ImGui::GetIO();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float menu_w = ImMax(fixed_width, 140.0f);   // 菜单最小宽度
+
+    struct State { float anim = 0.0f; bool open = false; };
+    static std::map<ImGuiID, State> s_states;
+    const ImGuiID sid = ImGui::GetID(popup_id);
+    State& st = s_states[sid];
+
+    // 显示当前预设的主按钮
+    const string curDisplay = (PresetConfig::CurrentName == PresetDefaultName)
+        ? (config.UseChinese ? (u8"默认"s) : ("Default"s))
+        : PresetConfig::CurrentName;
+    const string label = string(ICON_FA_FOLDER) + " " + PresetLabelSafe(curDisplay) + " " + ICON_FA_ANGLE_DOWN;
+
+    ImGui::Button(label.c_str(), button_size);
+    const ImVec2 btn_min = ImGui::GetItemRectMin();
+    const ImVec2 btn_size = ImGui::GetItemRectSize();
+    // 直接用鼠标按下位置判定切换：即使浮层菜单获得焦点也可靠
+    // （普通 ImGui::Button() 在焦点转移到菜单时可能丢失这次点击）。
+    const bool pressed = IsMouseHoveringRect(btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y))
+        && IsMouseClicked(ImGuiMouseButton_Left)
+        && GetTopMostPopupModal() == nullptr;
+
+    const bool just_opened = pressed && !st.open;
+    if (pressed)
+        st.open = !st.open;
+
+    // 平滑动画
+    const float target = st.open ? 1.0f : 0.0f;
+    const float k = 1.0f - std::exp(-22.0f * io.DeltaTime);
+    st.anim += (target - st.anim) * k;
+    if (std::fabs(st.anim - target) < 0.002f)
+        st.anim = target;
+    if (st.anim <= 0.0f && !st.open)
+        return action;
+
+    const float alpha = st.anim;
+
+    // 定位到按钮下方（右边缘限位）
+    float x = btn_min.x;
+    const float y = btn_min.y + btn_size.y;
+    if (x + menu_w > io.DisplaySize.x - 4.0f)
+        x = btn_min.x + btn_size.x - menu_w;
+    if (x < 4.0f)
+        x = 4.0f;
+
+    // 尺寸（高度带动画）
+    constexpr float kItemPadX = 12.0f;
+    constexpr float kItemPadY = 10.0f;
+    const float row_h = ImGui::GetTextLineHeight() + kItemPadY * 2.0f;
+
+    const int item_count = (int)PresetConfig::Presets.size() + 1; // + 添加行
+    const float target_h = row_h * (float)item_count;
+    const float current_h = target_h * st.anim;
+
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(menu_w, current_h), ImGuiCond_Always);
+    if (just_opened)
+        ImGui::SetNextWindowFocus();
+
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.16f, 0.17f, 0.21f, alpha));
+
+    char win_name[256];
+    std::snprintf(win_name, sizeof(win_name), "##preset_%s", popup_id);
+
+    if (ImGui::Begin(win_name, nullptr, flags))
+    {
+        if (st.open)
+        {
+            const bool hovered = ImGui::IsWindowHovered(
+                ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            const bool on_button = ImGui::IsMouseHoveringRect(
+                btn_min, ImVec2(btn_min.x + btn_size.x, btn_min.y + btn_size.y), false);
+            if (!just_opened && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !hovered && !on_button)
+                st.open = false;
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                st.open = false;
+        }
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kItemPadX, kItemPadY));
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+        ImVec4 hoverCol = style.Colors[ImGuiCol_ButtonHovered]; hoverCol.w *= alpha;
+        ImVec4 activeCol = style.Colors[ImGuiCol_ButtonActive]; activeCol.w *= alpha;
+        ImVec4 textCol = style.Colors[ImGuiCol_Text]; textCol.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoverCol);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeCol);
+        ImGui::PushStyleColor(ImGuiCol_Text, textCol);
+
+        const float row_w = ImGui::GetContentRegionAvail().x;
+
+        int size = PresetConfig::Presets.size();
+        for (int i = 0; i < size; ++i)
+        {
+            const string& pname = PresetConfig::Presets[i];
+            const bool isDefault = (pname == PresetDefaultName);
+            const bool isCurrent = (pname == PresetConfig::CurrentName);
+            const string display = PresetLabelSafe(isDefault ? (config.UseChinese ? (u8"默认"s) : ("Default"s)) : pname);
+
+            ImGui::PushID(i);
+            const float row_y = ImGui::GetCursorPosY();
+            ImGui::SetCursorPosX(0.0f);
+
+            // 预先计算删除子按钮的矩形，避免点它时误触发切换。
+            const ImVec2 row_min = ImGui::GetCursorScreenPos();
+            const float cw = row_h * 0.66f;   // 子按钮比整行更小
+            const ImVec2 delMin(row_min.x + row_w - cw - 8.0f, row_min.y + (row_h - cw) * 0.5f);
+            const ImVec2 delMax(delMin.x + cw, delMin.y + cw);
+            const bool overDelete = !isDefault && ImGui::IsMouseHoveringRect(delMin, delMax);
+
+            // 满宽的切换按钮；较小的删除子按钮叠加在其右侧。
+            ImGui::SetNextItemAllowOverlap();
+            ImVec4 hl = ImVec4(0, 0, 0, 0);
+            if (isCurrent) { hl = style.Colors[ImGuiCol_TabActive]; hl.w *= alpha * 0.9f; }
+            ImGui::PushStyleColor(ImGuiCol_Button, hl);
+            ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+            if (ImGui::Button(display.c_str(), ImVec2(row_w, row_h)) && !overDelete)
+            {
+                if (!isCurrent)
+                {
+                    action = PRESET_ACTION_SWITCH;
+                    outName = pname;
+                }
+                st.open = false;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+
+            if (!isDefault)
+            {
+                ImGui::SetCursorScreenPos(delMin);
+                ImVec4 delBg = style.Colors[ImGuiCol_Button];         delBg.w *= alpha;
+                ImVec4 delHov = style.Colors[ImGuiCol_ButtonHovered]; delHov.w *= alpha;
+                ImVec4 delAct = style.Colors[ImGuiCol_ButtonActive];  delAct.w *= alpha;
+                ImVec4 delTxt = style.Colors[ImGuiCol_Text];          delTxt.w *= alpha;
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, cw * 0.5f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f)); // 修正小图标居中
+                ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
+                ImGui::PushStyleColor(ImGuiCol_Button, delBg);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, delHov);
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, delAct);
+                ImGui::PushStyleColor(ImGuiCol_Text, delTxt);
+                if (ImGui::Button(ICON_FA_TRASH, ImVec2(cw, cw)))
+                {
+                    action = PRESET_ACTION_DELETE;
+                    outName = pname;
+                    st.open = false;
+                }
+                ImGui::PopStyleColor(4);
+                ImGui::PopStyleVar(3);
+            }
+
+            // 无论是否覆盖，都推进到下一行
+            ImGui::SetCursorPosX(0.0f);
+            ImGui::SetCursorPosY(row_y + row_h);
+            ImGui::PopID();
+        }
+
+        // 底部：添加按钮（加号图标 + 居中文字；与其它行相同的主题配色）
+        ImGui::SetCursorPosX(0.0f);
+        // 与其它选项行相同的主题配色；仅文字对齐不同（居中）
+        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
+        if (ImGui::Button((string(ICON_FA_CIRCLE_PLUS) + "  " + (config.UseChinese ? (u8"添加配置"s) : ("Add Preset"s))).c_str(), ImVec2(row_w, row_h)))
+        {
+            action = PRESET_ACTION_ADD;
+            st.open = false;
+        }
+        ImGui::PopStyleVar();
+
+        ImGui::PopStyleColor(4);
+        ImGui::PopStyleVar(3);
+        ImGui::End();
+    }
+    else
+    {
+        ImGui::End();
+    }
+
+    ImGui::PopStyleColor(1);
+    ImGui::PopStyleVar(5);
+
+    return action;
 }
 
 inline void DrawRoundProgressBar(const char* label, float progress, ImVec2 size, ImVec4 fillColor)
@@ -844,7 +1077,7 @@ bool InputKey(const char* label, int* key, const char* press_tip)
     return value_changed;
 }
 
-bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
+bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size, int animMode, int options)
 {
     ImGuiWindow* window = GetCurrentWindow();
     ImGuiContext& g = *GImGui;
@@ -856,6 +1089,7 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     {
         float pos;
         float alpha;
+        float scale; // 淡入模式：0→1
     };
     static map <ImGuiID, AnimState> anim;
     static map <ImGuiID, bool> end_anim; // false不播放淡出动画，要么是结束了或者刚刚开始
@@ -875,13 +1109,29 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
     auto it_anim = anim.find(id);
     if (it_anim == anim.end())
     {
-        anim.insert({ id, { io.DisplaySize.y, 0.0f } });
+        if (animMode == POPUP_ANIM_FADE)
+            anim.insert({ id, { io.DisplaySize.y, 0.0f, 0.0f } });
+        else
+            anim.insert({ id, { io.DisplaySize.y, 0.0f, 1.0f } });
         it_anim = anim.find(id);
     }
     float speed = 0.3f * (1.0f - GetIO().DeltaTime);
+    float fadeSpeed = 0.5f * (1.0f - GetIO().DeltaTime);
 
-    it_anim->second.pos = ImLerp(it_anim->second.pos, (float)TagerPos, speed);
-    it_anim->second.alpha = ImLerp(it_anim->second.alpha, (float)TagerAlpha, speed);
+    if (animMode == POPUP_ANIM_FADE)
+    {
+        // 淡入模式：缩放 0→1 + 透明度 0→255，同 MessageBox
+        it_anim->second.scale = ImLerp(it_anim->second.scale, IsClose ? 0.0f : 1.0f, fadeSpeed);
+        it_anim->second.alpha = ImLerp(it_anim->second.alpha, (float)TagerAlpha, speed);
+        it_anim->second.pos = WindowPos.y;
+    }
+    else
+    {
+        // 弹出模式：Y 坐标上滑 + 透明度（原有行为）
+        it_anim->second.pos = ImLerp(it_anim->second.pos, (float)TagerPos, speed);
+        it_anim->second.alpha = ImLerp(it_anim->second.alpha, (float)TagerAlpha, speed);
+        it_anim->second.scale = 1.0f;
+    }
 
     const ImVec2 RenderPos(WindowPos.x, it_anim->second.pos);
 
@@ -891,8 +1141,15 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
         OpenPopup(name);
     }
 
-    SetNextWindowPos(RenderPos);
-    SetNextWindowSize(size);
+    // 淡入模式：以中心为基准缩放窗口尺寸
+    const float sc = it_anim->second.scale;
+    const ImVec2 ScaledSize(size.x * sc, size.y * sc);
+    const ImVec2 ScaledPos(WindowPos.x + (size.x - ScaledSize.x) * 0.5f, WindowPos.y + (size.y - ScaledSize.y) * 0.5f);
+    const ImVec2& FinalPos = (animMode == POPUP_ANIM_FADE) ? ScaledPos : RenderPos;
+    const ImVec2& FinalSize = (animMode == POPUP_ANIM_FADE) ? ScaledSize : size;
+
+    SetNextWindowPos(FinalPos);
+    SetNextWindowSize(FinalSize);
 
     {
         if (!IsPopupOpen(id, ImGuiPopupFlags_None))
@@ -905,7 +1162,11 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
         {
             ImVec4 color;
 
-            color = style.Colors[ImGuiCol_PopupBg];
+            // 更深的弹窗背景：取自当前样式中最深的 WindowBg 主题色
+            ImVec4 DarkPopupBg = style.Colors[ImGuiCol_WindowBg];
+            DarkPopupBg.w = 1.0f;
+
+            color = DarkPopupBg;
             color.w = it_anim->second.alpha / 255.0f;
             PushStyleColor(ImGuiCol_PopupBg, color);
 
@@ -917,21 +1178,54 @@ bool BeginPopupWindow(const char* name, bool* p_open, ImVec2 size)
             color.w *= (it_anim->second.alpha / 255.0f); // 使用*=，实现最大透明度就是原先的透明度
             PushStyleColor(ImGuiCol_ModalWindowDimBg, color);
 
-            color = style.Colors[ImGuiCol_TitleBgActive];
-            color.w = 1.0f;
+            // 标题背景 == 弹窗背景（相同的深色）
+            color = DarkPopupBg;
+            color.w = it_anim->second.alpha / 255.0f;
             PushStyleColor(ImGuiCol_TitleBgActive, color);
+            PushStyleColor(ImGuiCol_TitleBg, color);
         }
-        PushStyleVar(ImGuiStyleVar_WindowRounding, 6);
+        PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f);   // 现代圆角
+        PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 16.0f)); // 内容统一 16px 内边距
+        // 标题栏高度 = 文字高 + 上下各 12px（FramePadding 在 Begin 后立即出栈）
+        PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 12.0f));
 
-        const bool is_open = Begin(name, p_open, ImGuiWindowFlags_Popup | ImGuiWindowFlags_Modal | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        // 按需隐藏标题栏关闭按钮（弹窗状态仍由 p_open 驱动）
+        bool* pOpenArg = (options & POPUP_OPT_HIDE_CLOSE) ? NULL : p_open;
+        const bool is_open = Begin(name, pOpenArg, ImGuiWindowFlags_Popup | ImGuiWindowFlags_Modal | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
-        PopStyleColor(4); // ImGuiCol_PopupBg, ImGuiCol_Border, ImGuiCol_ModalWindowDimBg, ImGuiCol_TitleBgActive
-        PopStyleVar(); // ImGuiStyleVar_WindowRounding
-        
+        PopStyleColor(5); // PopupBg, Border, ModalWindowDimBg, TitleBgActive, TitleBg
+        PopStyleVar(3); // WindowRounding, WindowPadding, FramePadding
+
+        // SHADOW 选项：不使用模态遮罩，改为在弹窗周围绘制柔和投影
+        //（描边光晕法，绝不会遮住窗口内部/内容）。
+        if ((options & POPUP_OPT_SHADOW) && is_open)
+        {
+            ImDrawList* dl = window->DrawList;
+            const ImVec2 wp = window->Pos;
+            const ImVec2 ws = window->Size;
+            dl->PushClipRect(ImVec2(0.0f, 0.0f), io.DisplaySize, false);
+            const int layers = 14;
+            const float maxOff = 22.0f;
+            for (int i = 0; i < layers; ++i)
+            {
+                const float t = (float)i / (float)(layers - 1);
+                const float off = 1.0f + maxOff * t;
+                const float a = 0.34f * (1.0f - t) * (1.0f - t);
+                dl->AddRect(ImVec2(wp.x - off, wp.y - off), ImVec2(wp.x + ws.x + off, wp.y + ws.y + off),
+                            ImColor(0.0f, 0.0f, 0.0f, a), 12.0f + off, 0, 3.0f);
+            }
+            dl->PopClipRect();
+        }
+
         if (!is_open || (p_open && !*p_open))
             end_anim[id] = true;
 
-        if (IsClose && abs(it_anim->second.pos - TagerPos) < 35.0f)
+        // 淡入模式：缩放到 ~0 时结束；弹出模式：到达底部目标位置时结束
+        const bool EndAnimDone = (animMode == POPUP_ANIM_FADE)
+            ? (it_anim->second.scale < 0.02f)
+            : (abs(it_anim->second.pos - TagerPos) < 35.0f);
+
+        if (IsClose && EndAnimDone)
         {
             anim.erase(it_anim);
             end_anim[id] = false;
@@ -1048,13 +1342,8 @@ void RenderControl()
 
         SetNextWindowFocus();
         Begin("##progressbar", NULL,
-            ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoMove |
-            ImGuiWindowFlags_NoScrollbar |
-            ImGuiWindowFlags_NoScrollWithMouse |
-            ImGuiWindowFlags_NoCollapse |
-            ImGuiWindowFlags_NoTitleBar |
-            ImGuiWindowFlags_NoSavedSettings);
+            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
         SetWindowPos(ImVec2((io.DisplaySize.x - size.x) / 2, (io.DisplaySize.y - size.y) / 2));
         SetWindowSize(size);
 
@@ -1130,10 +1419,7 @@ void RenderControl()
 #endif // GC_NO_MSGBOX
     //=======================提示框===========================
     {
-        // 修复：原代码 for 遍历在锁外、erase 在锁内，且写端 RenderTip 完全无锁。
-        // 任意线程 push_back 触发 vector 扩容 → 正在遍历的迭代器失效 → 0xC0000005。
-        // 现在整个遍历+删除在写锁内完成，并用迭代器 erase 代替索引 erase。
-        lock_guard<shared_mutex> lock(PopTipMutex);
+        unique_lock<shared_mutex> lock(PopTipMutex);
         for (auto it = pt_message.begin(); it != pt_message.end();)
         {
             if (!PopTip(it->message, it->timeout, it->type))
@@ -1166,7 +1452,7 @@ bool PopTip(string msg, float timeout, UINT type)
         float    alpha;      // 当前透明度
         float    targetY;    // 锁定的目标 Y 坐标（防止移出时被其它提示顶下去）
     };
-    static std::unordered_map<ImGuiID, State> g_popTipStates;
+    static std::unordered_map<ImGuiID, State> PopTipStates;
     static int s_nextSeq = 0;        // 全局递增序号，用于保证层叠顺序
 
     // 如果文本过长，就开始分割为多行
@@ -1201,8 +1487,8 @@ bool PopTip(string msg, float timeout, UINT type)
     ImVec2 WindowSize(MsgSize.x + style.FramePadding.x * 2, style.FramePadding.y * 4 + MsgSize.y);
 
     // 获取或创建状态
-    auto it_state = g_popTipStates.find(id);
-    if (it_state == g_popTipStates.end())
+    auto it_state = PopTipStates.find(id);
+    if (it_state == PopTipStates.end())
     {
         // 新建提示状态
         State newState;
@@ -1214,8 +1500,8 @@ bool PopTip(string msg, float timeout, UINT type)
         newState.alpha = 0.0f;
         newState.targetY = io.DisplaySize.y - WindowSize.y - 10.0f;
 
-        g_popTipStates[id] = newState;
-        it_state = g_popTipStates.find(id);
+        PopTipStates[id] = newState;
+        it_state = PopTipStates.find(id);
     }
 
     State& state = it_state->second;
@@ -1232,14 +1518,12 @@ bool PopTip(string msg, float timeout, UINT type)
 
     // 核心治本逻辑：收集所有存活的项，并按创建序号(seq)排序，保证累加顺序绝对正确
     std::vector<std::pair<int, int>> activeTips; // {seq, height}
-    for (const auto& kv : g_popTipStates)
+    for (const auto& kv : PopTipStates)
     {
         if (kv.second.alive)
             activeTips.push_back({ kv.second.seq, kv.second.height });
     }
-    std::sort(activeTips.begin(), activeTips.end(), [](const auto& a, const auto& b) {
-        return a.first < b.first;
-        });
+    std::sort(activeTips.begin(), activeTips.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 
     unsigned int LayersHightSum = 0;
     for (const auto& p : activeTips)
@@ -1254,9 +1538,7 @@ bool PopTip(string msg, float timeout, UINT type)
 
     // 只有存活时才更新目标 Y。一旦进入移出态，Y 坐标锁死，让它笔直向右水平飞出
     if (state.alive)
-    {
         state.targetY = io.DisplaySize.y - WindowSize.y - 10.0f - LayersHightSum;
-    }
 
     // 插值速度计算，用 ImClamp 防止 DeltaTime 异常导致插值越界
     float MoveSpeed = ImClamp(0.20f * (1.0f - io.DeltaTime), 0.0f, 1.0f);
@@ -1275,19 +1557,19 @@ bool PopTip(string msg, float timeout, UINT type)
 
     switch (type)
     {
-    default:
-    case PT_INFO:
-        title = u8"信息";
-        TextureFileName = Pics_TipInfo;
-        break;
-    case PT_WARNING:
-        title = u8"警告";
-        TextureFileName = Pics_TipWarning;
-        break;
-    case PT_ERROR:
-        title = u8"错误";
-        TextureFileName = Pics_TipError;
-        break;
+        default:
+        case PT_INFO:
+            title = u8"信息";
+            TextureFileName = Pics_TipInfo;
+            break;
+        case PT_WARNING:
+            title = u8"警告";
+            TextureFileName = Pics_TipWarning;
+            break;
+        case PT_ERROR:
+            title = u8"错误";
+            TextureFileName = Pics_TipError;
+            break;
     }
 
     // 修复：根据 type 类型加载对应的图标，而不是写死 Pics_TipInfo
@@ -1320,7 +1602,7 @@ bool PopTip(string msg, float timeout, UINT type)
     if (!state.alive && state.pos.x > io.DisplaySize.x - 5.0f)
     {
         // 提示已完全飞出屏幕外且透明度为0，清理状态
-        g_popTipStates.erase(id);
+        PopTipStates.erase(id);
         return false;
     }
 
@@ -1681,7 +1963,6 @@ shared_mutex TextureMutex;
 map<string, TextureInfo> TextureMap;
 Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char* id, bool CacheDisabled, int* w, int* h)
 {
-    // 检查缓存（读锁：与 GetInfo 等线程的写入、主线程的读取并发安全）
     if (!CacheDisabled)
     {
         shared_lock<shared_mutex> lock(TextureMutex);
@@ -1694,7 +1975,6 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
         }
     }
 
-    // 加载图片
     int image_width = 0;
     int image_height = 0;
     int nrChannels = 0;
@@ -1725,8 +2005,6 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
 
 Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w, int* h)
 {
-    // 假设文件没了就使用缓存，不影响...
-    // 检查缓存
     if (!CacheDisabled)
     {
         shared_lock<shared_mutex> lock(TextureMutex);
@@ -1740,9 +2018,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
     }
     // 检查文件是否存在，
     if (_access(filename.c_str(), 0) != 0)
-    {
         return nullptr;
-    }
 
     // 加载图片
     int image_width = 0;
@@ -1821,9 +2097,9 @@ auto GetGuiColor(ImGuiStyle& Style, float alpha)
     Colors[ImGuiCol_SliderGrabActive] = ImVec4{ 0.74f, 0.58f, 0.98f, 0.58f };
 
     // Frame BG
-    Colors[ImGuiCol_FrameBg] = ImVec4{ 0.10f, 0.10, 0.14, alpha };
+    Colors[ImGuiCol_FrameBg] = ImVec4{ 0.13f, 0.13f, 0.18f, alpha };
     Colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.26f, 0.27f, 0.38f, alpha };
-    Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.2f, 0.2f, 0.25f, alpha };
+    Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.20f, 0.20f, 0.26f, alpha };
 
     // Tabs
     // 普通态：基础暗色，保持沉静
@@ -1873,8 +2149,11 @@ auto GetGuiStyle(ImGuiStyle& Style)
     Style.TabRounding = 4.0f;
     Style.WindowRounding = 4.0f;
 
+    Style.FrameRounding = 4.0f;
+    //Style.ItemSpacing = ImVec2(8.0f, 7.0f);
+    //Style.ItemInnerSpacing = ImVec2(6.0f, 6.0f);
     Style.FramePadding.y = 4.0f;
-    Style.ScrollbarSize = 8.0f;
+    //Style.ScrollbarSize = 8.0f;
 
     Style.ChildBorderSize = 1.0f;
     Style.WindowBorderSize = 1.0f;
@@ -1894,11 +2173,8 @@ void DrawProgressBar(const char* label, float progress, ImVec2 size, ImVec4 Colo
 
     PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     BeginChild(label, { size.x + 2, size.y + 2 }, true,
-        ImGuiWindowFlags_NoScrollbar | 
-        ImGuiWindowFlags_NoResize    |
-        ImGuiWindowFlags_NoMove      |
-        ImGuiWindowFlags_NoCollapse  |
-        ImGuiWindowFlags_NoScrollWithMouse);
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollWithMouse);
     PopStyleVar();//ImGuiStyleVar_WindowPadding
     // 确保进度值在0到1之间
     progress = ImClamp(progress, 0.0f, 1.0f);

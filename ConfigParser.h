@@ -1,12 +1,115 @@
 #pragma once
 #include "Log.h"
+#include "ShareCode.h"
 
-void SaveConfig();
-void LoadConfig();
+//======================= 内存 INI（快速读写） ===========================
+// Win32 的 profile API 每次调用都会重新打开并解析整个文件，SaveConfig/LoadConfig
+// 要做几百次这种调用，这正是切换预设卡顿的原因。这个轻量存储
+// 只解析一次、写入一次，并在后台线程写回序列化文本。
+struct IniMemData
+{
+	vector<string> SecOrder;
+	map<string, vector<string>> KeyOrder;
+	map<string, map<string, string>> Values;
+
+	void Clear() { SecOrder.clear(); KeyOrder.clear(); Values.clear(); }
+
+	void Set(const string& sec, const string& key, const string& val)
+	{
+		if (Values.find(sec) == Values.end())
+			SecOrder.push_back(sec);
+		map<string, string>& kv = Values[sec];
+		if (kv.find(key) == kv.end())
+			KeyOrder[sec].push_back(key);
+		kv[key] = val;
+	}
+
+	string Get(const string& sec, const string& key, const string& def) const
+	{
+		auto s = Values.find(sec);
+		if (s == Values.end()) return def;
+		auto k = s->second.find(key);
+		return (k == s->second.end()) ? def : k->second;
+	}
+
+	bool Load(const string& path)
+	{
+		Clear();
+		ifstream f(path, ios::binary);
+		if (!f.is_open()) return false;
+		string line, cur;
+		while (getline(f, line))
+		{
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			size_t p = line.find_first_not_of(" \t");
+			if (p == string::npos) continue;
+			if (line[p] == ';' || line[p] == '#') continue;
+			if (line[p] == '[')
+			{
+				size_t e = line.find(']', p);
+				if (e != string::npos) cur = line.substr(p + 1, e - p - 1);
+				continue;
+			}
+			size_t eq = line.find('=', p);
+			if (eq == string::npos) continue;
+			string key = line.substr(p, eq - p);
+			string val = line.substr(eq + 1);
+			while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+			size_t vs = val.find_first_not_of(" \t");
+			size_t ve = val.find_last_not_of(" \t");
+			val = (vs == string::npos) ? string() : val.substr(vs, ve - vs + 1);
+			Set(cur, key, val);
+		}
+		return true;
+	}
+
+	string Serialize() const
+	{
+		string out;
+		for (const string& sec : SecOrder)
+		{
+			out += "[" + sec + "]\n";
+			auto ko = KeyOrder.find(sec);
+			if (ko != KeyOrder.end())
+			{
+				auto sv = Values.find(sec);
+				for (const string& key : ko->second)
+					out += key + "=" + sv->second.at(key) + "\n";
+			}
+			out += "\n";
+		}
+		return out;
+	}
+};
+
+inline thread_local IniMemData* g_pIniSave = nullptr;
+inline thread_local IniMemData* g_pIniLoad = nullptr;
+
+void SaveConfig(const string& file = ConfigFile);
+void LoadConfig(const string& file = ConfigFile);
+void SavePresetConfig(const string& file);
+void LoadPresetConfig(const string& file);
+void SaveGlobalConfig();
+void LoadGlobalConfig();
 int CreateFile(const string& fileName);
 void ClearFile(const string& fileName);
 bool DeleteDirectory(const string& path);
 int DelFile(const string& file);
+inline vector<string> ScanPresets();
+inline bool DeletePreset(const string& name);
+inline bool AddPreset(const string& name);
+inline void SwitchPreset(const string& from, const string& to);
+void SavePresetConfig(const string& file);
+void SaveConfig(const string& file);
+void LoadPresetConfig(const string& file);
+void LoadGlobalConfig();
+void LoadConfig(const string& file);
+void RestoreInstalledScripts();
+inline string GetPresetFile(const string& name);
+inline void IniWrite(const char* sec, const char* key, const char* val);
+inline DWORD IniRead(const char* sec, const char* key, const char* def, char* buf, UINT sz);
+inline UINT IniReadInt(const char* sec, const char* key, int def);
+inline void IniFlushFile(const string& file, const string& text);
 
 void ClearFile(const string& fileName)
 {
@@ -148,62 +251,101 @@ int CreateFile(const string& fileName)
 	return -1;
 }
 
-void SaveConfig()
+// 序列化与文件写入都在调用线程完成（由调用方按需放到后台线程），避免在持锁时起线程。
+inline void IniFlushFile(const string& file, const string& text)
 {
+	ofstream f(file, ios::binary | ios::trunc);
+	if (f.is_open())
+	{
+		f.write(text.data(), (streamsize)text.size());
+		f.close();
+	}
+}
+
+// 与 Win32 profile API 参数列表完全一致的替代函数。
+inline void IniWrite(const char* sec, const char* key, const char* val)
+{
+	if (g_pIniSave)
+		g_pIniSave->Set(sec ? sec : "", key ? key : "", val ? val : "");
+}
+
+inline DWORD IniRead(const char* sec, const char* key, const char* def, char* buf, UINT sz)
+{
+	string v = def ? def : "";
+	if (g_pIniLoad) v = g_pIniLoad->Get(sec ? sec : "", key ? key : "", v);
+	if (buf && sz)
+	{
+		size_t n = v.size();
+		if (n >= (size_t)sz) n = (size_t)sz - 1;
+		for (size_t i = 0; i < n; ++i) buf[i] = v[i];
+		buf[n] = '\0';
+	}
+	return (DWORD)v.size();
+}
+
+inline UINT IniReadInt(const char* sec, const char* key, int def)
+{
+	string v = to_string(def);
+	if (g_pIniLoad) v = g_pIniLoad->Get(sec ? sec : "", key ? key : "", v);
+	return (UINT)atoi(v.c_str());
+}
+
+void SavePresetConfig(const string& file)
+{
+	IniMemData ini;
+	g_pIniSave = &ini;
 	PrintLog("[Config] 写入配置文件：" + ConfigFile, PL_INFO);
-	const char* CIniPos = ConfigFile.c_str();
+	const char* CIniPos = file.c_str();
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
 
     // Config Version
-    WritePrivateProfileString("Config", "Version", to_string(ConfigVersion).c_str(), CIniPos);
-	if (IsNeedReshowAgreement == false) // 不同意就不写入
-		WritePrivateProfileString("Config", "AgreementVersion", to_string(AgreementVersion).c_str(), CIniPos);
+    IniWrite("Config", "Version", to_string(ConfigVersion).c_str());
 
 	// BasicSettings section
-	WritePrivateProfileString("BasicSettings", "leftKeyShortcut", to_string(config.LKEY).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightKeyShortcut", to_string(config.RKEY).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftClickerCps", to_string(config.LCPS).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightClickerCps", to_string(config.RCPS).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "mainClickSleep", to_string(config.MainClickSleep).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightMultipleClickValue", to_string(config.RMultipleClickValue).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftMultipleClickValue", to_string(config.LMultipleClickValue).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightEmptyRateValue", to_string(config.REmptyRateValue).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftEmptyRateValue", to_string(config.LEmptyRateValue).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightClickTime", to_string(config.RCTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightClickSleep", to_string(config.RCSleep).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftClickTime", to_string(config.LCTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftClickSleep", to_string(config.LCSleep).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightClickerMode", to_string(config.RClickerMode).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftClickerMode", to_string(config.LClickerMode).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightFluctuationCps", to_string(config.RFluctuationCPS).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftFluctuationCps", to_string(config.LFluctuationCPS).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightPressDuration", to_string(config.RPressDuration).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftPressDuration", to_string(config.LPressDuration).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "enableRightClickerKey", to_string(config.EnableRightClickerKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "enableLeftClickerKey", to_string(config.EnableLeftClickerKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "chatBarKey", to_string(config.ChatBarKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "bagBarKey", to_string(config.BagBarKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "mouseShakeSpeed", to_string(config.MouseShakeSpeed).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "mouseShakeRect", to_string(config.MouseShakeRect).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "quickSwitchTotal", to_string(config.QuickSwitchTotal).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "assistModeCpsThreshold", to_string(config.AssistModeCPSThreshold).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "useOverheatThrottle", to_string(config.UseOverheatThrottle).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatMinCps", to_string(config.Overheat_MinCPS).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "selfDestructionKey", to_string(config.SelfDestructionKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftFluctuationRandMode", to_string(config.UseLFluctuationRandMode).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightFluctuationRandMode", to_string(config.UseRFluctuationRandMode).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "rightStartClickerDelay", to_string(config.RStartClickerDelay).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "leftStartClickerDelay", to_string(config.LStartClickerDelay).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "setGameWindowKey", to_string(config.SetGameWindowKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "hideClickerKey", to_string(config.HideClickerKey).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "simulateClickMode", to_string(config.SimulateClickMode).c_str(), CIniPos);
-	WritePrivateProfileString("BasicSettings", "clickerPriorityMode", to_string(config.ClickerPriorityMode).c_str(), CIniPos);
+	IniWrite("BasicSettings", "leftKeyShortcut", to_string(config.LKEY).c_str());
+	IniWrite("BasicSettings", "rightKeyShortcut", to_string(config.RKEY).c_str());
+	IniWrite("BasicSettings", "leftClickerCps", to_string(config.LCPS).c_str());
+	IniWrite("BasicSettings", "rightClickerCps", to_string(config.RCPS).c_str());
+	IniWrite("BasicSettings", "mainClickSleep", to_string(config.MainClickSleep).c_str());
+	IniWrite("BasicSettings", "rightMultipleClickValue", to_string(config.RMultipleClickValue).c_str());
+	IniWrite("BasicSettings", "leftMultipleClickValue", to_string(config.LMultipleClickValue).c_str());
+	IniWrite("BasicSettings", "rightEmptyRateValue", to_string(config.REmptyRateValue).c_str());
+	IniWrite("BasicSettings", "leftEmptyRateValue", to_string(config.LEmptyRateValue).c_str());
+	IniWrite("BasicSettings", "rightClickTime", to_string(config.RCTime).c_str());
+	IniWrite("BasicSettings", "rightClickSleep", to_string(config.RCSleep).c_str());
+	IniWrite("BasicSettings", "leftClickTime", to_string(config.LCTime).c_str());
+	IniWrite("BasicSettings", "leftClickSleep", to_string(config.LCSleep).c_str());
+	IniWrite("BasicSettings", "rightClickerMode", to_string(config.RClickerMode).c_str());
+	IniWrite("BasicSettings", "leftClickerMode", to_string(config.LClickerMode).c_str());
+	IniWrite("BasicSettings", "rightFluctuationCps", to_string(config.RFluctuationCPS).c_str());
+	IniWrite("BasicSettings", "leftFluctuationCps", to_string(config.LFluctuationCPS).c_str());
+	IniWrite("BasicSettings", "rightPressDuration", to_string(config.RPressDuration).c_str());
+	IniWrite("BasicSettings", "leftPressDuration", to_string(config.LPressDuration).c_str());
+	IniWrite("BasicSettings", "enableRightClickerKey", to_string(config.EnableRightClickerKey).c_str());
+	IniWrite("BasicSettings", "enableLeftClickerKey", to_string(config.EnableLeftClickerKey).c_str());
+	IniWrite("BasicSettings", "chatBarKey", to_string(config.ChatBarKey).c_str());
+	IniWrite("BasicSettings", "bagBarKey", to_string(config.BagBarKey).c_str());
+	IniWrite("BasicSettings", "mouseShakeSpeed", to_string(config.MouseShakeSpeed).c_str());
+	IniWrite("BasicSettings", "mouseShakeRect", to_string(config.MouseShakeRect).c_str());
+	IniWrite("BasicSettings", "quickSwitchTotal", to_string(config.QuickSwitchTotal).c_str());
+	IniWrite("BasicSettings", "assistModeCpsThreshold", to_string(config.AssistModeCPSThreshold).c_str());
+	IniWrite("BasicSettings", "useOverheatThrottle", to_string(config.UseOverheatThrottle).c_str());
+	IniWrite("BasicSettings", "overheatMinCps", to_string(config.Overheat_MinCPS).c_str());
+	IniWrite("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str());
+	IniWrite("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str());
+	IniWrite("BasicSettings", "selfDestructionKey", to_string(config.SelfDestructionKey).c_str());
+	IniWrite("BasicSettings", "leftFluctuationRandMode", to_string(config.UseLFluctuationRandMode).c_str());
+	IniWrite("BasicSettings", "rightFluctuationRandMode", to_string(config.UseRFluctuationRandMode).c_str());
+	IniWrite("BasicSettings", "rightStartClickerDelay", to_string(config.RStartClickerDelay).c_str());
+	IniWrite("BasicSettings", "leftStartClickerDelay", to_string(config.LStartClickerDelay).c_str());
+	IniWrite("BasicSettings", "setGameWindowKey", to_string(config.SetGameWindowKey).c_str());
+	IniWrite("BasicSettings", "hideClickerKey", to_string(config.HideClickerKey).c_str());
+	IniWrite("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str());
+	IniWrite("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str());
+	IniWrite("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str());
+	IniWrite("BasicSettings", "simulateClickMode", to_string(config.SimulateClickMode).c_str());
+	IniWrite("BasicSettings", "clickerPriorityMode", to_string(config.ClickerPriorityMode).c_str());
 
 	// CPSWaves section
 	int count = 0;
@@ -215,70 +357,70 @@ void SaveConfig()
 		{
 			char data[256];
 			sprintf_s(data, "%s,%.5f,%.5f,%.5f", w.enabled ? "TRUE" : "FALSE", w.amplitude, w.frequency, w.phase);
-			WritePrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), data, CIniPos);
+			IniWrite("CPSWaves", (name + to_string(count)).c_str(), data);
 			count++;
 		}
 	}
 
 	// MouseSoundSettings section
-	WritePrivateProfileString("MouseSoundSettings", "mouseSoundVolume", to_string(config.MouseSoundVolume).c_str(), CIniPos);
-	WritePrivateProfileString("MouseSoundSettings", "keybdSoundVolume", to_string(config.KeybdSoundVolume).c_str(), CIniPos);
-	WritePrivateProfileString("MouseSoundSettings", "noiseVolume", to_string(config.NoiseVolume).c_str(), CIniPos);
-	WritePrivateProfileString("MouseSoundSettings", "mouseSoundType", config.MouseSoundType.c_str(), CIniPos);
-	WritePrivateProfileString("MouseSoundSettings", "mouseSoundSleep", to_string(config.MouseSoundSleep).c_str(), CIniPos);
+	IniWrite("MouseSoundSettings", "mouseSoundVolume", to_string(config.MouseSoundVolume).c_str());
+	IniWrite("MouseSoundSettings", "keybdSoundVolume", to_string(config.KeybdSoundVolume).c_str());
+	IniWrite("MouseSoundSettings", "noiseVolume", to_string(config.NoiseVolume).c_str());
+	IniWrite("MouseSoundSettings", "mouseSoundType", config.MouseSoundType.c_str());
+	IniWrite("MouseSoundSettings", "mouseSoundSleep", to_string(config.MouseSoundSleep).c_str());
 
 	// FeatureSwitches section - bool values
-	WritePrivateProfileString("FeatureSwitches", "useRightEmptyRate", config.UseREmptyRate ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftEmptyRate", config.UseLEmptyRate ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightFluctuation", config.UseRFluctuation ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftFluctuation", config.UseLFluctuation ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftClickTime", config.UseLClickTime ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightClickTime", config.UseRClickTime ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftAutoPressDuration", config.UseLAutoPressDuration ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useStartWithWindows", config.UseStartWithWindows ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "enableRightClicker", config.EnableRightClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "enableLeftClicker", config.EnableLeftClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useBroadcasterMode", config.UseBroadcasterMode ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useAutoGuiDetect", config.UseAutoGuiDetect ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMouseSound", config.UseMouseSound ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useKeybdSound", config.UseKeybdSound ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightOnlyMoveClicker", config.UseROnlyMoveClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftOnlyMoveClicker", config.UseLOnlyMoveClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useDisableMoveOnStopMove", config.UseDisableMoveOnStopMove ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMouseShake", config.UseMouseShake ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMouseShakeRawInput", config.UseMouseShakeRawInput ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMsPreventViewSliding", config.UseMSPreventViewSliding ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useMsSmoothSpeed", config.UseMSSmoothSpeed ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useItembarUseMemSearch", config.UseItembarUseMemSearch ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useChinese", config.UseChinese ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useDriverProtect", config.UseDriverProtect ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useHiddenProcess", config.UseHiddenProcess ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightOnlyJumpClicker", config.UseROnlyJumpClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRestTimeOnStopClicker", config.UseRestTimeOnStopClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftStartClickerDelay", config.UseLStartClickerDelay ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useFilterRightSingleClick", config.UseFilterRSingleClick ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useFilterLeftSingleClick", config.UseFilterLSingleClick ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "usePerformanceMode", config.UsePerformanceMode ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useRightCpsChangeTrend", config.UseRCPSChangeTrend ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useLeftCpsChangeTrend", config.UseLCPSChangeTrend ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "inGameOnlyClicker", config.UseInGameOnlyClicker ? "TRUE" : "FALSE", CIniPos);
-	WritePrivateProfileString("FeatureSwitches", "useItembarSwitch", config.UseItembarSwitch ? "TRUE" : "FALSE", CIniPos);
+	IniWrite("FeatureSwitches", "useRightEmptyRate", config.UseREmptyRate ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftEmptyRate", config.UseLEmptyRate ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightFluctuation", config.UseRFluctuation ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftFluctuation", config.UseLFluctuation ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftClickTime", config.UseLClickTime ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightClickTime", config.UseRClickTime ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftAutoPressDuration", config.UseLAutoPressDuration ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useStartWithWindows", config.UseStartWithWindows ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "enableRightClicker", config.EnableRightClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "enableLeftClicker", config.EnableLeftClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useBroadcasterMode", config.UseBroadcasterMode ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useAutoGuiDetect", config.UseAutoGuiDetect ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useMouseSound", config.UseMouseSound ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useKeybdSound", config.UseKeybdSound ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightOnlyMoveClicker", config.UseROnlyMoveClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftOnlyMoveClicker", config.UseLOnlyMoveClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useDisableMoveOnStopMove", config.UseDisableMoveOnStopMove ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useMouseShake", config.UseMouseShake ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useMouseShakeRawInput", config.UseMouseShakeRawInput ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useMsPreventViewSliding", config.UseMSPreventViewSliding ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useMsSmoothSpeed", config.UseMSSmoothSpeed ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useItembarUseMemSearch", config.UseItembarUseMemSearch ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useChinese", config.UseChinese ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useDriverProtect", config.UseDriverProtect ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useHiddenProcess", config.UseHiddenProcess ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightOnlyJumpClicker", config.UseROnlyJumpClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRestTimeOnStopClicker", config.UseRestTimeOnStopClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftStartClickerDelay", config.UseLStartClickerDelay ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useFilterRightSingleClick", config.UseFilterRSingleClick ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useFilterLeftSingleClick", config.UseFilterLSingleClick ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "usePerformanceMode", config.UsePerformanceMode ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useRightCpsChangeTrend", config.UseRCPSChangeTrend ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useLeftCpsChangeTrend", config.UseLCPSChangeTrend ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "inGameOnlyClicker", config.UseInGameOnlyClicker ? "TRUE" : "FALSE");
+	IniWrite("FeatureSwitches", "useItembarSwitch", config.UseItembarSwitch ? "TRUE" : "FALSE");
 
 	// QuickSwitchSettings section - arrays
 	string rQuickSwitchStr, lQuickSwitchStr, quickSwitchKeyStr;
@@ -294,9 +436,9 @@ void SaveConfig()
 			quickSwitchKeyStr += ",";
 		}
 	}
-	WritePrivateProfileString("QuickSwitchSettings", "rightQuickSwitch", rQuickSwitchStr.c_str(), CIniPos);
-	WritePrivateProfileString("QuickSwitchSettings", "leftQuickSwitch", lQuickSwitchStr.c_str(), CIniPos);
-	WritePrivateProfileString("QuickSwitchSettings", "quickSwitchKey", quickSwitchKeyStr.c_str(), CIniPos);
+	IniWrite("QuickSwitchSettings", "rightQuickSwitch", rQuickSwitchStr.c_str());
+	IniWrite("QuickSwitchSettings", "leftQuickSwitch", lQuickSwitchStr.c_str());
+	IniWrite("QuickSwitchSettings", "quickSwitchKey", quickSwitchKeyStr.c_str());
 
 	// ItemBarSettings section - arrays and LRPair arrays
 	string itemEnableClickerKeyStr;
@@ -305,7 +447,7 @@ void SaveConfig()
 		itemEnableClickerKeyStr += to_string(config.ItemBarKey[i]);
 		if (i < 9) itemEnableClickerKeyStr += ",";
 	}
-	WritePrivateProfileString("ItemBarSettings", "itemEnableClickerKey", itemEnableClickerKeyStr.c_str(), CIniPos);
+	IniWrite("ItemBarSettings", "itemEnableClickerKey", itemEnableClickerKeyStr.c_str());
 
 	string itemBarPresetCpsLeftStr, itemBarPresetCpsRightStr;
 	string itemBarEnablePresetCpsLeftStr, itemBarEnablePresetCpsRightStr;
@@ -328,17 +470,17 @@ void SaveConfig()
 			itemEnableClickerRightStr += ",";
 		}
 	}
-	WritePrivateProfileString("ItemBarSettings", "itemBarPresetCpsLeft", itemBarPresetCpsLeftStr.c_str(), CIniPos);
-	WritePrivateProfileString("ItemBarSettings", "itemBarPresetCpsRight", itemBarPresetCpsRightStr.c_str(), CIniPos);
-	WritePrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsLeft", itemBarEnablePresetCpsLeftStr.c_str(), CIniPos);
-	WritePrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsRight", itemBarEnablePresetCpsRightStr.c_str(), CIniPos);
-	WritePrivateProfileString("ItemBarSettings", "itemEnableClickerLeft", itemEnableClickerLeftStr.c_str(), CIniPos);
-	WritePrivateProfileString("ItemBarSettings", "itemEnableClickerRight", itemEnableClickerRightStr.c_str(), CIniPos);
+	IniWrite("ItemBarSettings", "itemBarPresetCpsLeft", itemBarPresetCpsLeftStr.c_str());
+	IniWrite("ItemBarSettings", "itemBarPresetCpsRight", itemBarPresetCpsRightStr.c_str());
+	IniWrite("ItemBarSettings", "itemBarEnablePresetCpsLeft", itemBarEnablePresetCpsLeftStr.c_str());
+	IniWrite("ItemBarSettings", "itemBarEnablePresetCpsRight", itemBarEnablePresetCpsRightStr.c_str());
+	IniWrite("ItemBarSettings", "itemEnableClickerLeft", itemEnableClickerLeftStr.c_str());
+	IniWrite("ItemBarSettings", "itemEnableClickerRight", itemEnableClickerRightStr.c_str());
 
 	// RandomSettings section
-	WritePrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), CIniPos);
+	IniWrite("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str());
+	IniWrite("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str());
+	IniWrite("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str());
 
 	// Vector保存
 	string rCpsTrendStr, lCpsTrendStr;
@@ -352,8 +494,23 @@ void SaveConfig()
 		lCpsTrendStr += to_string(config.LCPSChangeTrendList[i]);
 		if (i < config.LCPSChangeTrendList.size() - 1) lCpsTrendStr += ",";
 	}
-	WritePrivateProfileString("RandomSettings", "rightCpsChangeTrendList", rCpsTrendStr.c_str(), CIniPos);
-	WritePrivateProfileString("RandomSettings", "leftCpsChangeTrendList", lCpsTrendStr.c_str(), CIniPos);
+	IniWrite("RandomSettings", "rightCpsChangeTrendList", rCpsTrendStr.c_str());
+	IniWrite("RandomSettings", "leftCpsChangeTrendList", lCpsTrendStr.c_str());
+
+	g_pIniSave = nullptr;
+	IniFlushFile(CIniPos, ini.Serialize());
+}
+
+void SaveGlobalConfig()
+{
+	IniMemData ini;
+	g_pIniSave = &ini;
+	const char* CIniPos = CustomConfigFile.c_str();
+	if (_access(CIniPos, 0) != 0)
+		CreateFile(CIniPos);
+
+	if (IsNeedReshowAgreement == false) // 不同意就不写入
+		IniWrite("Config", "AgreementVersion", to_string(AgreementVersion).c_str());
 
 	//-----------------------统计信息-----------------------
 	{
@@ -390,12 +547,12 @@ void SaveConfig()
 	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
-	WritePrivateProfileString("个性化", "BgOffsetX", to_string(BgOffsetX).c_str(), CIniPos);
-	WritePrivateProfileString("个性化", "BgOffsetY", to_string(BgOffsetY).c_str(), CIniPos);
-	WritePrivateProfileString("个性化", "BgScale", to_string(BgScale).c_str(), CIniPos);
-	WritePrivateProfileString("个性化", "BgLightness", to_string(BgLightness).c_str(), CIniPos);
-	WritePrivateProfileString("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), CIniPos);
-	WritePrivateProfileString("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", CIniPos);
+	IniWrite("个性化", "BgOffsetX", to_string(BgOffsetX).c_str());
+	IniWrite("个性化", "BgOffsetY", to_string(BgOffsetY).c_str());
+	IniWrite("个性化", "BgScale", to_string(BgScale).c_str());
+	IniWrite("个性化", "BgLightness", to_string(BgLightness).c_str());
+	IniWrite("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str());
+	IniWrite("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE");
 
 	//--------------------已安装脚本列表持久化（原"脚本自启动"，已废弃自动运行，仅保留列表保存）--------------------
 	if (_access(ScriptInstallList.c_str(), 0) != 0)
@@ -405,97 +562,105 @@ void SaveConfig()
 	if (ScriptFile.is_open())
 	{
 		// 读取锁
-		shared_lock<shared_mutex> read_lock(InstalledScriptsMtx);
-		for (const auto& script : InstalledScripts)
+		shared_lock<shared_mutex> read_lock(ScriptData::InstalledMtx);
+		for (const auto& script : ScriptData::Installed)
 			ScriptFile << script.name << endl;
 		ScriptFile.close();
 		// 修复：原代码 size()-1 在空列表时无符号下溢 → 日志显示天文数字（"int 极限"）
-		PrintLog("[Config] 已保存 " + to_string(InstalledScripts.size()) + " 个已安装脚本", PL_INFO);
+		PrintLog("[Config] 已保存 " + to_string(ScriptData::Installed.size()) + " 个已安装脚本", PL_INFO);
 	}
+
+	g_pIniSave = nullptr;
+	IniFlushFile(CustomConfigFile, ini.Serialize());
 }
 
-void LoadConfig()
+void SaveConfig(const string& file)
 {
+	SavePresetConfig(file);
+	SaveGlobalConfig();
+}
+
+void LoadPresetConfig(const string& file)
+{
+	IniMemData ini;
+	ini.Load(file);
+	g_pIniLoad = &ini;
 	PrintLog("[Config] 读取配置文件：" + ConfigFile, PL_INFO);
-	const char* CIniPos = ConfigFile.c_str();
+	const char* CIniPos = file.c_str();
 	char* buffer = new char[MAX_BUF];
 	string st;
 
 	//配置文件版本号
-	GetPrivateProfileString("Config", "Version", "-1", buffer, MAX_BUF, CIniPos);
-	int ver1 = stoi(buffer);
-	if (ver1 != ConfigVersion)
+	IniRead("Config", "Version", "-1", buffer, MAX_BUF);
+	const int ver = stoi(buffer);
+	if (ver != ConfigVersion)
 	{
-		DelFile(ConfigFile);
-		CreateFile(ConfigFile);
-		SaveConfig();
+		DelFile(file);
+		CreateFile(file);
+		SaveConfig(file);
 	}
 
-	GetPrivateProfileString("Config", "AgreementVersion", "-1", buffer, MAX_BUF, CIniPos);
-	int ver2 = stoi(buffer);
-	if (ver2 != AgreementVersion)
-		IsNeedReshowAgreement = true;
-
-	if (_access(CIniPos, 0) == 0 && ver1 == ConfigVersion)
+	if (_access(CIniPos, 0) == 0 && ver == ConfigVersion)
 	{
 		// BasicSettings section
-		config.LKEY                     = GetPrivateProfileInt("BasicSettings", "leftKeyShortcut", config.LKEY, CIniPos);
-		config.RKEY                     = GetPrivateProfileInt("BasicSettings", "rightKeyShortcut", config.RKEY, CIniPos);
-		config.LCPS                     = GetPrivateProfileInt("BasicSettings", "leftClickerCps", config.LCPS, CIniPos);
-		config.RCPS                     = GetPrivateProfileInt("BasicSettings", "rightClickerCps", config.RCPS, CIniPos);
-		config.MainClickSleep           = GetPrivateProfileInt("BasicSettings", "mainClickSleep", config.MainClickSleep, CIniPos);
-		config.RMultipleClickValue      = GetPrivateProfileInt("BasicSettings", "rightMultipleClickValue", config.RMultipleClickValue, CIniPos);
-		config.LMultipleClickValue      = GetPrivateProfileInt("BasicSettings", "leftMultipleClickValue", config.LMultipleClickValue, CIniPos);
-		config.REmptyRateValue          = GetPrivateProfileInt("BasicSettings", "rightEmptyRateValue", config.REmptyRateValue, CIniPos);
-		config.LEmptyRateValue          = GetPrivateProfileInt("BasicSettings", "leftEmptyRateValue", config.LEmptyRateValue, CIniPos);
-		config.RCTime                   = GetPrivateProfileInt("BasicSettings", "rightClickTime", config.RCTime, CIniPos);
-		config.RCSleep                  = GetPrivateProfileInt("BasicSettings", "rightClickSleep", config.RCSleep, CIniPos);
-		config.LCTime                   = GetPrivateProfileInt("BasicSettings", "leftClickTime", config.LCTime, CIniPos);
-		config.LCSleep                  = GetPrivateProfileInt("BasicSettings", "leftClickSleep", config.LCSleep, CIniPos);
-		config.RClickerMode             = GetPrivateProfileInt("BasicSettings", "rightClickerMode", config.RClickerMode, CIniPos);
-		config.LClickerMode             = GetPrivateProfileInt("BasicSettings", "leftClickerMode", config.LClickerMode, CIniPos);
-		config.RFluctuationCPS          = GetPrivateProfileInt("BasicSettings", "rightFluctuationCps", config.RFluctuationCPS, CIniPos);
-		config.LFluctuationCPS          = GetPrivateProfileInt("BasicSettings", "leftFluctuationCps", config.LFluctuationCPS, CIniPos);
-		config.RPressDuration           = GetPrivateProfileInt("BasicSettings", "rightPressDuration", config.RPressDuration, CIniPos);
-		config.LPressDuration           = GetPrivateProfileInt("BasicSettings", "leftPressDuration", config.LPressDuration, CIniPos);
-		config.EnableRightClickerKey    = GetPrivateProfileInt("BasicSettings", "enableRightClickerKey", config.EnableRightClickerKey, CIniPos);
-		config.EnableLeftClickerKey     = GetPrivateProfileInt("BasicSettings", "enableLeftClickerKey", config.EnableLeftClickerKey, CIniPos);
-		config.ChatBarKey               = GetPrivateProfileInt("BasicSettings", "chatBarKey", config.ChatBarKey, CIniPos);
-		config.BagBarKey                = GetPrivateProfileInt("BasicSettings", "bagBarKey", config.BagBarKey, CIniPos);
-		config.MouseShakeSpeed          = GetPrivateProfileInt("BasicSettings", "mouseShakeSpeed", config.MouseShakeSpeed, CIniPos);
-		config.MouseShakeRect           = GetPrivateProfileInt("BasicSettings", "mouseShakeRect", config.MouseShakeRect, CIniPos);
-		config.QuickSwitchTotal         = GetPrivateProfileInt("BasicSettings", "quickSwitchTotal", config.QuickSwitchTotal, CIniPos);
-		config.AssistModeCPSThreshold   = GetPrivateProfileInt("BasicSettings", "assistModeCpsThreshold", config.AssistModeCPSThreshold, CIniPos);
-		config.UseOverheatThrottle      = GetPrivateProfileInt("BasicSettings", "useOverheatThrottle", config.UseOverheatThrottle, CIniPos) != 0;
-		config.Overheat_MinCPS          = GetPrivateProfileInt("BasicSettings", "overheatMinCps", config.Overheat_MinCPS, CIniPos);
+		config.LKEY                     = IniReadInt("BasicSettings", "leftKeyShortcut", config.LKEY);
+		config.RKEY                     = IniReadInt("BasicSettings", "rightKeyShortcut", config.RKEY);
+		config.LCPS                     = IniReadInt("BasicSettings", "leftClickerCps", config.LCPS);
+		config.RCPS                     = IniReadInt("BasicSettings", "rightClickerCps", config.RCPS);
+		config.MainClickSleep           = IniReadInt("BasicSettings", "mainClickSleep", config.MainClickSleep);
+		config.RMultipleClickValue      = IniReadInt("BasicSettings", "rightMultipleClickValue", config.RMultipleClickValue);
+		config.LMultipleClickValue      = IniReadInt("BasicSettings", "leftMultipleClickValue", config.LMultipleClickValue);
+		config.REmptyRateValue          = IniReadInt("BasicSettings", "rightEmptyRateValue", config.REmptyRateValue);
+		config.LEmptyRateValue          = IniReadInt("BasicSettings", "leftEmptyRateValue", config.LEmptyRateValue);
+		config.RCTime                   = IniReadInt("BasicSettings", "rightClickTime", config.RCTime);
+		config.RCSleep                  = IniReadInt("BasicSettings", "rightClickSleep", config.RCSleep);
+		config.LCTime                   = IniReadInt("BasicSettings", "leftClickTime", config.LCTime);
+		config.LCSleep                  = IniReadInt("BasicSettings", "leftClickSleep", config.LCSleep);
+		config.RClickerMode             = IniReadInt("BasicSettings", "rightClickerMode", config.RClickerMode);
+		config.LClickerMode             = IniReadInt("BasicSettings", "leftClickerMode", config.LClickerMode);
+		config.RFluctuationCPS          = IniReadInt("BasicSettings", "rightFluctuationCps", config.RFluctuationCPS);
+		config.LFluctuationCPS          = IniReadInt("BasicSettings", "leftFluctuationCps", config.LFluctuationCPS);
+		config.RPressDuration           = IniReadInt("BasicSettings", "rightPressDuration", config.RPressDuration);
+		config.LPressDuration           = IniReadInt("BasicSettings", "leftPressDuration", config.LPressDuration);
+		config.EnableRightClickerKey    = IniReadInt("BasicSettings", "enableRightClickerKey", config.EnableRightClickerKey);
+		config.EnableLeftClickerKey     = IniReadInt("BasicSettings", "enableLeftClickerKey", config.EnableLeftClickerKey);
+		config.ChatBarKey               = IniReadInt("BasicSettings", "chatBarKey", config.ChatBarKey);
+		config.BagBarKey                = IniReadInt("BasicSettings", "bagBarKey", config.BagBarKey);
+		config.MouseShakeSpeed          = IniReadInt("BasicSettings", "mouseShakeSpeed", config.MouseShakeSpeed);
+		config.MouseShakeRect           = IniReadInt("BasicSettings", "mouseShakeRect", config.MouseShakeRect);
+		config.QuickSwitchTotal         = IniReadInt("BasicSettings", "quickSwitchTotal", config.QuickSwitchTotal);
+		config.AssistModeCPSThreshold   = IniReadInt("BasicSettings", "assistModeCpsThreshold", config.AssistModeCPSThreshold);
+		config.UseOverheatThrottle      = IniReadInt("BasicSettings", "useOverheatThrottle", config.UseOverheatThrottle) != 0;
+		config.Overheat_MinCPS          = IniReadInt("BasicSettings", "overheatMinCps", config.Overheat_MinCPS);
 		{
 			// 注意：键名用 overheatReachTime，避免与既有"过热保护"功能的 overheatTime 键冲突
-			GetPrivateProfileString("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), buffer, MAX_BUF, CIniPos);
+			IniRead("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), buffer, MAX_BUF);
 			config.Overheat_Time = stof(buffer);
-			GetPrivateProfileString("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), buffer, MAX_BUF, CIniPos);
+			IniRead("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), buffer, MAX_BUF);
 			config.Overheat_ThrottleTime = stof(buffer);
 		}
-		config.SelfDestructionKey       = GetPrivateProfileInt("BasicSettings", "selfDestructionKey", config.SelfDestructionKey, CIniPos);
-		config.UseLFluctuationRandMode  = GetPrivateProfileInt("BasicSettings", "leftFluctuationRandMode", config.UseLFluctuationRandMode, CIniPos);
-		config.UseRFluctuationRandMode  = GetPrivateProfileInt("BasicSettings", "rightFluctuationRandMode", config.UseRFluctuationRandMode, CIniPos);
-		config.RStartClickerDelay       = GetPrivateProfileInt("BasicSettings", "rightStartClickerDelay", config.RStartClickerDelay, CIniPos);
-		config.LStartClickerDelay       = GetPrivateProfileInt("BasicSettings", "leftStartClickerDelay", config.LStartClickerDelay, CIniPos);
-		config.SetGameWindowKey         = GetPrivateProfileInt("BasicSettings", "setGameWindowKey", config.SetGameWindowKey, CIniPos);
-		config.HideClickerKey           = GetPrivateProfileInt("BasicSettings", "hideClickerKey", config.HideClickerKey, CIniPos);
+		config.SelfDestructionKey       = IniReadInt("BasicSettings", "selfDestructionKey", config.SelfDestructionKey);
+		config.UseLFluctuationRandMode  = IniReadInt("BasicSettings", "leftFluctuationRandMode", config.UseLFluctuationRandMode);
+		config.UseRFluctuationRandMode  = IniReadInt("BasicSettings", "rightFluctuationRandMode", config.UseRFluctuationRandMode);
+		config.RStartClickerDelay       = IniReadInt("BasicSettings", "rightStartClickerDelay", config.RStartClickerDelay);
+		config.LStartClickerDelay       = IniReadInt("BasicSettings", "leftStartClickerDelay", config.LStartClickerDelay);
+		config.SetGameWindowKey         = IniReadInt("BasicSettings", "setGameWindowKey", config.SetGameWindowKey);
+		config.HideClickerKey           = IniReadInt("BasicSettings", "hideClickerKey", config.HideClickerKey);
 
 		// 注意：OverheatTime 和 OHPTimerTimeLossSpeed 是浮点数，不能直接用 GetPrivateProfileInt
-		GetPrivateProfileString("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), buffer, MAX_BUF);
 		config.OverheatTime = stof(buffer);
-		GetPrivateProfileString("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), buffer, MAX_BUF);
 		config.OverheatCooldownTime = stof(buffer);
-		GetPrivateProfileString("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("BasicSettings", "overheatSoundType", to_string(config.OverheatSoundType).c_str(), buffer, MAX_BUF);
 		config.OverheatSoundType = stof(buffer);
 
-		config.SimulateClickMode = GetPrivateProfileInt("BasicSettings", "simulateClickMode", config.SimulateClickMode, CIniPos);
-		config.HideClickerKey = GetPrivateProfileInt("BasicSettings", "hideClickerKey", config.HideClickerKey, CIniPos);
-		config.ClickerPriorityMode = GetPrivateProfileInt("BasicSettings", "clickerPriorityMode", config.ClickerPriorityMode, CIniPos);
+		config.SimulateClickMode = IniReadInt("BasicSettings", "simulateClickMode", config.SimulateClickMode);
+		config.HideClickerKey = IniReadInt("BasicSettings", "hideClickerKey", config.HideClickerKey);
+		config.ClickerPriorityMode = IniReadInt("BasicSettings", "clickerPriorityMode", config.ClickerPriorityMode);
 
-		//==================================================CPSWaves section==================================================
+	
+	//==================================================CPSWaves section==================================================
 		for (int i = 0; i < 2; i++)
 		{
 			const char* name = (i == 0) ? "leftWave" : "rightWave";
@@ -503,7 +668,7 @@ void LoadConfig()
 			int count = 0;
 			while (true)
 			{
-				DWORD len = GetPrivateProfileString("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF, CIniPos);
+				DWORD len = IniRead("CPSWaves", (name + to_string(count)).c_str(), "", buffer, MAX_BUF);
 				if (len <= 0)
 					break;
 				vector<string> tokens;
@@ -538,14 +703,14 @@ void LoadConfig()
 					WaveParam w1;
 					w1.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
 					w1.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
-					w1.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+					w1.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
 					w1.enabled = true;
 					config.CPSWaves.left.push_back(w1);
 
 					WaveParam w2;
 					w2.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
 					w2.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
-					w2.phase = Random(-31415926535, 31415926535) / 1000000000.f; // -pi - pi
+					w2.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
 					w2.enabled = true;
 					config.CPSWaves.right.push_back(w2);
 				}
@@ -553,173 +718,173 @@ void LoadConfig()
 		}
 
 		//==================================================MouseSoundSettings section==================================================
-		config.MouseSoundVolume = GetPrivateProfileInt("MouseSoundSettings", "mouseSoundVolume", config.MouseSoundVolume, CIniPos);
-		config.KeybdSoundVolume = GetPrivateProfileInt("MouseSoundSettings", "keybdSoundVolume", config.KeybdSoundVolume, CIniPos);
-		config.NoiseVolume = GetPrivateProfileInt("MouseSoundSettings", "noiseVolume", config.NoiseVolume, CIniPos);
+		config.MouseSoundVolume = IniReadInt("MouseSoundSettings", "mouseSoundVolume", config.MouseSoundVolume);
+		config.KeybdSoundVolume = IniReadInt("MouseSoundSettings", "keybdSoundVolume", config.KeybdSoundVolume);
+		config.NoiseVolume = IniReadInt("MouseSoundSettings", "noiseVolume", config.NoiseVolume);
 
 		// MouseSoundType 是字符串，需要保留 GetPrivateProfileString
-		GetPrivateProfileString("MouseSoundSettings", "rightMouseSoundType", config.MouseSoundType.c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("MouseSoundSettings", "rightMouseSoundType", config.MouseSoundType.c_str(), buffer, MAX_BUF);
 		config.MouseSoundType = buffer;
 
-		config.MouseSoundSleep = GetPrivateProfileInt("MouseSoundSettings", "mouseSoundSleep", config.MouseSoundSleep, CIniPos);
+		config.MouseSoundSleep = IniReadInt("MouseSoundSettings", "mouseSoundSleep", config.MouseSoundSleep);
 
 		//==================================================FeatureSwitches section==================================================
-		GetPrivateProfileString("FeatureSwitches", "useRightEmptyRate", config.UseREmptyRate ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightEmptyRate", config.UseREmptyRate ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseREmptyRate = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftEmptyRate", config.UseLEmptyRate ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftEmptyRate", config.UseLEmptyRate ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLEmptyRate = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightFluctuation", config.UseRFluctuation ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightFluctuation", config.UseRFluctuation ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRFluctuation = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftFluctuation", config.UseLFluctuation ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftFluctuation", config.UseLFluctuation ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLFluctuation = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftClickTime", config.UseLClickTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftClickTime", config.UseLClickTime ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLClickTime = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightClickTime", config.UseRClickTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightClickTime", config.UseRClickTime ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRClickTime = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useGuiDetection", config.UseGUIDetection ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseGUIDetection = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftPressInterval", config.UseLClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLClickPressTime = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightPressInterval", config.UseRClickPressTime ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRClickPressTime = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightAutoPressDuration", config.UseRAutoPressDuration ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRAutoPressDuration = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftAutoPressDuration", config.UseLAutoPressDuration ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftAutoPressDuration", config.UseLAutoPressDuration ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLAutoPressDuration = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useStartWithWindows", config.UseStartWithWindows ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useStartWithWindows", config.UseStartWithWindows ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseStartWithWindows = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "enableRightClicker", config.EnableRightClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "enableRightClicker", config.EnableRightClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.EnableRightClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "enableLeftClicker", config.EnableLeftClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "enableLeftClicker", config.EnableLeftClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.EnableLeftClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useBroadcasterMode", config.UseBroadcasterMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useBroadcasterMode", config.UseBroadcasterMode ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseBroadcasterMode = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useAutoGuiDetect", config.UseAutoGuiDetect ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useAutoGuiDetect", config.UseAutoGuiDetect ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseAutoGuiDetect = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMouseSound", config.UseMouseSound ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useMouseSound", config.UseMouseSound ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseMouseSound = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useKeybdSound", config.UseKeybdSound ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useKeybdSound", config.UseKeybdSound ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseKeybdSound = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightOnlyMoveClicker", config.UseROnlyMoveClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightOnlyMoveClicker", config.UseROnlyMoveClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseROnlyMoveClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftOnlyMoveClicker", config.UseLOnlyMoveClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftOnlyMoveClicker", config.UseLOnlyMoveClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLOnlyMoveClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useDisableMoveOnStopMove", config.UseDisableMoveOnStopMove ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useDisableMoveOnStopMove", config.UseDisableMoveOnStopMove ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseDisableMoveOnStopMove = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMouseShake", config.UseMouseShake ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useMouseShake", config.UseMouseShake ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseMouseShake = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMouseShakeRawInput", config.UseMouseShakeRawInput ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useMouseShakeRawInput", config.UseMouseShakeRawInput ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseMouseShakeRawInput = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMsPreventViewSliding", config.UseMSPreventViewSliding ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useMsPreventViewSliding", config.UseMSPreventViewSliding ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseMSPreventViewSliding = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useMsSmoothSpeed", config.UseMSSmoothSpeed ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useMsSmoothSpeed", config.UseMSSmoothSpeed ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseMSSmoothSpeed = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useItembarUseMemSearch", config.UseItembarUseMemSearch ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useItembarUseMemSearch", config.UseItembarUseMemSearch ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseItembarUseMemSearch = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useChinese", config.UseChinese ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useChinese", config.UseChinese ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseChinese = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useDriverProtect", config.UseDriverProtect ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useDriverProtect", config.UseDriverProtect ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseDriverProtect = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useHiddenProcess", config.UseHiddenProcess ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useHiddenProcess", config.UseHiddenProcess ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseHiddenProcess = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useSuspendNetease", config.UseSuspendNetease ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseSuspendNetease = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "allowSetLeftClicker", config.AllowSetLClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.AllowSetLClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "allowSetRightClicker", config.AllowSetRClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.AllowSetRClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useEnableGameGui", config.UseEnableGameGui ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseEnableGameGui = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightOnlyJumpClicker", config.UseROnlyJumpClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightOnlyJumpClicker", config.UseROnlyJumpClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseROnlyJumpClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftOnlyJumpClicker", config.UseLOnlyJumpClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLOnlyJumpClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRestTimeOnStopClicker", config.UseRestTimeOnStopClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRestTimeOnStopClicker", config.UseRestTimeOnStopClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRestTimeOnStopClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useBrutalMode", config.UseBrutalMode ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseBrutalMode = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLClickerTrigInter", config.UseLClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLClickerTrigInter = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRClickerTrigInter", config.UseRClickerTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRClickerTrigInter = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useOldMethodToTrigInter", config.UseOldMethodToTrigInter ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseOldMethodToTrigInter = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightStartClickerDelay", config.UseRStartClickerDelay ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRStartClickerDelay = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftStartClickerDelay", config.UseLStartClickerDelay ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftStartClickerDelay", config.UseLStartClickerDelay ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLStartClickerDelay = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useFilterRightSingleClick", config.UseFilterRSingleClick ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useFilterRightSingleClick", config.UseFilterRSingleClick ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseFilterRSingleClick = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useFilterLeftSingleClick", config.UseFilterLSingleClick ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useFilterLeftSingleClick", config.UseFilterLSingleClick ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseFilterLSingleClick = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "usePerformanceMode", config.UsePerformanceMode ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "usePerformanceMode", config.UsePerformanceMode ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UsePerformanceMode = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useRightCpsChangeTrend", config.UseRCPSChangeTrend ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useRightCpsChangeTrend", config.UseRCPSChangeTrend ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseRCPSChangeTrend = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useLeftCpsChangeTrend", config.UseLCPSChangeTrend ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useLeftCpsChangeTrend", config.UseLCPSChangeTrend ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseLCPSChangeTrend = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useOverheatProtection", config.UseOverheatProtec ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseOverheatProtec = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "bedrockEditionAdaptation", config.UseBEAdaptation ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseBEAdaptation = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "inGameOnlyClicker", config.UseInGameOnlyClicker ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "inGameOnlyClicker", config.UseInGameOnlyClicker ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseInGameOnlyClicker = st.find("TRUE") != string::npos;
-		GetPrivateProfileString("FeatureSwitches", "useItembarSwitch", config.UseItembarSwitch ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos);
+		IniRead("FeatureSwitches", "useItembarSwitch", config.UseItembarSwitch ? "TRUE" : "FALSE", buffer, MAX_BUF);
 		st = buffer;
 		config.UseItembarSwitch = st.find("TRUE") != string::npos;
 
         //==================================================QuickSwitchSettings==================================================
-        GetPrivateProfileString("QuickSwitchSettings", "rightQuickSwitch", "", buffer, MAX_BUF, CIniPos);
+        IniRead("QuickSwitchSettings", "rightQuickSwitch", "", buffer, MAX_BUF);
         if (strlen(buffer) > 0)
         {
             stringstream ss(buffer);
@@ -731,7 +896,7 @@ void LoadConfig()
             }
         }
 
-        GetPrivateProfileString("QuickSwitchSettings", "leftQuickSwitch", "", buffer, MAX_BUF, CIniPos);
+        IniRead("QuickSwitchSettings", "leftQuickSwitch", "", buffer, MAX_BUF);
         if (strlen(buffer) > 0)
         {
             stringstream ss(buffer);
@@ -743,7 +908,7 @@ void LoadConfig()
             }
         }
 
-        GetPrivateProfileString("QuickSwitchSettings", "quickSwitchKey", "", buffer, MAX_BUF, CIniPos);
+        IniRead("QuickSwitchSettings", "quickSwitchKey", "", buffer, MAX_BUF);
         if (strlen(buffer) > 0)
         {
             stringstream ss(buffer);
@@ -754,7 +919,7 @@ void LoadConfig()
         }
 
         //==================================================ItemBarSettings section==================================================
-        GetPrivateProfileString("ItemBarSettings", "itemEnableClickerKey", "", buffer, MAX_BUF, CIniPos);
+        IniRead("ItemBarSettings", "itemEnableClickerKey", "", buffer, MAX_BUF);
         if (strlen(buffer) > 0)
         {
             stringstream ss(buffer);
@@ -765,7 +930,7 @@ void LoadConfig()
 		}
 
 		//==================================================LRPair arrays==================================================
-		GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemBarPresetCpsLeft", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -775,7 +940,7 @@ void LoadConfig()
 				config.ItemBarPresetCPS.left[i++] = stoi(token);
 		}
 
-		GetPrivateProfileString("ItemBarSettings", "itemBarPresetCpsRight", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemBarPresetCpsRight", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -785,7 +950,7 @@ void LoadConfig()
 				config.ItemBarPresetCPS.right[i++] = stoi(token);
 		}
 
-		GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsLeft", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemBarEnablePresetCpsLeft", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -795,7 +960,7 @@ void LoadConfig()
 				config.ItemBarEnablePresetCPS.left[i++] = token.find("TRUE") != string::npos;
 		}
 
-		GetPrivateProfileString("ItemBarSettings", "itemBarEnablePresetCpsRight", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemBarEnablePresetCpsRight", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -805,7 +970,7 @@ void LoadConfig()
 				config.ItemBarEnablePresetCPS.right[i++] = token.find("TRUE") != string::npos;
 		}
 
-		GetPrivateProfileString("ItemBarSettings", "itemEnableClickerLeft", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemEnableClickerLeft", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -815,7 +980,7 @@ void LoadConfig()
 				config.ItemEnableClicker.left[i++] = token.find("TRUE") != string::npos;
 		}
 
-		GetPrivateProfileString("ItemBarSettings", "itemEnableClickerRight", "", buffer, MAX_BUF, CIniPos);
+		IniRead("ItemBarSettings", "itemEnableClickerRight", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			stringstream ss(buffer);
@@ -826,18 +991,18 @@ void LoadConfig()
 		}
 
 		//==================================================RandomSettings section==================================================
-		GetPrivateProfileString("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("RandomSettings", "mouseShakeRandomDist", to_string(config.MouseShake_RandomDist).c_str(), buffer, MAX_BUF);
 		config.MouseShake_RandomDist = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str(), buffer, MAX_BUF);
 		config.EmptyRate_RandomDist = stoi(buffer);
-		GetPrivateProfileString("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), buffer, MAX_BUF);
 		config.EmptyRate_RandomMode = stoi(buffer);
 		// 修复：移除 STIFF 模式后仅 0~2 有效；旧配置文件里的 1(STIFF)/2(FATIGUE)/3(BIONIC) 数值错位，越界时重置
 		if (config.EmptyRate_RandomMode < 0 || config.EmptyRate_RandomMode >= 3)
 			config.EmptyRate_RandomMode = RandomBoolMode_UNIFORM;
 
 		//==================================================Vector读取==================================================
-		GetPrivateProfileString("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+		IniRead("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			config.RCPSChangeTrendList.clear();
@@ -847,7 +1012,7 @@ void LoadConfig()
 				config.RCPSChangeTrendList.push_back(stoi(token));
 		}
 
-		GetPrivateProfileString("RandomSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF, CIniPos);
+		IniRead("RandomSettings", "leftCpsChangeTrendList", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
 			config.LCPSChangeTrendList.clear();
@@ -857,6 +1022,25 @@ void LoadConfig()
 				config.LCPSChangeTrendList.push_back(stoi(token));
 		}
 	}
+	g_pIniLoad = nullptr;
+	delete[] buffer;
+	buffer = nullptr;
+}
+
+void LoadGlobalConfig()
+{
+	IniMemData ini;
+	ini.Load(CustomConfigFile);
+	g_pIniLoad = &ini;
+	const char* CIniPos = CustomConfigFile.c_str();
+	char* buffer = new char[MAX_BUF];
+	string st;
+
+	IniRead("Config", "AgreementVersion", "-1", buffer, MAX_BUF);
+	int ver2 = stoi(buffer);
+	if (ver2 != AgreementVersion)
+		IsNeedReshowAgreement = true;
+
 	//==================================================统计信息==================================================
 	{
 		HKEY hKey;
@@ -912,32 +1096,39 @@ void LoadConfig()
 	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) == 0)
 	{
-		GetPrivateProfileString("个性化", "BgOffsetX", to_string(BgOffsetX).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("个性化", "BgOffsetX", to_string(BgOffsetX).c_str(), buffer, MAX_BUF);
 		BgOffsetX = stoi(buffer);
-		GetPrivateProfileString("个性化", "BgOffsetY", to_string(BgOffsetY).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("个性化", "BgOffsetY", to_string(BgOffsetY).c_str(), buffer, MAX_BUF);
 		BgOffsetY = stoi(buffer);
-		GetPrivateProfileString("个性化", "BgScale", to_string(BgScale).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("个性化", "BgScale", to_string(BgScale).c_str(), buffer, MAX_BUF);
 		BgScale = stoi(buffer);
-		GetPrivateProfileString("个性化", "BgLightness", to_string(BgLightness).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("个性化", "BgLightness", to_string(BgLightness).c_str(), buffer, MAX_BUF);
 		BgLightness = stoi(buffer);
-		GetPrivateProfileString("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), buffer, MAX_BUF, CIniPos);
+		IniRead("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), buffer, MAX_BUF);
 		GuiItemAlpha = stoi(buffer);
-		GetPrivateProfileString("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", buffer, MAX_BUF, CIniPos); st = buffer;
+		IniRead("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", buffer, MAX_BUF); st = buffer;
 		BgAutoResize = st.find("TRUE") != string::npos;
 	}
 
+	g_pIniLoad = nullptr;
 	delete[] buffer;
 	buffer = nullptr;
 }
 
-// 从已安装脚本列表文件恢复 InstalledScripts。
-// 修复：原逻辑放在 LoadConfig() 中，但 LoadConfig 运行时 AvaiableScripts 尚未填充
-//（RefushScriptList 在 InitGC 线程执行）→ 恢复块恒被跳过，已安装列表每次启动丢失。
+void LoadConfig(const string& file)
+{
+	LoadPresetConfig(file);
+	LoadGlobalConfig();
+}
+
+// 从已安装脚本列表文件恢复 ScriptData::Installed。
+// 修复：原逻辑放在 LoadConfig() 中，但 LoadConfig 运行时 ScriptData::Avaiable 尚未填充
+//（RefushScriptList 在 InitGC 线程执行）--> 恢复块恒被跳过，已安装列表每次启动丢失。
 // 现在改为独立函数，由 InitGC 在 RefushScriptList() 之后调用。
 void RestoreInstalledScripts()
 {
-	PrintLog("[Config] 已恢复 " + to_string(InstalledScripts.size()) + " 个已安装脚本", PL_INFO);
-	if (!AvaiableScripts.empty())
+	PrintLog("[Config] 已恢复 " + to_string(ScriptData::Installed.size()) + " 个已安装脚本", PL_INFO);
+	if (!ScriptData::Avaiable.empty())
 	{
 		ifstream ScriptFile(ScriptInstallList.c_str());
 		if (ScriptFile.is_open())
@@ -946,20 +1137,117 @@ void RestoreInstalledScripts()
 			while (getline(ScriptFile, line))
 			{
 				// 写入锁
-				lock_guard<shared_mutex> lock1(AvaiableScriptsMtx);
-				lock_guard<shared_mutex> lock2(InstalledScriptsMtx);
+				lock_guard<shared_mutex> lock1(ScriptData::AvaiableMtx);
+				lock_guard<shared_mutex> lock2(ScriptData::InstalledMtx);
 				// 修复：原代码对每一行把【所有】可用脚本都标记 IsInstalled 且重复 push 同名脚本
 				//（导致已安装列表错乱、无法正常工作）；改为只恢复名字匹配的脚本。
-				for (auto& asc : AvaiableScripts)
+				for (auto& asc : ScriptData::Avaiable)
 				{
 					if (asc.name == line)
 					{
 						asc.IsInstalled = true;
-						InstalledScripts.push_back(asc);
+						ScriptData::Installed.push_back(asc);
 						break;
 					}
 				}
 			}
 		}
 	}
+}
+
+inline string GetPresetFile(const string& name)
+{
+	if (name == PresetDefaultName)
+		return ConfigFile;
+	return PresetDir + "\\" + UTF8ToString(name) + ".ini";
+}
+
+inline vector<string> ScanPresets()
+{
+	vector<string> names = { PresetDefaultName };
+	WIN32_FIND_DATAA fd;
+	string pattern = PresetDir + "\\*.ini";
+	HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
+	if (h != INVALID_HANDLE_VALUE)
+	{
+		vector<string> custom;
+		constexpr int MaxCount = 32; // 限制最多读取 32 个自定义预设，避免无限循环
+		int i = 0;
+		do
+		{
+			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				continue;
+			string fname = fd.cFileName;
+			size_t dot = fname.rfind('.');
+			if (dot != string::npos)
+				fname = fname.substr(0, dot);
+			if (!fname.empty())
+				custom.push_back(fname);
+			++i;
+		} while (FindNextFile(h, &fd) && i < MaxCount);
+		FindClose(h);
+
+		if (i >= MaxCount)
+			PrintLog("[Preset] 扫描预设时，预设数量超过最大数量限制 32 个，已忽略后续读取。", PL_WARNING);
+
+		sort(custom.begin(), custom.end());
+		for (const string& n : custom)
+			names.push_back(StringToUTF8(n));
+	}
+	return names;
+}
+
+// from/to 显式传入：不在这里读写全局 CurrentName，避免后台线程与 UI 线程竞争该 string。
+// 由 UI 线程负责更新 PresetConfig::CurrentName。
+inline void SwitchPreset(const string& from, const string& to)
+{
+	if (from == to)
+		return;
+	SavePresetConfig(GetPresetFile(from));
+	string target = GetPresetFile(to);
+	if (_access(target.c_str(), 0) != 0)
+	{
+		CreateFile(target);
+		SavePresetConfig(target);
+	}
+	LoadPresetConfig(target);
+	PrintLog("[Preset] 切换预设配置到: " + to, PL_INFO);
+}
+
+inline bool AddPreset(const string& name)
+{
+	if (name.empty() || name == PresetDefaultName)
+		return false;
+	if (name.find_first_of("\\/:*?\"<>|") != string::npos)
+		return false;
+	string file = GetPresetFile(name);
+	if (_access(file.c_str(), 0) == 0)
+		return false;
+	CreateDirectory(PresetDir.c_str(), NULL);
+	CreateFile(file);
+	SavePresetConfig(file);
+	// 更新预设配置列表
+	PresetConfig::Presets.push_back(name);
+	PrintLog("[Preset] 创建预设: " + name, PL_INFO);
+	return true;
+}
+
+inline bool DeletePreset(const string& name)
+{
+	if (name == PresetDefaultName)
+		return false;
+	string file = GetPresetFile(name);
+	if (DelFile(file) != 0)
+		return false;
+	// 更新预设配置列表
+	for (auto it = PresetConfig::Presets.begin(); it != PresetConfig::Presets.end(); ++it)
+	{
+		if (*it == name)
+		{
+			PresetConfig::Presets.erase(it);
+			break;
+		}
+	}
+	PrintLog("[Preset] 删除预设: " + name, PL_INFO);
+	return true;
 }

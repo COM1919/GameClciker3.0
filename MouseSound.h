@@ -141,7 +141,6 @@ void LoadSounds()
 {
 	// Lock order: ConfigAccessMutex -> g_ALSoundMtx (same as ClickSound loop) to avoid deadlock,
 	// and protects config.MouseSoundType/KeybdSoundType writes during reload.
-	lock_guard<shared_mutex> cfgLock(ConfigAccessMutex);
 	lock_guard<recursive_mutex> alLock(g_ALSoundMtx);
 	EnsureALContextCurrent();
 	PrintLog("[Sound] 开始加载音频", PL_INFO);
@@ -656,70 +655,72 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	while (!IsGCExit)
 	{
 		// 修复：循环内持续读取 config（UseMouseSound/NoiseVolume/音量/类型等），持读锁与主线程 config 重置互斥
-		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
-		if (VarHasChanged(config.UseMouseSound, "EnableUseMouseSound"))
 		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			if(config.UseMouseSound)
-				alSourcePlay(NoisSource);
-			else
-				alSourceStop(NoisSource);
-		}
-
-		if (VarHasChanged(config.NoiseVolume, "NoiseVolume", true))
-		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			alSourcef(NoisSource, AL_GAIN, config.NoiseVolume / 100.0f);
-		}
-
-		if (VarHasChanged(config.MouseSoundVolume, "MouseSoundVolume", true))
-		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			float volume = config.MouseSoundVolume / 100.0f;
-			for (auto& sources : g_MouseSoundSourceList)
+			if (VarHasChanged(config.UseMouseSound, "EnableUseMouseSound"))
 			{
-				for (auto& source : sources.second)
-					alSourcef(source.second, AL_GAIN, volume);
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				if (config.UseMouseSound)
+					alSourcePlay(NoisSource);
+				else
+					alSourceStop(NoisSource);
 			}
-		}
-		if (VarHasChanged(config.MouseSoundType, "MouseSoundType", true))
-		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			auto it = g_MouseSoundSourceList.find(config.MouseSoundType);
-			if (it == g_MouseSoundSourceList.end())
-				g_CurrentMouseSource.clear();   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
-			else
-				g_CurrentMouseSource = it->second;
-		}
 
-		if (VarHasChanged(config.KeybdSoundVolume, "KeybdSoundVolume", true))
-		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			float volume = (config.KeybdSoundVolume / 100.0f) * 1.2f;
-			for (auto& sources : g_KeybdSoundSourceList)
+			if (VarHasChanged(config.NoiseVolume, "NoiseVolume", true))
 			{
-				for (auto& source : sources.second)
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				alSourcef(NoisSource, AL_GAIN, config.NoiseVolume / 100.0f);
+			}
+
+			if (VarHasChanged(config.MouseSoundVolume, "MouseSoundVolume", true))
+			{
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				float volume = config.MouseSoundVolume / 100.0f;
+				for (auto& sources : g_MouseSoundSourceList)
 				{
-					if (source > 0)
-						alSourcef(source, AL_GAIN, volume);
+					for (auto& source : sources.second)
+						alSourcef(source.second, AL_GAIN, volume);
 				}
 			}
-		}
-		if (VarHasChanged(config.KeybdSoundType, "KeybdSoundType", true))
-		{
-			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-			EnsureALContextCurrent();
-			auto it = g_KeybdSoundSourceList.find(config.KeybdSoundType);
-			if (it == g_KeybdSoundSourceList.end())
-				g_CurrentKeybdSource.fill(0);   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
-			else
-				g_CurrentKeybdSource = it->second;
-		}
+			if (VarHasChanged(config.MouseSoundType, "MouseSoundType", true))
+			{
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				auto it = g_MouseSoundSourceList.find(config.MouseSoundType);
+				if (it == g_MouseSoundSourceList.end())
+					g_CurrentMouseSource.clear();   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
+				else
+					g_CurrentMouseSource = it->second;
+			}
+
+			if (VarHasChanged(config.KeybdSoundVolume, "KeybdSoundVolume", true))
+			{
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				float volume = (config.KeybdSoundVolume / 100.0f) * 1.2f;
+				for (auto& sources : g_KeybdSoundSourceList)
+				{
+					for (auto& source : sources.second)
+					{
+						if (source > 0)
+							alSourcef(source, AL_GAIN, volume);
+					}
+				}
+			}
+			if (VarHasChanged(config.KeybdSoundType, "KeybdSoundType", true))
+			{
+				std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+				EnsureALContextCurrent();
+				auto it = g_KeybdSoundSourceList.find(config.KeybdSoundType);
+				if (it == g_KeybdSoundSourceList.end())
+					g_CurrentKeybdSource.fill(0);   // 修复：找不到时静音，避免 operator[] 插入垃圾条目
+				else
+					g_CurrentKeybdSource = it->second;
+			}
+		} // 释放 ConfigAccessMutex：不要在下面的 Sleep 期间持锁（否则切换配置会等锁卡顿）
+
 		if (g_IsAudioDeviceChanged.exchange(false))
 		{
 			std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
@@ -809,7 +810,6 @@ inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam)
 	bool UseMouseSoundNow = false;
 	float BaseVolume = 0.0f;
 	{
-		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		UseMouseSoundNow = config.UseMouseSound;
 		BaseVolume = config.MouseSoundVolume / 100.0f;
 	}
@@ -881,7 +881,6 @@ inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam)
 	{
 		// 低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
 		// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
-		shared_lock<shared_mutex> cfgLock(ConfigAccessMutex);
 		UseKeybdSoundNow = config.UseKeybdSound;
 		UseMouseSoundNow = config.UseMouseSound;
 	}

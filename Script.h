@@ -425,8 +425,8 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
         vector<pair<string, int>> modifications;
         {
             // 读取锁
-            shared_lock<shared_mutex> lock(ScriptStatesMtx);
-            for (const auto& entry : ScriptStates)
+            shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+            for (const auto& entry : ScriptData::States)
             {
                 const string& file = entry.first;
                 const int key = entry.second.key;
@@ -441,11 +441,11 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
 
         if (!modifications.empty())
         {
-            lock_guard<shared_mutex> write_lock(ScriptStatesMtx);
+            lock_guard<shared_mutex> write_lock(ScriptData::StatesMtx);
             for (const auto& mod : modifications)
             {
-                auto it = ScriptStates.find(mod.first);
-                if (it == ScriptStates.end())
+                auto it = ScriptData::States.find(mod.first);
+                if (it == ScriptData::States.end())
                     continue; // 脚本已被关闭/删除，跳过
                 // mod.second 是要设置的值
                 switch (mod.second)
@@ -483,16 +483,16 @@ HANDLE StartScript(const string& file)
         // 脚本线程运行标记（供"启用"开关判断）：所有退出路径（失败/崩溃/正常）都要复位
         auto MarkNotRunning = [&file]()
         {
-            lock_guard<shared_mutex> lock(ScriptStatesMtx);
-            auto it = ScriptStates.find(file);
-            if (it != ScriptStates.end())
+            lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+            auto it = ScriptData::States.find(file);
+            if (it != ScriptData::States.end())
                 it->second.IsRunning = false;
         };
-        // 确保 ScriptStates 条目存在：原代码在循环头 ScriptStates[file]（operator[]）隐式创建，
+        // 确保 ScriptData::States 条目存在：原代码在循环头 ScriptData::States[file]（operator[]）隐式创建，
         // 改成 find 后必须显式创建，否则新安装的脚本首次运行会因 find 失败而立即退出。
         {
-            lock_guard<shared_mutex> lock(ScriptStatesMtx);
-            ScriptStates[file].IsRunning = true;
+            lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+            ScriptData::States[file].IsRunning = true;
         }
         bool IsError = false;
         string errmsg;
@@ -542,11 +542,11 @@ HANDLE StartScript(const string& file)
         {
             {
                 // 读取锁
-                shared_lock<shared_mutex> lock(ScriptStatesMtx);
-                // 修复：原代码在 shared_lock（读锁）下调用 ScriptStates[file]（operator[]），
+                shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+                // 修复：原代码在 shared_lock（读锁）下调用 ScriptData::States[file]（operator[]），
                 // key 不存在时会插入元素（写操作却持读锁）→ 数据竞争。改为 find。
-                auto it = ScriptStates.find(file);
-                if (it == ScriptStates.end())
+                auto it = ScriptData::States.find(file);
+                if (it == ScriptData::States.end())
                     break; // 状态已被清除（脚本被关闭），退出脚本
                 const ScriptState& state = it->second;
                 if (state.IsExit)
@@ -574,13 +574,13 @@ HANDLE StartScript(const string& file)
                 {
                     // 脚本崩溃了，在 已安装 中，删除当前脚本
                     // 写入锁
-                    lock_guard<shared_mutex> lock(InstalledScriptsMtx);
+                    lock_guard<shared_mutex> lock(ScriptData::InstalledMtx);
                     // 修复：range-for 内 erase 迭代器脆弱，改为索引循环（找到即删除并跳出）
-                    for (int i = 0; i < (int)InstalledScripts.size(); i++)
+                    for (int i = 0; i < (int)ScriptData::Installed.size(); i++)
                     {
-                        if (InstalledScripts[i].file == file)
+                        if (ScriptData::Installed[i].file == file)
                         {
-                            InstalledScripts.erase(InstalledScripts.begin() + i);
+                            ScriptData::Installed.erase(ScriptData::Installed.begin() + i);
                             break;
                         }
                     }
@@ -685,8 +685,8 @@ void CloseScriptThread(const string& filename, ScriptInfo& info)
 {
     {
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-        ScriptStates[filename].IsExit = true;
+        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        ScriptData::States[filename].IsExit = true;
     }
 
     bool IsExit = false;
@@ -709,8 +709,8 @@ void CloseScriptThread(const string& filename, ScriptInfo& info)
     }
     {
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-        ScriptStates.erase(filename);
+        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        ScriptData::States.erase(filename);
     }
     // 清理 LuaStates，以便下次运行时重新加载脚本
     {
@@ -745,14 +745,14 @@ void ClearScriptCache()
     {
         {
             // 写入锁
-            lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
-            for (ScriptInfo& script : InstalledScripts)
+            lock_guard<shared_mutex> lock1(ScriptData::InstalledMtx);
+            for (ScriptInfo& script : ScriptData::Installed)
                 CloseScriptThread(script.file, script);
-            InstalledScripts.clear();
+            ScriptData::Installed.clear();
         }
         {
-            lock_guard<shared_mutex> lock2(ScriptStatesMtx);
-            ScriptStates.clear();
+            lock_guard<shared_mutex> lock2(ScriptData::StatesMtx);
+            ScriptData::States.clear();
         }
         {
             lock_guard<shared_mutex> lock(LuaStatesMtx);
@@ -773,8 +773,8 @@ void ClearScriptCache()
         }
         {
             // 写入锁
-            lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-            AvaiableScripts.clear();
+            lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+            ScriptData::Avaiable.clear();
         }
 
         // 清空文件夹
@@ -806,11 +806,11 @@ void CloseAllLua()
 {
     {
         // 写入锁
-        lock_guard<shared_mutex> lock1(InstalledScriptsMtx);
-        for (ScriptInfo script : InstalledScripts)
+        lock_guard<shared_mutex> lock1(ScriptData::InstalledMtx);
+        for (ScriptInfo script : ScriptData::Installed)
             CloseScriptThread(script.file, script);
-        InstalledScripts.clear();
-        ScriptStates.clear();
+        ScriptData::Installed.clear();
+        ScriptData::States.clear();
     }
     {
         // 写入锁

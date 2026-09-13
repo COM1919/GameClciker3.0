@@ -69,18 +69,18 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
             string TipText;
             if (config.UseChinese)
             {
-                TipText += "左键连点："s + (config.EnableLeftClicker ? "启用    "s : "关闭    "s) + to_string(config.LCPS) + "CPS";
-				TipText += "右键连点："s + (config.EnableRightClicker ? "启用    "s : "关闭    "s) + to_string(config.RCPS) + "CPS";
-                TipText += "使用时长："s + to_string(app_status.UsageDuration);
-                TipText += "手点次数："s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right);
+                TipText += "左键连点："s + (config.EnableLeftClicker ? "启用    "s : "关闭    "s) + to_string(config.LCPS) + "CPS\n";
+				TipText += "右键连点："s + (config.EnableRightClicker ? "启用    "s : "关闭    "s) + to_string(config.RCPS) + "CPS\n";
+                TipText += "使用时长："s + to_string(app_status.UsageDuration) + "\n";
+                TipText += "手点次数："s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right) + "\n";
 				TipText += "连点次数："s + to_string(app_status.ClickerClickCount.left) + " | " + to_string(app_status.ClickerClickCount.right);
             }
             else
             {
-				TipText += "Left Clicker: "s + (config.EnableLeftClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.LCPS) + " CPS";
-				TipText += "Right Clicker: "s + (config.EnableRightClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.RCPS) + " CPS";
-				TipText += "Usage Duration: "s + to_string(app_status.UsageDuration);
-				TipText += "Mouse Clicks: "s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right);
+				TipText += "Left Clicker: "s + (config.EnableLeftClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.LCPS) + " CPS\n";
+				TipText += "Right Clicker: "s + (config.EnableRightClicker ? "Enabled    "s : "Disabled    "s) + to_string(config.RCPS) + " CPS\n";
+				TipText += "Usage Duration: "s + to_string(app_status.UsageDuration) + "\n";
+				TipText += "Mouse Clicks: "s + to_string(app_status.MouseClickCount.left) + " | " + to_string(app_status.MouseClickCount.right) + "\n";
 				TipText += "Clicker Clicks: "s + to_string(app_status.ClickerClickCount.left) + " | " + to_string(app_status.ClickerClickCount.right);
             }
           

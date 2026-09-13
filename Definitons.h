@@ -302,7 +302,7 @@ public:
 // 与其他线程并发读写 config 各字段 -> 对象生命周期中断（0xC0000005）。
 // 改为后台线程只做用户确认，确认后置位此标记，由主渲染线程在帧边界执行重建。
 atomic<bool> IsNeedResetConfig = false;
-shared_mutex ConfigAccessMutex;
+//shared_mutex ConfigAccessMutex;
 
 //--------------------个性化设置------------------------------
 int BgOffsetX = 0;                          //背景偏移X
@@ -379,17 +379,23 @@ struct ScriptState
     bool IsRunning = false;    // 脚本线程是否已启动（供"启用"开关判断是否需要启动脚本）
 };
 
-shared_mutex InstalledScriptsMtx;       //已安装的脚本锁
-shared_mutex AvaiableScriptsMtx;        //可用的脚本锁
-shared_mutex ScriptStatesMtx;           //脚本状态的锁
-shared_mutex ScriptShopListMtx;         //脚本商店列表的锁（刷新线程 clear/重填、主线程遍历、检查更新线程遍历）
-vector<ScriptInfo> InstalledScripts;    //已安装的脚本
-vector<ScriptInfo> AvaiableScripts;     //可用的脚本
-vector<ScriptInfo> ScriptShopList;      //脚本商店的脚本列表
-map<string, ScriptState> ScriptStates;  //脚本相关状态控制
+namespace ScriptData
+{
+    shared_mutex InstalledMtx;          //已安装的脚本锁
+    shared_mutex AvaiableMtx;           //可用的脚本锁
+    shared_mutex StatesMtx;             //脚本状态的锁
+    shared_mutex ShopListMtx;           //脚本商店列表的锁（刷新线程 clear/重填、主线程遍历、检查更新线程遍历）
+    vector<ScriptInfo> Installed;       //已安装的脚本
+    vector<ScriptInfo> Avaiable;        //可用的脚本
+    vector<ScriptInfo> ShopList;        //脚本商店的脚本列表
+    map<string, ScriptState> States;    //脚本相关状态控制
+}
 
-shared_mutex SponsorListMutex;
-vector<string> SponsorList;             //赞助列表
+namespace Sponsor
+{
+    shared_mutex Mtx;                       
+    vector<string> List;                //赞助列表
+}
 
 const string version = "3.56";          //版本号
 string title = "GAMECLICKER 3.56";      //标题名字
@@ -411,7 +417,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -429,7 +435,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
-#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
+//#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
 
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
@@ -437,8 +443,8 @@ inline const int RenderFps = 60;        //渲染帧率
 const string WorkPath = "D:";
 #else
 const string WorkPath = []() -> string {
-    char buf[MAX_PATH]{};
-    if (GetModuleFileName(NULL, buf, MAX_PATH) == 0)
+    char buf[4096]{};
+    if (GetModuleFileNameA(NULL, buf, 4096) == 0)
         return "";
     string str(buf);
     size_t pos = str.find_last_of("\\/");
@@ -455,6 +461,8 @@ inline const string ConfigFile =         WorkPath + "\\GameClicker\\settings.ini
 inline const string CustomConfigFile =   WorkPath + "\\GameClicker\\custom.ini";
 inline const string IniFileVeision =     WorkPath + "\\GameClicker\\Version.dat";
 inline const string StatsRegPath =       "Software\\GameClicker\\Stats";
+inline const string PresetDir =          WorkPath + "\\GameClicker\\configs";
+inline const string PresetDefaultName =  "Default";
 
 inline const string SoundPath =          "sound";
 inline const string Sound_Noise =        "sound\\noise.wav";
@@ -585,7 +593,7 @@ HANDLE ClickRunThread;
 HANDLE ClickSoundThread;
 HANDLE WindowMsgThreadHandle = nullptr;   // 窗口消息线程句柄, 退出时等待其结束再释放 ImGui/D3D
 
-atomic<bool> WindowInitSuccessful    = false;           //窗口是否创建成功
+atomic<bool> IsWindowInitSuccessful  = false;           //窗口是否创建成功
 atomic<bool> IsStopClicker           = false;           //是否停止连点
 atomic<bool> IsGCExit                = false;           //连点器退出
 atomic<bool> IsShowGui               = true;            //是否显示GUI
@@ -616,6 +624,16 @@ mutex ClientIDMtx;                                      //client_id 的互斥锁（网
 UDPSocket client;                                       //UDP 客户端（全局，所有文件可访问；网络线程 + 主线程退出时使用）
 vector<string> MouseSoundList;                          //可用的鼠标声音列表
 vector<string> KeybdSoundList;                          //可用的键盘声音列表
+
+namespace PresetConfig
+{
+    vector<string> Presets;
+    string CurrentName = PresetDefaultName;
+    bool ShowAdd = false;
+    char NameBuf[128]{};
+    float ErrorTime = 0.0f;
+    string ErrorMsg;
+}
 
 namespace OverheatTimer
 {

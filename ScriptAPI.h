@@ -504,9 +504,9 @@ namespace ScriptAPI
             return false;
         int perm = 0;
         {
-            shared_lock<shared_mutex> lock(ScriptStatesMtx);
-            auto it = ScriptStates.find(CurrentScriptFile);
-            if (it == ScriptStates.end())
+            shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+            auto it = ScriptData::States.find(CurrentScriptFile);
+            if (it == ScriptData::States.end())
                 return false;
             perm = it->second.NetworkPermission;
         }
@@ -522,9 +522,9 @@ namespace ScriptAPI
         int ret = ::RenderMessageBox(msg, title.c_str(), MB_OKCANCEL);
         const bool allowed = (ret == IDOK);
         {
-            lock_guard<shared_mutex> lock(ScriptStatesMtx);
-            auto it = ScriptStates.find(CurrentScriptFile);
-            if (it != ScriptStates.end())
+            lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+            auto it = ScriptData::States.find(CurrentScriptFile);
+            if (it != ScriptData::States.end())
                 it->second.NetworkPermission = allowed ? 1 : 2;
         }
         return allowed;
@@ -808,9 +808,9 @@ namespace ScriptAPI
             return 1;
         }
         // 读取锁
-        shared_lock<shared_mutex> lock(ScriptStatesMtx);
-        auto st = ScriptStates.find(CurrentScriptFile);
-        lua_pushboolean(L, st != ScriptStates.end() ? st->second.IsPressedKey : false);
+        shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+        auto st = ScriptData::States.find(CurrentScriptFile);
+        lua_pushboolean(L, st != ScriptData::States.end() ? st->second.IsPressedKey : false);
         return 1;
     }
 
@@ -825,9 +825,9 @@ namespace ScriptAPI
             return 1;
         }
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-        auto st = ScriptStates.find(CurrentScriptFile);
-        if (st == ScriptStates.end())
+        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        auto st = ScriptData::States.find(CurrentScriptFile);
+        if (st == ScriptData::States.end())
         {
             lua_pushboolean(L, false);
             return 1;
@@ -848,9 +848,9 @@ namespace ScriptAPI
             return 1;
         }
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-        auto st = ScriptStates.find(CurrentScriptFile);
-        if (st == ScriptStates.end())
+        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        auto st = ScriptData::States.find(CurrentScriptFile);
+        if (st == ScriptData::States.end())
         {
             lua_pushboolean(L, false);
             return 1;
@@ -888,9 +888,9 @@ namespace ScriptAPI
         if (CurrentScriptFile.empty())
             return 0;
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptStatesMtx);
-        auto st = ScriptStates.find(CurrentScriptFile);
-        if (st != ScriptStates.end())
+        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        auto st = ScriptData::States.find(CurrentScriptFile);
+        if (st != ScriptData::States.end())
             st->second.LoopDelay = delay;
         return 0;
     }
@@ -1102,7 +1102,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 2)
             luaL_error(L, "InputText 需要两个参数");
 
-        // 将 Lua 字符串转为 UTF?8（假设 Lua 内部已为 UTF?8，此处仅为保险）
+        // 将 Lua 字符串转为 UTF8（假设 Lua 内部已为 UTF8，此处仅为保险）
         string label = StringToUTF8(luaL_checkstring(L, 1));
         string text = StringToUTF8(luaL_checkstring(L, 2));
 
@@ -1124,7 +1124,7 @@ namespace ScriptAPI
             &text                                   // 传递给回调的 UserData
         );
 
-        // 将编辑后的 UTF?8 字符串转回 GBK（或系统默认编码），压栈返回
+        // 将编辑后的 UTF8
         lua_pushstring(L, UTF8ToString(text).c_str());
         return 1;
     }

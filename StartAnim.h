@@ -556,7 +556,7 @@ DWORD WINAPI LoadAnimationThread(LPVOID lpParam)
 #endif // GC_NO_ANIMATION
     RenerStartupAnimation(GCInstance);
 
-	while (!WindowInitSuccessful)
+	while (!IsWindowInitSuccessful)
 		Sleep(10);
 
     ShowWindow(GCHWND, SW_SHOWDEFAULT);

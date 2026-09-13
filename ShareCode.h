@@ -2,7 +2,6 @@
 #include "maths.h"
 #include "zlib.h"
 #include "zip.h"
-#include "ConfigParser.h"
 #include "CodeModules.h"
 #include "Log.h"
 #include <zlib.h>
@@ -44,8 +43,8 @@ double GetThreadCpuUsage(HANDLE hThread, DWORD sleep = 1000);
 DWORD GetSystemLanguage();
 bool DownloadURLFiles(const string& url, const string& filename);
 bool DownloadURLFilesWithProgress(const string& url, const string& filename, const string& title);
-bool ReadURLDatas(const string& url, vector<char>& datas);
-bool ReadURLDatas(const string& url, string& datas);
+int ReadURLDatas(const string& url, vector<char>& datas);
+int ReadURLDatas(const string& url, string& datas);
 void GetStringFileName(string& str, bool KeepSuffix = false);
 void PackageLogFile();
 bool IsCoveredWindow(HWND hwnd, float rate = 0.8f);
@@ -54,7 +53,6 @@ bool ZipFiles(const vector<pair<string, string>>& files, const string& zipFilena
 int UnZipFile(const char* zipFilePath, const char* destDir);
 bool CopyTextToClipboard(const string& text);
 void ClearProcessMemory();
-string SelectFile(const char* filter);
 void UpdateScriptFromShop();
 POINT GetGameWindowCenter(HWND hwnd);
 void CheckUpdateScriptFromShop(ScriptInfo& script);
@@ -79,7 +77,7 @@ static bool ReadURLDatasRetry(const string& url, string& content, int retry = 3)
 {
 	for (int i = 0; i < retry; i++)
 	{
-		if (ReadURLDatas(url, content))
+		if (ReadURLDatas(url, content) > 0)
 			return true;
 		if (i + 1 < retry)
 		{
@@ -116,10 +114,10 @@ string GetProcessPathFromPID(DWORD processId);
 
 void CheckUpdateScriptFromShop(ScriptInfo& script)
 {
-	// 修复：此函数在 detach 线程中执行，与脚本商店刷新线程（GC.cpp 中 clear/重填 ScriptShopList）
+	// 修复：此函数在 detach 线程中执行，与脚本商店刷新线程（GC.cpp 中 clear/重填 ScriptData::ShopList）
 	// 及主线程遍历并发。原代码无锁，vector 扩容导致迭代器失效 -> 0xC0000005。加读锁。
-	shared_lock<shared_mutex> lock(ScriptShopListMtx);
-	for (const ScriptInfo& NewScript : ScriptShopList)
+	shared_lock<shared_mutex> lock(ScriptData::ShopListMtx);
+	for (const ScriptInfo& NewScript : ScriptData::ShopList)
 	{
 		if (NewScript.name == script.name)
 		{
@@ -133,8 +131,8 @@ void CheckUpdateScriptFromShop(ScriptInfo& script)
 bool UpdateScriptFromShop(const ScriptInfo& script)
 {
 	// 依据脚本商店列表判断更新来源：市场源（URL）重新下载，Gitee 源复制缓存
-	shared_lock<shared_mutex> lock(ScriptShopListMtx);
-	for (const ScriptInfo& NewScript : ScriptShopList)
+	shared_lock<shared_mutex> lock(ScriptData::ShopListMtx);
+	for (const ScriptInfo& NewScript : ScriptData::ShopList)
 	{
 		if (NewScript.name == script.name)
 		{
@@ -266,7 +264,7 @@ public:
 			PrintLog("[Download] 读取网络数据错误：" + to_string(error), PL_ERROR);
 			return -1;
 		}
-		return datas.size();
+		return static_cast<int>(datas.size());
 	}
 
 	int ReadString(string& str)
@@ -284,7 +282,7 @@ public:
 			PrintLog("[Download] 读取网络数据错误：" + to_string(error), PL_ERROR);
 			return -1;
 		}
-		return str.size();// 以上的一切原先的代码都会导致读取的数据不完整，甚至结尾不是\0，，ReadURLAllDatas也是一样的
+		return static_cast<int>(str.size());// 以上的一切原先的代码都会导致读取的数据不完整，甚至结尾不是\0，，ReadURLAllDatas也是一样的
 	}
 
 	~InternetOpenManager()
@@ -369,9 +367,11 @@ bool DownloadURLFiles(const string& url, const string& filename)
 	const int bufferSize = 4096;
 	char buffer[bufferSize]{};
 	DWORD bytesRead = 0;
+	DWORD totalRead = 0;
 	bool ok = true;
 	while (internet.InternetReadFile(buffer, bufferSize, &bytesRead) && bytesRead > 0)
 	{
+		totalRead += bytesRead;
 		if (fwrite(buffer, 1, bytesRead, file) != bytesRead)
 		{
 			ok = false;
@@ -379,6 +379,8 @@ bool DownloadURLFiles(const string& url, const string& filename)
 		}
 	}
 	if (ferror(file) != 0)
+		ok = false;
+	if (ok && totalRead == 0)
 		ok = false;
 	fclose(file);
 
@@ -390,29 +392,32 @@ bool DownloadURLFiles(const string& url, const string& filename)
 		return true;
 	}
 	PrintLog("[Download] 下载失败: " + url, PL_ERROR);
+	DeleteFileA(filename.c_str());
 	return false;
 }
 
-bool ReadURLDatas(const string& url, string& datas)
+int ReadURLDatas(const string& url, string& datas)
 {
 	InternetOpenManager internet;
 	if (!internet.Init())
-		return false;
+		return -1;
 	if (!internet.OpenURL(url))
-		return false;
-	internet.ReadString(datas);
-	return datas.size();
+		return -1;
+	if (internet.ReadString(datas) < 0)
+		return -1;
+	return static_cast<int>(datas.size());
 }
 
-bool ReadURLDatas(const string& url, vector<char>& datas)
+int ReadURLDatas(const string& url, vector<char>& datas)
 {
 	InternetOpenManager internet;
 	if (!internet.Init())
-		return false;
+		return -1;
 	if (!internet.OpenURL(url))
-		return false;
-	internet.ReadDatas(datas);
-	return datas.size();
+		return -1;
+	if (internet.ReadDatas(datas) < 0)
+		return -1;
+	return static_cast<int>(datas.size());
 }
 
 // 辅助结构：存储市场脚本元数据
@@ -722,35 +727,6 @@ void ClearProcessMemory()
 	// 这会尽可能多地修剪进程的物理内存占用
 	SetProcessWorkingSetSize(hProcess, (SIZE_T)-1, (SIZE_T)-1);
 	PrintLog("[Mem] 已强制缩减工作集，来减少内存使用", PL_INFO);
-}
-
-string SelectFile(const char* filter)
-{
-	OPENFILENAMEA ofn;       // 公共对话框结构
-	CHAR szFile[260] = { 0 }; // 用于接收文件名的缓冲区
-
-	// 初始化 OPENFILENAME 结构
-	ZeroMemory(&ofn, sizeof(ofn));
-	ofn.lStructSize = sizeof(ofn);
-	ofn.hwndOwner = GetActiveWindow(); // 设置父窗口句柄
-	ofn.lpstrFile = szFile;
-	ofn.nMaxFile = sizeof(szFile);
-	ofn.lpstrFilter = filter;
-	ofn.nFilterIndex = 1; // 默认显示第一个过滤器
-	ofn.lpstrFileTitle = NULL;
-	ofn.nMaxFileTitle = 0;
-	ofn.lpstrInitialDir = NULL; // 可以设置初始目录，例如 "C:\\"
-	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-
-	// 显示“打开”对话框
-	if (GetOpenFileNameA(&ofn) == TRUE)
-	{
-		// 用户选择了文件，返回文件路径
-		return ofn.lpstrFile;
-	}
-
-	// 用户取消了操作
-	return "";
 }
 
 bool CheckScriptPermission(const string& filename, vector<string>& BeUsedFuncs)
@@ -1108,10 +1084,10 @@ void RefushScriptList()
 		}
 		GetScriptsInfo(scripts, ScriptTemp);
 		// 写入锁
-		lock_guard<shared_mutex> lock(AvaiableScriptsMtx);
-		AvaiableScripts = scripts;
+		lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+		ScriptData::Avaiable = scripts;
 	}
-	PrintLog("[Script] 刷新脚本列表成功，共 " + to_string(AvaiableScripts.size()) + " 个脚本文件", PL_INFO);
+	PrintLog("[Script] 刷新脚本列表成功，共 " + to_string(ScriptData::Avaiable.size()) + " 个脚本文件", PL_INFO);
 }
 
 bool CopyTextToClipboard(const string& text)
@@ -2023,9 +1999,9 @@ void RenderTip(string msg, float timeout, UINT type)
 	// 导致迭代器失效与访问已释放内存 → 0xC0000005。加写锁保护。
 	lock_guard<shared_mutex> lock(PopTipMutex);
 	auto pos = find_if(pt_message.begin(), pt_message.end(), [&msg](PopTipMsg a)
-		{
-			return a.message == msg;
-		});
+	{
+		return a.message == msg;
+	});
 	if (pos == pt_message.end())
 	{
 		PopTipMsg pt;
