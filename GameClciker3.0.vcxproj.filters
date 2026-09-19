@@ -153,19 +153,7 @@
     <ClInclude Include="random.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="maths.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="ConfigParser.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="CodeModules.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="AI.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="ShareCode.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="PipeSystem.h">
@@ -181,9 +169,6 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Tray.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="MouseSound.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="MainClick.h">
@@ -208,9 +193,6 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="GC.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="CodeEditor.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="AgreementString.h">
@@ -319,9 +301,6 @@
     </ClCompile>
     <ClCompile Include="ImGui\implot3d_meshes.cpp">
       <Filter>ImGui</Filter>
-    </ClCompile>
-    <ClCompile Include="BanSystem.h">
-      <Filter>头文件</Filter>
     </ClCompile>
     <ClCompile Include="ImGui\imgui_tables.cpp">
       <Filter>ImGui</Filter>

@@ -1,8 +1,5 @@
 #pragma once
 #include "Definitons.h"
-#include "ShareCode.h"
-
-DWORD WINAPI NetworkClientThread(LPVOID lpParam);
 
 DWORD WINAPI NetworkClientThread(LPVOID lpParam)
 {

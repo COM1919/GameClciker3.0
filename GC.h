@@ -1,9 +1,9 @@
 #pragma once
+#include "Definitons.h"
 #include "MainClick.h"
-#include "ShareCode.h"
-#include "maths.h"
+#include "HelperCode.h"
 #include "resource.h"
-#include "MouseSound.h"
+#include "ClickSound.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"

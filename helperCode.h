@@ -1,33 +1,59 @@
 #pragma once
-#include "maths.h"
-#include "zlib.h"
-#include "zip.h"
-#include "CodeModules.h"
+#include "Definitons.h"
+#include <chrono>
+#include <cmath>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 #include "Log.h"
+#include <iomanip>
+#include <winternl.h> // 需要包含此头文件以获取 TokenElevation 常量
+#include <algorithm>
+#include <malloc.h>
+#include <TlHelp32.h>
+#pragma comment(lib, "advapi32.lib")
+
+#include <zip.h>
 #include <zlib.h>
 #include <unzip.h>
-#include <iomanip>
-#include <sstream>
-#include <psapi.h>
-#include <pdh.h>
+
 // PDH 错误码（如 PDH_MORE_DATA）定义在 pdhmsg.h，pdh.h 不包含它；__has_include 防御缺失该头的工具链
 #if defined(__has_include)
 #if __has_include(<pdhmsg.h>)
 #include <pdhmsg.h>
 #endif
 #endif
-#include <algorithm>
-#include <TlHelp32.h>
-#include <malloc.h>
-#pragma comment(lib, "psapi.lib")
+
+#include <pdh.h>
 #pragma comment(lib, "pdh.lib")
+#include <iphlpapi.h>
+#pragma comment(lib, "iphlpapi.lib")
+#include <Wbemidl.h>
+#pragma comment(lib, "wbemuuid.lib")
 
 #define PT_INFO 1
 #define PT_WARNING 2
 #define PT_ERROR 3
 
-int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating);
-int RenderMessageBox(string message, const char* title, UINT type, bool wating);
+bool IsRunningAsElevatedAdmin();
+DWORD RequestAdminAndRestart();
+int GetCaptionHeight();
+void SetupCrashHandler();
+inline void Sleep(DWORD ms);
+template <typename T> bool Clamp(T& value, T min, T max);
+template<typename T> inline bool VarHasChanged(const T& var, const string& label, bool UseInit = false);
+inline ULONGLONG GetNowMs();
+string GetMachineCode();
+string GetPhysicalMacAddress();
+string GetDiskSerial();
+string BytesToHex(const unsigned char* data, size_t len);
+bool IsContainsString(const string& str, const vector<string>& vec);
+void ExceptionHandling(DWORD code, string what);
+LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo);
+inline void BeginSleep(const char* flag);
+inline void EndSleep(const char* flag, int time);
+int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating = true);
+int RenderMessageBox(string message, const char* title, UINT type, bool wating = true);
 void RenderTip(string msg, float timeout, UINT type);
 void FindFilesWithExtension(const string& directory, const string& extension, vector<string>& files);
 string GetOpenFileName();
@@ -39,12 +65,13 @@ int GetMemUsageRate(int sleep);
 int GetGpuUsageRate(int sleep);
 int GetCpuUsageRate(int sleep);
 void FindDirectorys(const string& root, vector<string>& dirs);
-double GetThreadCpuUsage(HANDLE hThread, DWORD sleep = 1000);
 DWORD GetSystemLanguage();
 bool DownloadURLFiles(const string& url, const string& filename);
 bool DownloadURLFilesWithProgress(const string& url, const string& filename, const string& title);
 int ReadURLDatas(const string& url, vector<char>& datas);
 int ReadURLDatas(const string& url, string& datas);
+bool ReadURLDatasRetry(const string& url, string& content, int retry = 3);
+bool DownloadURLFilesRetry(const string& url, const string& filename, int retry = 3);
 void GetStringFileName(string& str, bool KeepSuffix = false);
 void PackageLogFile();
 bool IsCoveredWindow(HWND hwnd, float rate = 0.8f);
@@ -59,6 +86,284 @@ void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool UpdateScriptFromShop(const ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
+int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
+bool RemoveFollowStartup();
+bool DeleteDirectoryRecursively(const string& dirPath);
+static DWORD WINAPI SafeThreadEntry(LPVOID lpContext);
+HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, LPDWORD lpThreadId, const string& name);
+bool IsCursorHidden();
+void PlayDisableSound();
+void PlayEnableSound();
+void RefushScriptList();
+void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath);
+string GetProcessPathFromPID(DWORD processId);
+
+inline float EvaluateTotalCPS(float t, float baseCPS, vector<WaveParam> waves);
+inline float EvaluateWave(const WaveParam& w, float t);
+template<typename T> inline T Lerp(T a, T b, float t);
+inline string RemoveBeforeString(const string& str, const string& before);
+inline int FindFirstMissingNumber(const vector<int>& numbers, int max);
+inline void ReplaceString(string& str, const string& to_find, const string& to_replace);
+inline void SplitString(const string& str, const string& sep, vector<string>& res);
+inline string RemoveSubString(const string& original, const string& toRemove);
+inline string ExtractString(const string& str, const string& start, const string& end);
+inline double FileTimeToDouble(const FILETIME* ft);
+
+class SmoothCPS
+{
+private:
+	ULONGLONG StartTime;     // 启动时的时间戳（毫秒）
+	vector<WaveParam> waves;
+public:
+	float BaseCPS = 0;      // 基准 CPS
+	float MinCPS = 0;       // 最低 CPS
+	float MaxCPS = 0;       // 最高 CPS
+
+	// 构造函数：基频、波动范围
+	SmoothCPS()
+	{
+		StartTime = GetTickCount64();  // 自动记录启动时刻
+	}
+
+	SmoothCPS(float base, float minVal, float maxVal) : BaseCPS(base), MinCPS(minVal), MaxCPS(maxVal)
+	{
+		StartTime = GetTickCount64();
+	}
+
+	void SetWaveList(vector<WaveParam> waves)
+	{
+		this->waves = waves;
+	}
+
+	void AddWave(float amplitude, float frequency, float phase = 0.0)
+	{
+		waves.push_back({ amplitude, frequency, phase });
+	}
+
+	int GetWaveCount() const { return waves.size(); }
+
+	// 核心函数：返回当前应使用的延迟（毫秒），自动实时计算
+	float CalcCPS() const
+	{
+		// 计算已运行秒数
+		float elapsed = (GetTickCount64() - StartTime) / 1000.0 / 10;  // /10用于减慢变化速度
+		return EvaluateTotalCPS(elapsed, BaseCPS, waves);
+	}
+};
+
+// sb windows，高精度启动！
+class PreciseSleep
+{
+private:
+	HANDLE hTimer = nullptr;
+	long long LastTime = 0;
+public:
+	PreciseSleep(const PreciseSleep&) = delete;
+	PreciseSleep& operator=(const PreciseSleep&) = delete; // 禁止拷贝、赋值
+	inline PreciseSleep()
+	{
+		hTimer = CreateWaitableTimer(nullptr, TRUE, nullptr);
+		if (hTimer == nullptr) // 当系统因为其他原因无法创建时，报错，退出程序
+			throw runtime_error("WaitableTimer句柄创建失败，可能是系统资源不足。"); // 被main的catch捕获
+	}
+
+	inline void Sleep(DWORD ms)
+	{
+		if (ms <= 0)
+			return;
+		LARGE_INTEGER due;
+		due.QuadPart = -10000LL * ms;
+		SetWaitableTimer(hTimer, &due, 0, nullptr, nullptr, FALSE);
+		WaitForSingleObject(hTimer, INFINITE);
+	}
+
+	inline void BeginSleep()
+	{
+		LastTime = GetNowMs();
+	}
+
+	inline void EndSleep(ULONGLONG time)
+	{
+		const ULONGLONG deltaTime = GetNowMs() - LastTime;
+		if (deltaTime < time)
+			Sleep(static_cast<DWORD>(time - deltaTime));
+	}
+
+	inline ~PreciseSleep()
+	{
+		if (hTimer)
+			CloseHandle(hTimer);
+	}
+
+};
+
+template <typename T>
+bool Clamp(T& value, T min, T max)
+{
+	if (value < min)
+	{
+		value = min;
+		return false;
+	}
+	else if (value > max)
+	{
+		value = max;
+		return false;
+	}
+	return true;
+}
+
+template<typename T>
+inline bool VarHasChanged(const T& var, const string& label, bool UseInit)
+{
+	static unordered_map<string, T> lastValues;
+	static mutex mtx;
+
+	lock_guard<mutex> lock(mtx);
+
+	// 尝试插入，如果已存在则获取迭代器
+	auto [it, inserted] = lastValues.try_emplace(label, var);
+	if (inserted) [[unlikely]]
+		return UseInit;
+
+	// 比较并更新
+	if (var != it->second) [[likely]]
+	{
+		it->second = var;  // 这里可以根据需要改用 std::move
+		return true;
+	}
+
+	return false;
+}
+
+inline ULONGLONG GetNowMs()
+{
+	return chrono::duration_cast<chrono::milliseconds>(
+		chrono::steady_clock::now().time_since_epoch()
+	).count();
+}
+
+static map<string, time_t> LastTime;
+// 不一定需要End
+inline void BeginSleep(const char* flag)
+{
+	LastTime[flag] = GetNowMs();
+}
+
+inline void EndSleep(const char* flag, int time)
+{
+	const time_t deltaTime = GetNowMs() - LastTime[flag];
+	if (deltaTime < time)
+		Sleep(time - deltaTime);
+}
+
+// 计算单个波形在时间 t 处的值（振幅影响）
+inline float EvaluateWave(const WaveParam& w, float t)
+{
+	return w.amplitude * sinf(2.0f * PI * w.frequency * t + w.phase);
+}
+
+// 计算叠加后的总 CPS（基频 + 所有启用波形的和）
+inline float EvaluateTotalCPS(float t, float baseCPS, vector<WaveParam> waves)
+{
+	float sum = baseCPS;
+	for (const auto& w : waves)
+		if (w.enabled) sum += EvaluateWave(w, t);
+	return sum;
+}
+
+template<typename T> inline T Lerp(T a, T b, float t)
+{
+	return (T)(a + (b - a) * t);
+}
+
+// 在 0 到 max-1 的范围内，找到第一个不在 numbers 数组中出现的数字并返回   如果都出现了，则返回 0。
+inline int FindFirstMissingNumber(const vector<int>& numbers, int max)
+{
+	unordered_set<int> NumSet(numbers.begin(), numbers.end()); // 转换为哈希集合
+	for (int i = 0; i < max; i++)
+	{
+		if (NumSet.find(i) == NumSet.end()) // 如果 i 不在集合中
+			return i;
+	}
+	return 0;
+}
+
+inline void ReplaceString(string& str, const string& to_find, const string& to_replace)
+{
+	size_t pos = str.find(to_find);
+	while (pos != string::npos)
+	{
+		str.replace(pos, to_find.length(), to_replace);
+		// 从刚才替换位置的下一个字符开始，继续查找下一个匹配项
+		// 这是为了避免在替换后的新字符串上陷入死循环（例如将 "a" 替换为 "aa"）
+		pos = str.find(to_find, pos + to_replace.length());
+	}
+}
+
+inline string RemoveBeforeString(const string& str, const string& before)
+{
+	size_t pos = str.find(before);
+	if (pos == string::npos) return str;
+	return str.substr(0, pos);
+}
+
+inline void SplitString(const string& str, const string& sep, vector<string>& res)
+{
+	string::size_type start = 0;
+	string::size_type end = str.find(sep);
+
+	while (end != string::npos)
+	{
+		// 将 [start, end) 区间的子串加入结果（不包含分隔符）
+		res.push_back(str.substr(start, end - start));
+		// 移动起始位置到当前分隔符之后
+		start = end + sep.size();
+		// 从新起点开始查找下一个分隔符
+		end = str.find(sep, start);
+	}
+
+	// 处理最后一段（如果没有以分隔符结尾）
+	if (start < str.length())
+		res.push_back(str.substr(start));
+}
+
+inline string RemoveSubString(const string& original, const string& toRemove)
+{
+	string result = original;
+	size_t pos = result.find(toRemove);
+	while (pos != string::npos)
+	{
+		result.erase(pos, toRemove.length());
+		pos = result.find(toRemove);
+	}
+	return result;
+}
+
+inline string ExtractString(const string& str, const string& start, const string& end)
+{
+	size_t startPos = str.find(start);
+	// 如果开始字符串不存在，则返回空字符串
+	if (startPos == string::npos) return "";
+	// 跳过开始字符串
+	startPos += start.length();
+
+	size_t endPos = str.find(end, startPos);
+	// 如果结束字符串不存在，则返回空字符串
+	if (endPos == string::npos) return "";
+	// 提取并返回两个字符串之间的内容
+	return str.substr(startPos, endPos - startPos);
+}
+
+inline double FileTimeToDouble(const FILETIME* ft)
+{
+	ULARGE_INTEGER uli{};
+	uli.LowPart = ft->dwLowDateTime;
+	uli.HighPart = ft->dwHighDateTime;
+	return static_cast<double>(uli.QuadPart);
+}
+
+
 
 POINT GetGameWindowCenter(HWND hwnd)
 {
@@ -73,7 +378,7 @@ POINT GetGameWindowCenter(HWND hwnd)
 }
 
 // 脚本商店专用：带 3 次重试的 URL 读取 / 下载（失败后递增退避再试）
-static bool ReadURLDatasRetry(const string& url, string& content, int retry = 3)
+bool ReadURLDatasRetry(const string& url, string& content, int retry)
 {
 	for (int i = 0; i < retry; i++)
 	{
@@ -88,7 +393,7 @@ static bool ReadURLDatasRetry(const string& url, string& content, int retry = 3)
 	return false;
 }
 
-static bool DownloadURLFilesRetry(const string& url, const string& filename, int retry = 3)
+bool DownloadURLFilesRetry(const string& url, const string& filename, int retry)
 {
 	for (int i = 0; i < retry; i++)
 	{
@@ -102,15 +407,6 @@ static bool DownloadURLFilesRetry(const string& url, const string& filename, int
 	}
 	return false;
 }
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
-bool RemoveFollowStartup();
-bool DeleteDirectoryRecursively(const string& dirPath);
-static DWORD WINAPI SafeThreadEntry(LPVOID lpContext);
-HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, LPDWORD lpThreadId, const string& name);
-bool IsCursorHidden();
-void RefushScriptList();
-void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath);
-string GetProcessPathFromPID(DWORD processId);
 
 void CheckUpdateScriptFromShop(ScriptInfo& script)
 {
@@ -153,6 +449,7 @@ bool UpdateScriptFromShop(const ScriptInfo& script)
 	}
 	return false;
 }
+
 void PlayEnableSound()
 {
 	PlaySound(Sound_Enable.c_str(), NULL, SND_FILENAME | SND_ASYNC);
@@ -608,13 +905,13 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 			for (const auto& task : iconTasks)
 			{
 				threads.emplace_back([task]()
-				{
-					if (DownloadURLFilesRetry(task.url, task.tempFile))
 					{
-						if (rename(task.tempFile.c_str(), task.localPath.c_str()) != 0)
-							_unlink(task.tempFile.c_str());
-					}
-				});
+						if (DownloadURLFilesRetry(task.url, task.tempFile))
+						{
+							if (rename(task.tempFile.c_str(), task.localPath.c_str()) != 0)
+								_unlink(task.tempFile.c_str());
+						}
+					});
 			}
 			for (auto& t : threads)
 				t.join();
@@ -1011,7 +1308,7 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 			GetPrivateProfileString("script", "title", info.name.c_str(), buffer, MAX_BUF, InfoFile.c_str());
 			title = buffer;
 			script.ver = GetPrivateProfileInt("script", "ver", 1, InfoFile.c_str());
-			
+
 			GetPrivateProfileString("script", "link", "", buffer, MAX_BUF, InfoFile.c_str());
 			if (strlen(buffer) > 0)
 			{
@@ -1219,11 +1516,11 @@ void PackageLogFile()
 	char buffer[80];
 	strftime(buffer, sizeof(buffer), LogFileZip.c_str(), &timeinfo);
 
-	vector<pair<string, string>> files ={
+	vector<pair<string, string>> files = {
 		{ LogFile, "gc.log"}
 	};
 
-	if(ZipFiles(files, LogPath + "\\" + buffer))
+	if (ZipFiles(files, LogPath + "\\" + buffer))
 		PrintLog("日志文件打包成功", PL_INFO);
 	else
 		PrintLog("日志文件打包失败", PL_ERROR);
@@ -1363,65 +1660,6 @@ int UnZipFile(const char* zipFilePath, const char* destDir)
 	return 0; // 解压成功
 }
 
-// 获取线程的内核时间和用户时间
-static bool GetThreadCpuTimes(HANDLE hThread, double& kernelTime, double& userTime)
-{
-	FILETIME ftCreation, ftExit, ftKernel, ftUser;
-	if (GetThreadTimes(hThread, &ftCreation, &ftExit, &ftKernel, &ftUser))
-	{
-		kernelTime = FileTimeToDouble(&ftKernel);
-		userTime = FileTimeToDouble(&ftUser);
-		return true;
-	}
-	return false;
-}
-
-// 计算线程的CPU占用率
-double GetThreadCpuUsage(HANDLE hThread, DWORD sleep)
-{
-	FILETIME ftIdle, ftKernel, ftUser;
-	double idleTime1, kernelTime1, userTime1, threadKernelTime1, threadUserTime1;
-	double idleTime2, kernelTime2, userTime2, threadKernelTime2, threadUserTime2;
-
-	// 第一次获取系统和线程的CPU时间
-	if (!GetSystemTimes(&ftIdle, &ftKernel, &ftUser) ||
-		!GetThreadCpuTimes(hThread, threadKernelTime1, threadUserTime1))
-		return -1.0; // 表示错误
-
-	idleTime1 = FileTimeToDouble(&ftIdle);
-	kernelTime1 = FileTimeToDouble(&ftKernel);
-	userTime1 = FileTimeToDouble(&ftUser);
-
-	// 等待指定时间
-	Sleep(sleep);
-
-	// 第二次获取系统和线程的CPU时间
-	if (!GetSystemTimes(&ftIdle, &ftKernel, &ftUser) ||
-		!GetThreadCpuTimes(hThread, threadKernelTime2, threadUserTime2))
-		return -1.0; // 表示错误
-
-	idleTime2 = FileTimeToDouble(&ftIdle);
-	kernelTime2 = FileTimeToDouble(&ftKernel);
-	userTime2 = FileTimeToDouble(&ftUser);
-
-	// 计算系统总CPU时间差
-	double totalSystemTime1 = kernelTime1 + userTime1;
-	double totalSystemTime2 = kernelTime2 + userTime2;
-	double totalSystemTimeDelta = totalSystemTime2 - totalSystemTime1;
-
-	// 计算线程总CPU时间差
-	double threadCpuTime1 = threadKernelTime1 + threadUserTime1;
-	double threadCpuTime2 = threadKernelTime2 + threadUserTime2;
-	double threadCpuTimeDelta = threadCpuTime2 - threadCpuTime1;
-
-	// 计算CPU占用率
-	if (totalSystemTimeDelta == 0.0)
-		return 0.0; // 避免除以零
-
-	double cpuUsage = (threadCpuTimeDelta / totalSystemTimeDelta) * 100.0;
-	return cpuUsage;
-}
-
 DWORD GetSystemLanguage()
 {
 	// 获取系统默认语言信息
@@ -1449,44 +1687,41 @@ static bool IsZOrderAbove(HWND hTop, HWND hBottom)
 
 bool IsCoveredWindow(HWND hwndTarget, float rate)
 {
-	// 1. 目标窗口必须可见
+	// 目标窗口必须可见
 	if (!IsWindowVisible(hwndTarget))
 		return false;
 
-	// 2. 获取当前前台窗口
+	// 获取当前前台窗口
 	HWND hwndForeground = GetForegroundWindow();
 	if (hwndForeground == nullptr)
 		return false;
 
-	// 3. 如果前台窗口就是目标自身，或不可见，则不视为覆盖
+	// 如果前台窗口就是目标自身，或不可见，则不视为覆盖
 	if (hwndForeground == hwndTarget || !IsWindowVisible(hwndForeground))
 		return false;
 
-	// 4. 检查前台窗口是否在Z序上高于目标窗口
+	// 检查前台窗口是否在Z序上高于目标窗口
 	if (!IsZOrderAbove(hwndForeground, hwndTarget))
 		return false;
 
-	// 5. 获取两个窗口的矩形
+	// 获取两个窗口的矩形
 	RECT rectTarget = { 0 };
 	RECT rectForeground = { 0 };
 	if (!GetWindowRect(hwndTarget, &rectTarget) || !GetWindowRect(hwndForeground, &rectForeground))
 		return false;
 
-	// 6. 计算交集矩形（标准矩形交集）
+	// 计算交集矩形（标准矩形交集）
 	RECT rectIntersect = { 0 };
-	if (!IntersectRect(&rectIntersect, &rectTarget, &rectForeground))
-	{
-		// 无交集，覆盖面积为0
+	if (!IntersectRect(&rectIntersect, &rectTarget, &rectForeground)) // 无交集，覆盖面积为0
 		return false;
-	}
 
-	// 7. 计算覆盖面积与目标窗口总面积
+	// 计算覆盖面积与目标窗口总面积
 	long long areaIntersect = static_cast<long long>(rectIntersect.right - rectIntersect.left) *
 		(rectIntersect.bottom - rectIntersect.top);
 	long long areaTarget = static_cast<long long>(rectTarget.right - rectTarget.left) *
 		(rectTarget.bottom - rectTarget.top);
 
-	// 8. 判断覆盖比例是否达到阈值
+	// 判断覆盖比例是否达到阈值
 	return static_cast<float>(areaIntersect) / areaTarget >= rate;
 }
 
@@ -1654,39 +1889,39 @@ int GetCpuUsageRate(int sleep)
 
 bool IsCursorHidden()
 {
-    CURSORINFO ci = { sizeof(CURSORINFO) };
-    if (!GetCursorInfo(&ci))
-        return false;
-    static const auto IsDefaultCursor = [&]() -> bool
-        {
-            static const array<LPCSTR, 13> SysIds = {
-               IDC_ARROW, IDC_IBEAM, IDC_WAIT, IDC_CROSS,
-               IDC_UPARROW, IDC_SIZEALL, IDC_SIZENWSE,
-               IDC_SIZENESW, IDC_SIZENS, IDC_SIZEWE,
-               IDC_HAND, IDC_NO, IDC_APPSTARTING
-            };
-            // static来缓存加载后的位图，不需要重复加载，这里用到了lambda表达式
-            static const array<HCURSOR, 13> SysCursorList = {
-                []() {
-                    array<HCURSOR, 13> cursors{};
-                    unsigned int index = 0;
-                    for (auto id : SysIds)
-                    {
-                        cursors[index] = LoadCursor(nullptr, id);
-                        index++;
-                    }
-                    return cursors;
-                }()
-            };
+	CURSORINFO ci = { sizeof(CURSORINFO) };
+	if (!GetCursorInfo(&ci))
+		return false;
+	static const auto IsDefaultCursor = [&]() -> bool
+		{
+			static const array<LPCSTR, 13> SysIds = {
+			   IDC_ARROW, IDC_IBEAM, IDC_WAIT, IDC_CROSS,
+			   IDC_UPARROW, IDC_SIZEALL, IDC_SIZENWSE,
+			   IDC_SIZENESW, IDC_SIZENS, IDC_SIZEWE,
+			   IDC_HAND, IDC_NO, IDC_APPSTARTING
+			};
+			// static来缓存加载后的位图，不需要重复加载，这里用到了lambda表达式
+			static const array<HCURSOR, 13> SysCursorList = {
+				[]() {
+					array<HCURSOR, 13> cursors{};
+					unsigned int index = 0;
+					for (auto id : SysIds)
+					{
+						cursors[index] = LoadCursor(nullptr, id);
+						index++;
+					}
+					return cursors;
+				}()
+			};
 
-            for (auto it : SysCursorList)
-            {
-                if (ci.hCursor == it)
-                    return true;
-            }
-            return false;
-        };
-    return !IsDefaultCursor();
+			for (auto it : SysCursorList)
+			{
+				if (ci.hCursor == it)
+					return true;
+			}
+			return false;
+		};
+	return !IsDefaultCursor();
 }
 
 // 判断字符串是否为UTF-8编码
@@ -1841,8 +2076,9 @@ string StringToUTF8(const string& str, bool NoCach)
 		}
 		return utf8;
 	}
-	catch(...)
-	{ }
+	catch (...)
+	{
+	}
 	return str;
 }
 
@@ -1894,8 +2130,9 @@ string UTF8ToString(const string& utf8_str, bool NoCach)
 		}
 		return acp;
 	}
-	catch(...)
-	{ }
+	catch (...)
+	{
+	}
 	return utf8_str;
 }
 
@@ -1999,9 +2236,9 @@ void RenderTip(string msg, float timeout, UINT type)
 	// 导致迭代器失效与访问已释放内存 → 0xC0000005。加写锁保护。
 	lock_guard<shared_mutex> lock(PopTipMutex);
 	auto pos = find_if(pt_message.begin(), pt_message.end(), [&msg](PopTipMsg a)
-	{
-		return a.message == msg;
-	});
+		{
+			return a.message == msg;
+		});
 	if (pos == pt_message.end())
 	{
 		PopTipMsg pt;
@@ -2012,7 +2249,7 @@ void RenderTip(string msg, float timeout, UINT type)
 	}
 }
 
-int RenderMessageBox(string message, const char* title, UINT type, bool wating = true)
+int RenderMessageBox(string message, const char* title, UINT type, bool wating)
 {
 	// 利用lock的特性来确保每次只有一个线程在操作弹窗
 	// 减少性能开销，因为每次最多是一个弹窗在处理，之前代码会导致所有弹窗都在处理
@@ -2039,7 +2276,7 @@ int RenderMessageBox(string message, const char* title, UINT type, bool wating =
 	return ret;
 }
 
-int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating = true)
+int RenderMessageBoxEx(string message, const char* title, map<string, UINT> button, map<string, ImVec4> colors, bool wating)
 {
 	int ret = 0;
 	{
@@ -2159,3 +2396,351 @@ string GetProcessPathFromPID(DWORD processId)
 	CloseHandle(hProcess);
 	return path;
 }
+
+bool IsRunningAsElevatedAdmin()
+{
+	HANDLE hToken = nullptr;
+
+	// 打开当前进程令牌，只需要查询权限
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+		return false;
+
+	bool result = false;
+	DWORD size = 0;
+
+	// ---------- 主判据：TokenElevation ----------
+	TOKEN_ELEVATION elevation = {};
+	if (!GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &size))
+	{
+		CloseHandle(hToken);
+		return false; // 查询失败，保守返回 false
+	}
+
+	if (elevation.TokenIsElevated != 0) // 已提权：拥有完整管理员令牌
+		result = true;
+	else
+	{
+		// ---------- 未提权：区分两种可能 ----------
+		TOKEN_ELEVATION_TYPE type = TokenElevationTypeDefault;
+		if (!GetTokenInformation(hToken, TokenElevationType, &type, sizeof(type), &size))
+		{
+			CloseHandle(hToken);
+			return false; // 查询失败，保守返回 false
+		}
+
+		if (type == TokenElevationTypeLimited) // 筛选令牌：UAC 启用但未提权（典型"清单要求管理员但被拒绝/未提权"）
+			result = false;
+		else // TokenElevationTypeDefault
+		{
+			// UAC 完全禁用的情况：此时令牌就是完整令牌
+			// 但必须确认用户确实是管理员，否则是标准用户
+			BOOL isAdmin = FALSE;
+			SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+			PSID adminSid = nullptr;
+
+			if (AllocateAndInitializeSid(&ntAuth, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &adminSid))
+			{
+				CheckTokenMembership(hToken, adminSid, &isAdmin);
+				FreeSid(adminSid);
+			}
+			result = (isAdmin == TRUE);
+		}
+	}
+
+	CloseHandle(hToken);
+	return result;
+}
+
+DWORD RequestAdminAndRestart()
+{
+	wchar_t szPath[MAX_PATH] = {};
+	if (GetModuleFileNameW(nullptr, szPath, ARRAYSIZE(szPath)) == 0)
+		return GetLastError();
+
+	// 关键：附加一个防重入标记，重启后如果看到它就不再请求提权
+	// 如果需要保留原始参数，从这里解析 GetCommandLineW() 并拼接
+	std::wstring params = L"--elevated-retry";
+
+	SHELLEXECUTEINFOW sei = {};
+	sei.cbSize = sizeof(sei);
+	sei.fMask = SEE_MASK_NOCLOSEPROCESS; // 拿到 hProcess 便于后续处理
+	sei.lpVerb = L"runas";  // 触发 UAC 提权
+	sei.lpFile = szPath;
+	sei.lpParameters = params.c_str();
+	sei.hwnd = GetActiveWindow();  // 让 UAC 对话框附着到当前窗口
+	sei.nShow = SW_NORMAL;
+
+	if (!ShellExecuteExW(&sei))
+		return GetLastError();   // 用户取消 -> ERROR_CANCELLED；其他 -> 对应错误码
+
+	// 启动成功。如果不需要等待子进程，直接关闭句柄即可
+	if (sei.hProcess)
+	{
+		CloseHandle(sei.hProcess);
+	}
+
+	return 0;   // 告诉调用者：新进程已启动，可以退出了
+}
+
+string BytesToHex(const unsigned char* data, size_t len)
+{
+	stringstream ss;
+	ss << hex << uppercase << setfill('0');
+	for (size_t i = 0; i < len; ++i)
+		ss << setw(2) << (int)data[i];
+	return ss.str();
+}
+
+// 获取物理网卡MAC地址
+string GetPhysicalMacAddress()
+{
+	string result;
+	ULONG bufLen = 15000;
+	IP_ADAPTER_ADDRESSES* pAddresses = (IP_ADAPTER_ADDRESSES*)malloc(bufLen);
+
+	if (GetAdaptersAddresses(AF_UNSPEC, 0, NULL, pAddresses, &bufLen) == NO_ERROR)
+	{
+		for (IP_ADAPTER_ADDRESSES* p = pAddresses; p; p = p->Next)
+		{
+			// 过滤条件：必须是物理网卡，且不是环路，且不是VPN/虚拟网卡
+			if (p->IfType == IF_TYPE_ETHERNET_CSMACD ||
+				p->IfType == IF_TYPE_IEEE80211)
+			{
+
+				// 排除常见虚拟网卡关键词
+				wstring desc = p->Description;
+				bool isVirtual = (desc.find(L"Virtual") != wstring::npos ||
+					desc.find(L"VMware") != wstring::npos ||
+					desc.find(L"VirtualBox") != wstring::npos ||
+					desc.find(L"Hyper-V") != wstring::npos ||
+					desc.find(L"VPN") != wstring::npos ||
+					desc.find(L"TAP") != wstring::npos);
+
+				if (!isVirtual && p->PhysicalAddressLength == 6)
+				{
+					// 取第一个找到的物理网卡MAC
+					result = BytesToHex(p->PhysicalAddress, p->PhysicalAddressLength);
+					break;
+				}
+			}
+		}
+	}
+	free(pAddresses);
+	return result;
+}
+
+// 获取硬盘序列号
+string GetDiskSerial()
+{
+	string result;
+	HRESULT hres;
+
+	// 初始化COM
+	hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+	if (FAILED(hres)) return "";
+
+	IWbemLocator* pLoc = NULL;
+	hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+		IID_IWbemLocator, (LPVOID*)&pLoc);
+	if (SUCCEEDED(hres))
+	{
+		IWbemServices* pSvc = NULL;
+		hres = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), NULL, NULL, 0, 0, 0, 0, &pSvc);
+
+		if (SUCCEEDED(hres))
+		{
+			// 设置安全级别
+			hres = CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE,
+				NULL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
+				NULL, EOAC_NONE);
+
+			if (SUCCEEDED(hres))
+			{
+				IEnumWbemClassObject* pEnumerator = NULL;
+				hres = pSvc->ExecQuery(
+					bstr_t("WQL"),
+					bstr_t("SELECT SerialNumber FROM Win32_DiskDrive WHERE Index=0"),
+					WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+					NULL,
+					&pEnumerator);
+
+				if (SUCCEEDED(hres))
+				{
+					IWbemClassObject* pclsObj = NULL;
+					ULONG uReturn = 0;
+
+					if (pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn) == S_OK)
+					{
+						VARIANT vtProp;
+						if (SUCCEEDED(pclsObj->Get(L"SerialNumber", 0, &vtProp, 0, 0)))
+						{
+							if (vtProp.vt == VT_BSTR)
+							{
+								char buffer[128];
+								WideCharToMultiByte(CP_ACP, 0, vtProp.bstrVal, -1,
+									buffer, sizeof(buffer), NULL, NULL);
+								result = string(buffer);
+							}
+							VariantClear(&vtProp);
+						}
+						pclsObj->Release();
+					}
+					pEnumerator->Release();
+				}
+			}
+			pSvc->Release();
+		}
+		pLoc->Release();
+	}
+	CoUninitialize();
+	return result;
+}
+
+string SimpleHash(const string& input)
+{
+	string data = "GC" + input;
+	unsigned long long hash = 14695981039346656037ULL;  // 64位FNV偏移基数
+	for (char c : data)
+	{
+		hash ^= static_cast<unsigned long long>(c);
+		hash *= 1099511628211ULL;  // 64位FNV素数
+	}
+
+	stringstream ss;
+	ss << hex << uppercase << setfill('0');
+	ss << setw(16) << hash;
+	return ss.str();
+}
+
+string GetMachineCode()
+{
+	string mac = GetPhysicalMacAddress();
+	if (mac.empty())
+		mac = "NOMAC"; // 极端情况兜底
+	string diskSN = GetDiskSerial();
+	if (diskSN.empty())
+		diskSN = "NODISK";
+	string rawFingerprint = mac + "-" + diskSN;
+	return SimpleHash(rawFingerprint);
+}
+
+// 判断字符串是否在字符串数组中
+bool IsContainsString(const string& str, const vector<string>& vec)
+{
+	for (const string& st : vec)
+	{
+		if (st.find(str) != string::npos)
+			return true;
+	}
+	return false;
+}
+
+int GetCaptionHeight()
+{
+	NONCLIENTMETRICS ncm;
+	ncm.cbSize = sizeof(NONCLIENTMETRICS);
+	if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0))
+		return ncm.iCaptionHeight;
+	return 0; // 获取失败
+}
+
+// 设置错误处理器
+void SetupCrashHandler()
+{
+	// 设置未处理异常过滤器
+	SetUnhandledExceptionFilter(TopLevelExceptionFilter);
+	// 终止处理
+	SetErrorMode(SEM_FAILCRITICALERRORS);
+	// 控制台异常处理
+	_set_abort_behavior(0, _WRITE_ABORT_MSG);
+}
+
+LONG WINAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* pExceptionInfo)
+{
+	stringstream str;
+	str << "异常代码: 0x" << hex << pExceptionInfo->ExceptionRecord->ExceptionCode
+		<< "异常地址: " << pExceptionInfo->ExceptionRecord->ExceptionAddress;
+	cerr << "GC发生严重崩溃 - " << str.str() << endl;
+	PrintLog("[Exception] GC发生严重崩溃 - " + str.str(), PL_ERROR);
+	// 处理特定异常
+	string err;
+	switch (pExceptionInfo->ExceptionRecord->ExceptionCode)
+	{
+	case EXCEPTION_ACCESS_VIOLATION:
+		err = "内存访问违规";
+		break;
+	case EXCEPTION_INT_DIVIDE_BY_ZERO:
+		err = "整数除零错误";
+		break;
+	case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+		err = "浮点数除零错误";
+		break;
+	case EXCEPTION_STACK_OVERFLOW:
+		err = "栈溢出";
+		break;
+	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+		err = "数组越界";
+		break;
+	default:
+		err = "未知异常";
+	}
+	ExceptionHandling(pExceptionInfo->ExceptionRecord->ExceptionCode, err);
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static wstring UTF8ToWString(const string& utf8Str)
+{
+	if (utf8Str.empty()) return {};
+	int len = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), (int)utf8Str.size(), nullptr, 0);
+	if (len == 0) return {};
+	wstring wstr(len, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), (int)utf8Str.size(), &wstr[0], len);
+	return wstr;
+}
+
+// 每当调用这个函数就代表致命错误，会主动退出GC
+void ExceptionHandling(DWORD code, string what)
+{
+	wstring msg;
+	if (config.UseChinese)
+	{
+		msg += L"GC发生了致命错误！\n";
+		msg += L"原因：" + UTF8ToWString(what) + L"\n";
+		msg += L"系统错误代码：" + to_wstring(code) + L"\n\n";
+		msg += L"版本：" + UTF8ToWString(version) + L"\n";
+		msg += L"你可以前往 bbs.mcgc.top 反馈此问题，我们会尽快修复。\n";
+		msg += L"GC论坛：bbs.mcgc.top\n";
+		msg += L"是否上报此问题？";
+	}
+	else
+	{
+		msg += L"GC has encountered a fatal error!\n";
+		msg += L"Reason: " + UTF8ToWString(what) + L"\n";
+		msg += L"version：" + UTF8ToWString(version) + L"\n";
+		msg += L"System error code: " + to_wstring(code) + L"\n\n";
+		msg += L"You can report this issue to the Forum, \nWe will fix it as soon as possible.\n";
+		msg += L"Forum: bbs.mcgc.top\n";
+		msg += L"Do you want to report this issue?";
+	}
+
+
+	PrintLog("[Exception] GC发生了致命错误 - 错误代码" + to_string(code) + "原因：" + what, PL_ERROR);
+	int ret = MessageBoxW(NULL, msg.c_str(), config.UseChinese ? L"软件错误" : L"Software Error", MB_YESNO | MB_ICONERROR);
+
+	if (ret == IDYES) // 上报
+		client.Send("error " + to_string(code) + " " + what);
+
+	if (client_id.size() > 2)
+		client.Send("exit");
+
+	// 强制用记事本打开
+	ShellExecute(NULL, "open", "notepad.exe", LogFile.c_str(), NULL, SW_SHOWNORMAL);
+
+	// 关闭互斥量，关闭防止双开
+	if (AntiMultiOpenMutex)
+		CloseHandle(AntiMultiOpenMutex);
+
+	ExitProcess(1919); // 强制结束进程
+}
+
+

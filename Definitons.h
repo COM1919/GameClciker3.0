@@ -435,7 +435,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
-//#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
+#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
 
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path

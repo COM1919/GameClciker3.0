@@ -1,12 +1,10 @@
 #pragma once
-#include "ShareCode.h"
+#include "HelperCode.h"
 #include "KeyState.h"
-#include "random.h"
-#include "CodeModules.h"
+#include "Random.h"
 #include "ConfigParser.h"
 #include "Definitons.h"
 #include "Log.h"
-#include "maths.h"
 #include <ctime>
 
 #define MS_ERROR       1
@@ -24,8 +22,6 @@ DWORD WINAPI MouseShakeMove(LPVOID lpParam);
 DWORD WINAPI GameGuiThread(LPVOID lpParam);
 POINT MouseShakeAlgorithm(POINT& view, POINT center);
 inline void HandleClickerControl(int nCode, WPARAM wParam, LPARAM lParam); // 连点器滚轮逻辑分发处理器（由统一鼠标钩子 MouseHookProc 调用）
-void BeginSleep(const char* flag);
-void EndSleep(const char* flag, int time);
 DWORD WINAPI RClickRun(LPVOID lpParam);
 DWORD WINAPI LClickRun(LPVOID lpParam);
 

@@ -4,10 +4,8 @@
 #include "Tray.h"
 #include "GetInfo.h"
 #include "ScriptEditor.h"
-#include <ctime>
 #include "HookCentral.h"   // 中央分发钩子（4 个低级钩子合并为键盘/鼠标各 1 个）
 
-//#include "CodeEditor.h"
 #include <cstring>   // strstr（命令行 debug 参数检测）
 
 typedef HRESULT(WINAPI* PFNSETPROCESSDESCRIPTION)(HANDLE, PCSTR);
@@ -2444,7 +2442,7 @@ void RenderGui(ImGuiIO& io)
 
                     // 9 个快捷键：InputKey 中心对齐格子中心。
                     // 水平：格子宽 60、InputKey 宽 40 -> 左偏移 (60-40)/2=10，中心=PosX+30；
-                    // 垂直：图片高 57、InputKey 高 24 -> 偏移 (57-24)/2≈16，中心与图片中心对齐。
+                    // 垂直：图片高 57、InputKey 高 24 -> 偏移 (57-24)/2=16，中心与图片中心对齐。
                     for (unsigned int i = 0; i < 9; i++)
                     {
                         PushID(i);
@@ -2498,6 +2496,12 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             GameHwnd = hwnd;
                                             GettingGameState = 0;
+                                            // 测试代码
+                                            DWORD pid = 0;
+                                            GetWindowThreadProcessId(GameHwnd, &pid);
+                                            cout << "asfawdfasdf\n\n\n";
+                                            cout << GetProcessCommandLine(pid) << endl;
+                                            cout << "\n\n\n";
                                             return 0;
                                         }
                                         if (hwnd == 0)

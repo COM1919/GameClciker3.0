@@ -1,7 +1,7 @@
 #pragma once
 #include <random>
 #include <mutex>
-#include "Definitons.h"
+#include <shared_mutex>
 
 // 修复：random.h 的全局随机引擎（gen_mt 等）与 Random() 内的 static disMap 均非线程安全。
 // RClickRun / LClickRun 两条连点线程会并发调用 Random/RandomBool → 数据竞争（UB）。
@@ -296,14 +296,3 @@ public:
         ResetInternalState();
     }
 };
-
-static char random_char()
-{
-    int r = Random(0, 61);
-    if (r < 10)
-        return '0' + r;           // 数字: 0-9
-    else if (r < 36)
-        return 'A' + (r - 10);    // 大写字母: A-Z
-    else
-        return 'a' + (r - 36);    // 小写字母: a-z
-}

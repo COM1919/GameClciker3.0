@@ -179,11 +179,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AgreementString.h" />
-    <ClInclude Include="AI.h" />
-    <ClInclude Include="CodeEditor.h" />
-    <ClInclude Include="CodeModules.h" />
     <ClInclude Include="ConfigParser.h" />
     <ClInclude Include="Definitons.h" />
+    <ClInclude Include="ClickSound.h" />
+    <ClInclude Include="helperCode.h" />
     <ClInclude Include="GetInfo.h" />
     <ClInclude Include="HookCentral.h" />
     <ClInclude Include="ImGui\Icons\fa.h" />
@@ -232,9 +231,7 @@
     <ClInclude Include="KeyState.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="MainClick.h" />
-    <ClInclude Include="maths.h" />
     <ClInclude Include="MemorySearch.h" />
-    <ClInclude Include="MouseSound.h" />
     <ClInclude Include="Network.h" />
     <ClInclude Include="PipeSystem.h" />
     <ClInclude Include="random.h" />
@@ -262,15 +259,10 @@
     <ClInclude Include="stb\stb_tilemap_editor.h" />
     <ClInclude Include="stb\stb_truetype.h" />
     <ClInclude Include="stb\stb_voxel_render.h" />
-    <ClInclude Include="ShareCode.h" />
     <ClInclude Include="Tray.h" />
     <ClInclude Include="UDPSocket.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BanSystem.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="GC.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\ImGuiMD\imgui_md.cpp" />

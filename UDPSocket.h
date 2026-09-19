@@ -1,6 +1,4 @@
 #pragma once
-// UDP 客户端套接字封装（自包含：仅依赖 Winsock 与标准库，不依赖 Log/Definitons，避免循环依赖）。
-// 全局实例 `UDPSocket client;` 定义在 Definitons.h，所有文件均可访问。
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
@@ -9,8 +7,6 @@
 #include <cstring>
 #include <mutex>
 #pragma comment(lib, "ws2_32.lib")
-
-using namespace std;
 
 class UDPSocket
 {
@@ -213,10 +209,8 @@ public:
 
         // 设置超时（可选）
         if (timeoutMs > 0)
-        {
             setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
-        }
-
+       
         vector<unsigned char> buf(512);
         sockaddr_in from_addr{};
         int from_len = sizeof(from_addr);

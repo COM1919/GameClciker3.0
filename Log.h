@@ -1,8 +1,6 @@
 #pragma once
 #include "Definitons.h"
 
-using namespace std;
-
 #define PL_INFO     0
 #define PL_WARNING  1
 #define PL_ERROR    2

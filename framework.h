@@ -37,6 +37,9 @@
 #include <commctrl.h>
 #pragma comment(lib, "comctl32.lib")
 
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
@@ -69,6 +72,12 @@
 
 #include <wininet.h>
 #pragma comment(lib, "winmm.lib")
+
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+
+#include <Wbemidl.h>
+#pragma comment(lib, "wbemuuid.lib")
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>

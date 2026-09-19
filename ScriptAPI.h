@@ -1,8 +1,7 @@
 #pragma once
 #include "Definitons.h"
 #include "Log.h"
-#include "ShareCode.h"
-#include "CodeModules.h"
+#include "HelperCode.h"
 #include "GC.h"
 
 extern "C"
@@ -18,7 +17,7 @@ extern "C"
 // 当前脚本线程正在执行的脚本 file（thread_local：每个脚本线程/主线程各自独立）。
 // 用途：让 ScriptAPI（IsScriptKeyDown/Up/Click、SetScriptLoopDelay）无需遍历 LuaStates 即可
 // 定位自己的 ScriptState，避免"在 RunningMtx 内获取 LuaStatesMtx"与 RenderScriptGui 的
-// "LuaStatesMtx→RunningMtx"形成死锁环（LuaJIT 同一 lua_State 不可跨线程并发调用）。
+// "LuaStatesMtx->RunningMtx"形成死锁环（LuaJIT 同一 lua_State 不可跨线程并发调用）。
 thread_local string CurrentScriptFile;
 
 typedef struct LuaState
@@ -76,6 +75,47 @@ static bool SetPrivateProfileString(LPCTSTR lpAppName, LPCTSTR lpKeyName, LPCTST
     if (!WritePrivateProfileString(lpAppName, lpKeyName, lpString, lpFileName))
         return false;
     return true;
+}
+
+// 最臭的函数
+string GetProcessCommandLine(DWORD pid)
+{
+    std::string result;
+    if (SUCCEEDED(CoInitializeEx(0, COINIT_MULTITHREADED)))
+    {
+        IWbemLocator* pLoc = nullptr;
+        if (SUCCEEDED(CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc)) && pLoc)
+        {
+            IWbemServices* pSvc = nullptr;
+            if (SUCCEEDED(pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), 0, 0, 0, 0, 0, 0, &pSvc)) && pSvc)
+            {
+                CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, 0, 0, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, 0, EOAC_NONE);
+                std::wstring q = L"SELECT CommandLine FROM Win32_Process WHERE ProcessId = " + std::to_wstring(pid);
+                IEnumWbemClassObject* pEnum = nullptr;
+                if (SUCCEEDED(pSvc->ExecQuery(bstr_t("WQL"), bstr_t(q.c_str()), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 0, &pEnum)) && pEnum) {
+                    IWbemClassObject* pobj = nullptr; ULONG ret = 0; VARIANT v; VariantInit(&v);
+                    if (pEnum->Next(WBEM_INFINITE, 1, &pobj, &ret) == S_OK && ret && pobj)
+                    {
+                        if (SUCCEEDED(pobj->Get(L"CommandLine", 0, &v, 0, 0)) && v.vt == VT_BSTR && v.bstrVal)
+                        {
+                            int len = WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, 0, 0, 0, 0);
+                            if (len > 0)
+                            {
+                                result.resize(len - 1);
+                                WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, &result[0], len, 0, 0);
+                            }
+                        }
+                        VariantClear(&v); pobj->Release();
+                    }
+                    pEnum->Release();
+                }
+                pSvc->Release();
+            }
+            pLoc->Release();
+        }
+        CoUninitialize();
+    }
+    return result;
 }
 
 struct ClipboardData

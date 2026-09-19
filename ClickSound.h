@@ -1,5 +1,4 @@
 #pragma once
-#include "maths.h"
 #include "MainClick.h"
 
 #include <OpenAL/ALFamework/Famewrok.h>

@@ -1,6 +1,6 @@
 #pragma once
 #include "Log.h"
-#include "ShareCode.h"
+#include "HelperCode.h"
 
 //======================= 内存 INI（快速读写） ===========================
 // Win32 的 profile API 每次调用都会重新打开并解析整个文件，SaveConfig/LoadConfig

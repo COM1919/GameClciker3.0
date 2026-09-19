@@ -1,7 +1,6 @@
 #pragma once
 #include "resource.h"
-#include "maths.h"
-#include "ShareCode.h"
+#include "HelperCode.h"
 
 // libwebp м╥нд╪Ч
 #include <webp/demux.h>

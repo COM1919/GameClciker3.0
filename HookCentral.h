@@ -1,7 +1,7 @@
 #pragma once
 #include "KeyState.h"
 #include "MainClick.h"
-#include "MouseSound.h"
+#include "ClickSound.h"
 
 #include <deque>
 #include <mutex>
