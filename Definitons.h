@@ -417,7 +417,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS

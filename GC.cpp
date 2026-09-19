@@ -2497,10 +2497,8 @@ void RenderGui(ImGuiIO& io)
                                             GameHwnd = hwnd;
                                             GettingGameState = 0;
                                             // ≤‚ ‘¥˙¬Î
-                                            DWORD pid = 0;
-                                            GetWindowThreadProcessId(GameHwnd, &pid);
                                             cout << "asfawdfasdf\n\n\n";
-                                            cout << GetProcessCommandLine(pid) << endl;
+                                            cout << GetMinecraftGameDir() << endl;
                                             cout << "\n\n\n";
                                             return 0;
                                         }

@@ -118,6 +118,69 @@ string GetProcessCommandLine(DWORD pid)
     return result;
 }
 
+string GetMinecraftGameDir()
+{
+    if (GameHwnd == nullptr)
+        return "";
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GameHwnd, &pid);
+    if (pid == 0)
+        return "";
+
+    const string CmdLine = GetProcessCommandLine(pid);
+    if (CmdLine.empty())
+        return "";
+
+    const string key = "--gameDir";
+    size_t pos = 0;
+
+    while ((pos = CmdLine.find(key, pos)) != string::npos)
+    {
+        // 左边必须是参数边界（行首或空格），避免命中 --gameDirFoo
+        if (pos != 0 && CmdLine[pos - 1] != ' ')
+        {
+            pos += key.length();
+            continue;
+        }
+
+        size_t after = pos + key.length();
+
+        // 右侧：必须是空格、'=' 或行尾；否则说明是别的相似参数
+        if (after < CmdLine.length() && CmdLine[after] != ' ' && CmdLine[after] != '=')
+        {
+            pos += key.length();
+            continue;
+        }
+
+        // 跳过 '='
+        if (after < CmdLine.length() && CmdLine[after] == '=')
+            ++after;
+
+        // 跳过空格
+        while (after < CmdLine.length() && CmdLine[after] == ' ') ++after;
+        if (after >= CmdLine.length())
+            return "";
+
+        // 解析值：带引号读到下一个引号，不带引号读到空格
+        if (CmdLine[after] == '"') 
+        {
+            size_t end = CmdLine.find('"', after + 1);
+            if (end == string::npos) end = CmdLine.length();
+            return CmdLine.substr(after + 1, end - after - 1);
+        }
+        else
+        {
+            size_t end = CmdLine.find(' ', after);
+            if (end == string::npos) end = CmdLine.length();
+            return CmdLine.substr(after, end - after);
+        }
+    }
+
+    return ""; // 没找到就返回空，不要返回整条命令行
+}
+
+
 struct ClipboardData
 {
     UINT format;
