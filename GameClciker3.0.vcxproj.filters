@@ -159,9 +159,6 @@
     <ClInclude Include="PipeSystem.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="MemorySearch.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="Log.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -243,9 +240,6 @@
     <ClInclude Include="ImGui\ImGuiMD\md4c.h">
       <Filter>ImGui\ImGuiMD</Filter>
     </ClInclude>
-    <ClInclude Include="UDPSocket.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="OpenAL\include\OpenAL\ALFamework\aldlist.h">
       <Filter>OpenALFramework</Filter>
     </ClInclude>
@@ -259,6 +253,15 @@
       <Filter>OpenALFramework</Filter>
     </ClInclude>
     <ClInclude Include="HookCentral.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ClickSound.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="helperCode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="UDPSocket.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,7 +1,7 @@
 #pragma once
 #include "framework.h"
 #include "AgreementString.h"
-#include "UDPSocket.h"   // UDPSocket 类（自包含，不依赖本头，避免循环依赖）
+#include "UDPSocket.h"
 
 #define PI 3.14159265358979323846f
 
@@ -619,11 +619,14 @@ int IsSearchState = 0;                                  //内存搜索状态
 int MemSearchCount = 0;                                 //内存搜索次数
 int GettingGameState = -1;                              //获取游戏窗口的状态
 float SystemScale = 1.0f;                               //DPI缩放率
-string client_id;                                       //客户端的ID
-mutex ClientIDMtx;                                      //client_id 的互斥锁（网络线程写、主渲染线程读）
-UDPSocket client;                                       //UDP 客户端（全局，所有文件可访问；网络线程 + 主线程退出时使用）
+
 vector<string> MouseSoundList;                          //可用的鼠标声音列表
 vector<string> KeybdSoundList;                          //可用的键盘声音列表
+
+UDPSocket NetworkClient;
+string ClientID;
+mutex ClientIDMtx;
+
 
 namespace PresetConfig
 {

@@ -14,6 +14,409 @@ extern "C"
 
 #undef DrawText
 
+// 最臭的函数
+std::string GetProcessCommandLine(DWORD pid)
+{
+    std::string result;
+    if (SUCCEEDED(CoInitializeEx(0, COINIT_MULTITHREADED)))
+    {
+        IWbemLocator* pLoc = nullptr;
+        if (SUCCEEDED(CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc)) && pLoc)
+        {
+            IWbemServices* pSvc = nullptr;
+            if (SUCCEEDED(pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), 0, 0, 0, 0, 0, 0, &pSvc)) && pSvc)
+            {
+                CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, 0, 0, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, 0, EOAC_NONE);
+                std::wstring q = L"SELECT CommandLine FROM Win32_Process WHERE ProcessId = " + std::to_wstring(pid);
+                IEnumWbemClassObject* pEnum = nullptr;
+                if (SUCCEEDED(pSvc->ExecQuery(bstr_t("WQL"), bstr_t(q.c_str()), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 0, &pEnum)) && pEnum) {
+                    IWbemClassObject* pobj = nullptr; ULONG ret = 0; VARIANT v; VariantInit(&v);
+                    if (pEnum->Next(WBEM_INFINITE, 1, &pobj, &ret) == S_OK && ret && pobj)
+                    {
+                        if (SUCCEEDED(pobj->Get(L"CommandLine", 0, &v, 0, 0)) && v.vt == VT_BSTR && v.bstrVal)
+                        {
+                            int len = WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, 0, 0, 0, 0);
+                            if (len > 0)
+                            {
+                                result.resize(len - 1);
+                                WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, &result[0], len, 0, 0);
+                            }
+                        }
+                        VariantClear(&v); pobj->Release();
+                    }
+                    pEnum->Release();
+                }
+                pSvc->Release();
+            }
+            pLoc->Release();
+        }
+        CoUninitialize();
+    }
+    return result;
+}
+
+std::string GetMinecraftGameDir(HWND hwnd)
+{
+    if (hwnd == nullptr)
+        return "";
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0)
+        return "";
+
+    const std::string CmdLine = GetProcessCommandLine(pid);
+    if (CmdLine.empty())
+        return "";
+
+    const std::string key = "--gameDir";
+    size_t pos = 0;
+
+    while ((pos = CmdLine.find(key, pos)) != std::string::npos)
+    {
+        // 左边必须是参数边界（行首或空格），避免命中 --gameDirFoo
+        if (pos != 0 && CmdLine[pos - 1] != ' ')
+        {
+            pos += key.length();
+            continue;
+        }
+
+        size_t after = pos + key.length();
+
+        // 右侧：必须是空格、'=' 或行尾；否则说明是别的相似参数
+        if (after < CmdLine.length() && CmdLine[after] != ' ' && CmdLine[after] != '=')
+        {
+            pos += key.length();
+            continue;
+        }
+
+        // 跳过 '='
+        if (after < CmdLine.length() && CmdLine[after] == '=')
+            ++after;
+
+        // 跳过空格
+        while (after < CmdLine.length() && CmdLine[after] == ' ') ++after;
+        if (after >= CmdLine.length())
+            return "";
+
+        // 解析值：带引号读到下一个引号，不带引号读到空格
+        if (CmdLine[after] == '"')
+        {
+            size_t end = CmdLine.find('"', after + 1);
+            if (end == std::string::npos) end = CmdLine.length();
+            return CmdLine.substr(after + 1, end - after - 1);
+        }
+        else
+        {
+            size_t end = CmdLine.find(' ', after);
+            if (end == std::string::npos) end = CmdLine.length();
+            return CmdLine.substr(after, end - after);
+        }
+    }
+
+    return ""; // 没找到就返回空，不要返回整条命令行
+}
+
+std::string GetMinecraftLogPath(HWND hwnd)
+{
+    std::string gameDir = GetMinecraftGameDir(hwnd);
+    if (gameDir.empty())
+        return "";
+    // 拼接日志路径
+    std::string logPath = gameDir + "\\logs\\latest.log";
+    return logPath;
+}
+
+class MinecraftChatReader
+{
+public:
+    // 消息结构体：一条聊天解析结果
+    struct ChatMessage
+    {
+        std::string sender;    // 发送者（解析失败时为空）
+        std::string content;   // 消息内容（已去颜色代码）
+        std::string raw;       // 原始整行日志（可选，便于调试）
+    };
+
+    // 消息回调类型，在监听线程中被调用
+    using MessageCallback = std::function<void(const ChatMessage&)>;
+
+    // 构造：传入 latest.log 路径；为空则使用默认路径
+    explicit MinecraftChatReader(const std::string& logPath = "") : logPath(logPath) {}
+
+    ~MinecraftChatReader() { stop(); }
+
+    // 禁止拷贝（内含线程和文件句柄）
+    MinecraftChatReader(const MinecraftChatReader&) = delete;
+    MinecraftChatReader& operator=(const MinecraftChatReader&) = delete;
+
+    // 设置消息回调
+    void setCallback(MessageCallback cb) { callback = std::move(cb); }
+    bool isRunning() const { return running.load(); }
+
+    // 启动监听线程
+    void start()
+    {
+        if (running.exchange(true))
+            return; // 已在运行
+        openFile(true);  // 首次打开，跳过已有内容
+        worker = std::thread(&MinecraftChatReader::loop, this);
+    }
+
+    // 停止监听线程
+    void stop()
+    {
+        if (!running.exchange(false))
+            return;
+        if (worker.joinable())
+            worker.join();
+        std::lock_guard<std::mutex> lk(fileMutex);
+        if (file.is_open())
+            file.close();
+    }
+
+private:
+    void loop() {
+        while (running.load())
+        {
+            std::vector<std::string> newLines = readNewLines();
+            for (const auto& line : newLines)
+            {
+                ChatMessage msg;
+                if (parseChatLine(line, msg))
+                {
+                    if (callback)
+                        callback(msg);
+                }
+            }
+            Sleep(200);
+        }
+    }
+
+    bool openFile(bool skipExisting)
+    {
+        std::lock_guard<std::mutex> lk(fileMutex);
+        if (file.is_open())
+            file.close();
+        file.clear();
+        file.open(logPath, std::ios::binary);
+        if (!file.is_open())
+            return false;
+
+        if (skipExisting)
+        {
+            file.seekg(0, std::ios::end);
+            lastPos = file.tellg();
+        }
+        else
+        {
+            file.seekg(0, std::ios::beg);
+            lastPos = 0;
+        }
+        if (lastPos == std::streampos(-1))
+            lastPos = 0;
+        return true;
+    }
+
+    std::vector<std::string> readNewLines()
+    {
+        std::vector<std::string> lines;
+
+        std::lock_guard<std::mutex> lk(fileMutex);
+
+        // 文件未打开或已被删除：尝试重新打开
+        if (!file.is_open())
+        {
+            if (!openFileUnlocked(false))
+                return lines;
+        }
+
+        // 获取当前文件大小
+        file.seekg(0, std::ios::end);
+        std::streampos currentSize = file.tellg();
+        if (currentSize == std::streampos(-1))
+        {
+            // 文件可能被删/被锁，重试
+            file.clear();
+            return lines;
+        }
+
+        // 文件被截断（游戏重启，latest.log 被清空）→ 从 0 重新读
+        if (currentSize < lastPos)
+            lastPos = 0;
+
+        if (currentSize == lastPos)
+            return lines; // 无新增
+
+        // 定位并读取
+        file.clear();
+        file.seekg(lastPos);
+        std::string line;
+        std::streampos readStart = lastPos;
+        while (std::getline(file, line))
+            lines.push_back(line);
+
+        // 处理 UTF-8 BOM（仅当从头读且文件带 BOM 时）
+        if (readStart == 0 && !lines.empty())
+        {
+            const std::string& first = lines[0];
+            if (first.size() >= 3 &&
+                static_cast<unsigned char>(first[0]) == 0xEF &&
+                static_cast<unsigned char>(first[1]) == 0xBB &&
+                static_cast<unsigned char>(first[2]) == 0xBF)
+            {
+                lines[0] = first.substr(3);
+            }
+        }
+
+        // 更新偏移：如果结尾是不完整行（没有换行符），
+        // 保留该行下次再读，避免读到半行
+        if (!lines.empty())
+        {
+            file.clear();
+            file.seekg(0, std::ios::end);
+            std::streampos fileEnd = file.tellg();
+
+            // 检查文件末尾是否为换行符 '\n'
+            bool endsWithNewline = false;
+            if (fileEnd > 0)
+            {
+                file.seekg(fileEnd - std::streampos(1));
+                char lastChar = 0;
+                file.read(&lastChar, 1);
+                endsWithNewline = (lastChar == '\n');
+            }
+
+            if (!endsWithNewline && fileEnd == currentSize)
+            {
+                // 最后一行还没写完，把它推回去下次再读
+                lastPos = currentSize - std::streamoff(lines.back().size());
+                lines.pop_back();
+            }
+            else
+                lastPos = fileEnd;
+        }
+
+        return lines;
+    }
+
+    // 无锁版本的 open（供已持锁的 readNewLines 内部使用）
+    bool openFileUnlocked(bool skipExisting) {
+        if (file.is_open()) file.close();
+        file.clear();
+        file.open(logPath, std::ios::binary);
+        if (!file.is_open())
+            return false;
+        if (skipExisting)
+        {
+            file.seekg(0, std::ios::end);
+            lastPos = file.tellg();
+        }
+        else
+        {
+            file.seekg(0, std::ios::beg);
+            lastPos = 0;
+        }
+        if (lastPos == std::streampos(-1))
+            lastPos = 0;
+        return true;
+    }
+
+    // 命中 [CHAT] 则填充 msg 并返回 true
+    bool parseChatLine(const std::string& line, ChatMessage& msg)
+    {
+        const std::string chatTag = "[CHAT]";
+        size_t chatPos = line.find(chatTag);
+        if (chatPos == std::string::npos) return false;
+
+        msg.raw = line;
+        std::string rawContent = line.substr(chatPos + chatTag.length());
+
+        // 去掉首部空格（"[CHAT] xxx" 中通常有一个空格）
+        size_t start = rawContent.find_first_not_of(" \t");
+        if (start == std::string::npos) return false;
+        rawContent = rawContent.substr(start);
+
+        // 去颜色代码
+        std::string cleaned = removeColorCodes(rawContent);
+
+        static const std::regex reAngle(R"(^<([^>]+)>\s*(.*)$)");
+        static const std::regex reColon(R"(^([^:]{1,64}):\s*(.*)$)");
+
+        std::smatch m;
+        if (std::regex_match(cleaned, m, reAngle))
+        {
+            msg.sender = m[1].str();
+            msg.content = m[2].str();
+        }
+        else if (std::regex_match(cleaned, m, reColon))
+        {
+            msg.sender = m[1].str();
+            msg.content = m[2].str();
+        }
+        else
+        {
+            // 系统消息 / 无发送者格式
+            msg.sender.clear();
+            msg.content = cleaned;
+        }
+        return true;
+    }
+
+    // 移除 Minecraft 颜色/格式代码（§ 的 UTF-8 编码是 C2 A7）
+    static std::string removeColorCodes(const std::string& input) {
+        std::string out;
+        out.reserve(input.size());
+        for (size_t i = 0; i < input.size(); ++i) {
+            if (i + 2 < input.size() &&
+                static_cast<unsigned char>(input[i]) == 0xC2 &&
+                static_cast<unsigned char>(input[i + 1]) == 0xA7) {
+                i += 2; // 跳过 § 及其后的一个字符（颜色/格式码）
+            }
+            else {
+                out += input[i];
+            }
+        }
+        return out;
+    }
+
+private:
+    std::string logPath;
+    std::string path;               // 未使用，保留占位
+    std::ifstream file;
+    std::streampos lastPos = 0;
+    std::mutex fileMutex;
+
+    std::thread worker;
+    std::atomic<bool> running = false;
+
+    MessageCallback callback;
+};
+
+DWORD WINAPI MinecraftChatReaderThread(LPVOID lpParam)
+{
+    HWND* hwnd = (HWND*)lpParam;
+    while (*hwnd == NULL)
+        Sleep(200);
+    cout << "Asdasdas" << endl;
+    MinecraftChatReader reader(GetMinecraftGameDir(*hwnd));
+
+    reader.setCallback([](const MinecraftChatReader::ChatMessage& msg)
+        {
+            if (msg.sender.empty())
+                std::cout << "[系统] " << msg.content << "\n";
+            else
+                std::cout << "[" << msg.sender << "] " << msg.content << "\n";
+        });
+
+    reader.start();
+
+    // 按回车退出
+    std::cin.get();
+    reader.stop();
+    return 0;
+}
+
 // 当前脚本线程正在执行的脚本 file（thread_local：每个脚本线程/主线程各自独立）。
 // 用途：让 ScriptAPI（IsScriptKeyDown/Up/Click、SetScriptLoopDelay）无需遍历 LuaStates 即可
 // 定位自己的 ScriptState，避免"在 RunningMtx 内获取 LuaStatesMtx"与 RenderScriptGui 的
@@ -76,110 +479,6 @@ static bool SetPrivateProfileString(LPCTSTR lpAppName, LPCTSTR lpKeyName, LPCTST
         return false;
     return true;
 }
-
-// 最臭的函数
-string GetProcessCommandLine(DWORD pid)
-{
-    std::string result;
-    if (SUCCEEDED(CoInitializeEx(0, COINIT_MULTITHREADED)))
-    {
-        IWbemLocator* pLoc = nullptr;
-        if (SUCCEEDED(CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc)) && pLoc)
-        {
-            IWbemServices* pSvc = nullptr;
-            if (SUCCEEDED(pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), 0, 0, 0, 0, 0, 0, &pSvc)) && pSvc)
-            {
-                CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, 0, 0, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, 0, EOAC_NONE);
-                std::wstring q = L"SELECT CommandLine FROM Win32_Process WHERE ProcessId = " + std::to_wstring(pid);
-                IEnumWbemClassObject* pEnum = nullptr;
-                if (SUCCEEDED(pSvc->ExecQuery(bstr_t("WQL"), bstr_t(q.c_str()), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 0, &pEnum)) && pEnum) {
-                    IWbemClassObject* pobj = nullptr; ULONG ret = 0; VARIANT v; VariantInit(&v);
-                    if (pEnum->Next(WBEM_INFINITE, 1, &pobj, &ret) == S_OK && ret && pobj)
-                    {
-                        if (SUCCEEDED(pobj->Get(L"CommandLine", 0, &v, 0, 0)) && v.vt == VT_BSTR && v.bstrVal)
-                        {
-                            int len = WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, 0, 0, 0, 0);
-                            if (len > 0)
-                            {
-                                result.resize(len - 1);
-                                WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, &result[0], len, 0, 0);
-                            }
-                        }
-                        VariantClear(&v); pobj->Release();
-                    }
-                    pEnum->Release();
-                }
-                pSvc->Release();
-            }
-            pLoc->Release();
-        }
-        CoUninitialize();
-    }
-    return result;
-}
-
-string GetMinecraftGameDir()
-{
-    if (GameHwnd == nullptr)
-        return "";
-
-    DWORD pid = 0;
-    GetWindowThreadProcessId(GameHwnd, &pid);
-    if (pid == 0)
-        return "";
-
-    const string CmdLine = GetProcessCommandLine(pid);
-    if (CmdLine.empty())
-        return "";
-
-    const string key = "--gameDir";
-    size_t pos = 0;
-
-    while ((pos = CmdLine.find(key, pos)) != string::npos)
-    {
-        // 左边必须是参数边界（行首或空格），避免命中 --gameDirFoo
-        if (pos != 0 && CmdLine[pos - 1] != ' ')
-        {
-            pos += key.length();
-            continue;
-        }
-
-        size_t after = pos + key.length();
-
-        // 右侧：必须是空格、'=' 或行尾；否则说明是别的相似参数
-        if (after < CmdLine.length() && CmdLine[after] != ' ' && CmdLine[after] != '=')
-        {
-            pos += key.length();
-            continue;
-        }
-
-        // 跳过 '='
-        if (after < CmdLine.length() && CmdLine[after] == '=')
-            ++after;
-
-        // 跳过空格
-        while (after < CmdLine.length() && CmdLine[after] == ' ') ++after;
-        if (after >= CmdLine.length())
-            return "";
-
-        // 解析值：带引号读到下一个引号，不带引号读到空格
-        if (CmdLine[after] == '"') 
-        {
-            size_t end = CmdLine.find('"', after + 1);
-            if (end == string::npos) end = CmdLine.length();
-            return CmdLine.substr(after + 1, end - after - 1);
-        }
-        else
-        {
-            size_t end = CmdLine.find(' ', after);
-            if (end == string::npos) end = CmdLine.length();
-            return CmdLine.substr(after, end - after);
-        }
-    }
-
-    return ""; // 没找到就返回空，不要返回整条命令行
-}
-
 
 struct ClipboardData
 {
@@ -265,7 +564,7 @@ namespace ScriptAPI
             luaL_error(L, "RandomInt的参数不足或太多");
         int min = luaL_checkinteger(L, 1);
         int max = luaL_checkinteger(L, 2);
-        lua_pushinteger(L, Random(min, max));
+        lua_pushinteger(L, ::RandGentor.Random(min, max));
         return 1;
     }
 
@@ -274,7 +573,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 1)
             luaL_error(L, "RandomBool的参数不足或太多");
         double rate = luaL_checknumber(L, 1);
-        lua_pushinteger(L, ::RandomBool(rate));
+        lua_pushinteger(L, ::RandGentor.RandomBool(rate));
         return 1;
     }
 

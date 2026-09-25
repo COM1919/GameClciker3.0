@@ -826,13 +826,13 @@ inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam)
 			return;
 
 		float volVariation = 0.1f; // +-10%
-		float randomVol = BaseVolume * (1.0f + volVariation * ((rand() % 1000) / 500.0f - 1.0f));
+		float randomVol = BaseVolume * (1.0f + volVariation * (RandGentor.Random(0, 1000) / 500.0f - 1.0f));
 		randomVol = max(0.0f, min(2.0f, randomVol)); // 限制在 0~2.0
 		alSourcef(source, AL_GAIN, randomVol);
 
 		// 音调随机 +-20%，1.0 为原始音调
 		float pitchVariation = 0.2f;
-		float randomPitch = 1.0f + pitchVariation * ((rand() % 1000) / 500.0f - 1.0f);
+		float randomPitch = 1.0f + pitchVariation * ((RandGentor.Random(0, 1000) / 500.0f - 1.0f));
 		randomPitch = max(0.4f, min(1.6f, randomPitch)); // 限制在 0.4~1.6
 		alSourcef(source, AL_PITCH, randomPitch);
 

@@ -701,16 +701,16 @@ void LoadPresetConfig(const string& file)
 				for (int i = 0; i < 8; i++)
 				{
 					WaveParam w1;
-					w1.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
-					w1.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
-					w1.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
+					w1.amplitude = RandGentor.Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
+					w1.frequency = RandGentor.Random(20000, 600000) / 100000.0f; // 0.2 - 6
+					w1.phase = RandGentor.Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
 					w1.enabled = true;
 					config.CPSWaves.left.push_back(w1);
 
 					WaveParam w2;
-					w2.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
-					w2.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
-					w2.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
+					w2.amplitude = RandGentor.Random(60000, 200000) / 100000.0f; // 0.6 - 2
+					w2.frequency = RandGentor.Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
+					w2.phase = RandGentor.Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
 					w2.enabled = true;
 					config.CPSWaves.right.push_back(w2);
 				}

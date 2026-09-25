@@ -131,8 +131,6 @@ int StartUpGC(HINSTANCE hInstance)
     // 设置崩溃处理器
     SetupCrashHandler();
 
-    InitRandom(); // 初始化随机器
-
     // 不管怎么try都抓不住你的心
     try
     {
@@ -145,19 +143,19 @@ int StartUpGC(HINSTANCE hInstance)
     {
         ExceptionHandling(GetLastError(), e.what() + " - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因："s + e.what(), PL_ERROR);
-        client.Send("exit");
+        NetworkClient.Send("exit");
         return 70;
     }
     catch (...)
     {
         ExceptionHandling(GetLastError(), "未知原因 - [Main]"s);
         PrintLog("[Exception] 程序发生崩溃，原因很神秘", PL_ERROR);
-        client.Send("exit");
+        NetworkClient.Send("exit");
         return 71;
     }
 
     //===============================结束===============================
-    client.Send("exit");
+    NetworkClient.Send("exit");
     PrintLog("[Render] 释放GUI", PL_INFO);
     // 先关闭脚本线程, 避免其仍在用 D3D 加载纹理(LoadTextureFromFile)时 ReleasGui 释放设备
     CloseAllLua();
@@ -557,6 +555,8 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     CreateThreadSafe(SystemMsgHookLoop, NULL, 0, "SystemMsgHookLoop");
     CreateThreadSafe(NetworkClientThread, NULL, 0, "NetworkClientThread");
     CreateThreadSafe(ScriptKeyControlThread, NULL, 0, "ScriptKeyControlThread");
+    CreateThreadSafe(MinecraftChatReaderThread, &GameHwnd, 0, "MinecraftChatReaderThread");
+
     //CreateThreadSafe(GameGuiThread, NULL, 0, "GameGuiThread");
 
     bool IsDownload = false;
@@ -958,10 +958,7 @@ void RenderGui(ImGuiIO& io)
     }
 
     //=======================标签页内容===========================
-    const static ImGuiWindowFlags flags =
-        ImGuiWindowFlags_HorizontalScrollbar |
-        ImGuiWindowFlags_NoScrollWithMouse |
-        ImGuiWindowFlags_NoScrollbar;
+    const static ImGuiWindowFlags flags = ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
     EndAnimation();
     switch (CurrentTab)
     {
@@ -979,7 +976,7 @@ void RenderGui(ImGuiIO& io)
                     StartupTime = InitSuccessTime - StartTime;
             }
 
-            static string DailyMotto = DailyMottos[Random(0, 29)];
+            static string DailyMotto = DailyMottos[RandGentor.Random(0, 47)];
             Text(config.UseChinese ? u8"&c本次启动耗时" : "&cStartup time");
             SameLine();
             Text(config.UseChinese ? u8"&a%llu 毫秒" : "&a%llu ms", StartupTime);
@@ -1112,27 +1109,27 @@ void RenderGui(ImGuiIO& io)
 
                     //不用const staitc的，是因为这玩意任意错位
                     float PosY4 = GetCursorPosY();
-                    BeginChild("##CPURecordsBeginChild", { 250, 120 }, false, flags);
+                    BeginChild("##CPURecordsBeginChild", ImVec2(250, 120), false, flags);
                     {
                         temp.clear();
-                        temp.resize(MAX_RECORDS, 0);
+                        temp.resize(MAX_PERF_RECORDS, 0);
                         copy(CpuRates.begin(), CpuRates.end(), temp.begin());
                         rotate(temp.begin(), temp.begin() + CpuRates.size(), temp.end());
 
                         const static ImVec2 Pos = GetCursorPos();
                         PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(17, 125, 187, 255));
-                        PlotLines(u8"##CPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
+                        PlotLines(u8"##CPURecordsPL", temp.data(), MAX_PERF_RECORDS, 0, u8"", 0, 1.0f, ImVec2(MAX_PERF_RECORDS, 110));
                         PopStyleColor();
 
                         temp.clear();
-                        temp.resize(MAX_RECORDS, 0);
+                        temp.resize(MAX_PERF_RECORDS, 0);
                         copy(GpuRates.begin(), GpuRates.end(), temp.begin());
                         rotate(temp.begin(), temp.begin() + GpuRates.size(), temp.end());
 
                         SetCursorPos(Pos);
                         PushStyleColor(ImGuiCol_PlotLines, (ImVec4)ImColor(222, 18, 20, 255));
                         PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImColor(0, 0, 0, 0));
-                        PlotLines(u8"##GPURecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
+                        PlotLines(u8"##GPURecordsPL", temp.data(), MAX_PERF_RECORDS, 0, u8"", 0.0f, 1.0f, ImVec2(MAX_PERF_RECORDS, 110));
                         PopStyleColor(2);
 
                         SetScrollHereX(1);
@@ -1153,8 +1150,8 @@ void RenderGui(ImGuiIO& io)
                     SetCursorPosY(PosY3);
 
                     Text(config.UseChinese ? u8"内存占用率监控" : "Memory usage monitoring");
-                    SetCursorPos({ PosX4, PosY4 });
-                    BeginChild("##MemRecordsBeginChild", { 250, 120 }, false, flags);
+                    SetCursorPos(ImVec2(PosX4, PosY4));
+                    BeginChild("##MemRecordsBeginChild", ImVec2(250, 120), false, flags);
                     {
                         PlotLines(u8"##MemRecordsCPS", temp.data(), MAX_RECORDS, 0, u8"", 0, FLT_MAX, { MAX_RECORDS, 110 });
                         SetScrollHereX(1);
@@ -1833,16 +1830,16 @@ void RenderGui(ImGuiIO& io)
                                                 WaveParam NewWave;
                                                 if (CurrentTab == 0)
                                                 {
-                                                    NewWave.amplitude = Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
-                                                    NewWave.frequency = Random(20000, 600000) / 100000.0f; // 0.2 - 6
-                                                    NewWave.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
+                                                    NewWave.amplitude = RandGentor.Random(90000, 115000) / 100000.0f; // 0.9 - 1.15
+                                                    NewWave.frequency = RandGentor.Random(20000, 600000) / 100000.0f; // 0.2 - 6
+                                                    NewWave.phase = RandGentor.Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
                                                     NewWave.enabled = true;
                                                 }
                                                 else
                                                 {
-                                                    NewWave.amplitude = Random(60000, 200000) / 100000.0f; // 0.6 - 2
-                                                    NewWave.frequency = Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
-                                                    NewWave.phase = Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
+                                                    NewWave.amplitude = RandGentor.Random(60000, 200000) / 100000.0f; // 0.6 - 2
+                                                    NewWave.frequency = RandGentor.Random(80000, 400000) / 100000.0f; // 0.8 - 4.0
+                                                    NewWave.phase = RandGentor.Random(-314159265, 314159265) / 100000000.f; // -pi ~ pi
                                                     NewWave.enabled = true;
                                                 }
                                                 waveList.push_back(NewWave);
@@ -2496,10 +2493,6 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             GameHwnd = hwnd;
                                             GettingGameState = 0;
-                                            // 测试代码
-                                            cout << "asfawdfasdf\n\n\n";
-                                            cout << GetMinecraftGameDir() << endl;
-                                            cout << "\n\n\n";
                                             return 0;
                                         }
                                         if (hwnd == 0)
@@ -5373,7 +5366,7 @@ void RenderGui(ImGuiIO& io)
     string CurClientID;
     {
         lock_guard<mutex> lock(ClientIDMtx);
-        CurClientID = client_id;
+        CurClientID = ClientID;
     }
     ImVec2 TextSize = CalcTextSize(CurClientID.c_str());
     GetForegroundDrawList()->AddText(ImVec2((WindowWidth - TextSize.x) / 2, 6), GetColorU32((ImVec4)ImColor(128, 255, 0, 5)), CurClientID.c_str());

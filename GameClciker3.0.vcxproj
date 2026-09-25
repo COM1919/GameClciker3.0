@@ -167,7 +167,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <AdditionalLibraryDirectories>.\zlib\lib;.\lua\lib;.\OpenAL\lib;.\LuaJIT\lib;.\libwebp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>zlib.lib;EFX-Util.lib;OpenAL32.lib;lua51.lib;libwebp.lib;libwebpdemux.lib;libwebpmux.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
@@ -231,7 +231,6 @@
     <ClInclude Include="KeyState.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="MainClick.h" />
-    <ClInclude Include="MemorySearch.h" />
     <ClInclude Include="Network.h" />
     <ClInclude Include="PipeSystem.h" />
     <ClInclude Include="random.h" />

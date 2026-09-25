@@ -34,7 +34,6 @@ inline void PushHookEvent(const HookEventData& ev)
 // 分发线程入口：唯一执行各 Handle 的线程
 DWORD WINAPI HookDispatchThread(LPVOID lpParam)
 {
-	srand((unsigned)time(NULL));   // 声音随机音量/音调种子
 	while (!IsGCExit)
 	{
 		HookEventData ev;

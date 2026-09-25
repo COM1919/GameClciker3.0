@@ -14,10 +14,10 @@ private:
     SOCKET sock;
     struct sockaddr_in server_addr {};
     static constexpr char PACKET_HEADER[] = "GCUDP";
-    static constexpr int HEADER_SIZE = sizeof(PACKET_HEADER) - 1; // ¼õÈ¥nullÖÕÖ¹·û
-    // ĞŞ¸´£ºsock ³ÉÔ±±»ÍøÂçÏß³Ì£¨NetworkClientThread£©ÓëÖ÷Ïß³Ì£¨ÍË³öÊ± Send("exit")£©²¢·¢·ÃÎÊ£¬
-    // ¼Ó»¥³âËø±£»¤¡£Send/SendTo ÓÃ try_lock£¨ÄÃ²»µ½Ëø¾Í·ÅÆú·¢ËÍ¡ª¡ªÍË³öÍ¨Öª¾¡Á¦¶øÎª£¬²»×èÈûÍË³ö£©£»
-    // ÍøÂçÏß³ÌÄÚµÄ²Ù×÷£¨Receive/CreateSocket/CloseSocket£©ÓÃ lock_guard£¨¶ÀÕ¼£¬ÎŞ¾ºÕùÊ±Áã¿ªÏú£©¡£
+    static constexpr int HEADER_SIZE = sizeof(PACKET_HEADER) - 1; // å‡å»nullç»ˆæ­¢ç¬¦
+    // ä¿®å¤ï¼šsock æˆå‘˜è¢«ç½‘ç»œçº¿ç¨‹ï¼ˆNetworkClientThreadï¼‰ä¸ä¸»çº¿ç¨‹ï¼ˆé€€å‡ºæ—¶ Send("exit")ï¼‰å¹¶å‘è®¿é—®ï¼Œ
+    // åŠ äº’æ–¥é”ä¿æŠ¤ã€‚Send/SendTo ç”¨ try_lockï¼ˆæ‹¿ä¸åˆ°é”å°±æ”¾å¼ƒå‘é€â€”â€”é€€å‡ºé€šçŸ¥å°½åŠ›è€Œä¸ºï¼Œä¸é˜»å¡é€€å‡ºï¼‰ï¼›
+    // ç½‘ç»œçº¿ç¨‹å†…çš„æ“ä½œï¼ˆReceive/CreateSocket/CloseSocketï¼‰ç”¨ lock_guardï¼ˆç‹¬å ï¼Œæ— ç«äº‰æ—¶é›¶å¼€é”€ï¼‰ã€‚
     mutable mutex sockMtx;
 
 public:
@@ -28,27 +28,27 @@ public:
         CloseSocket();
     }
 
-    // ´´½¨´øÓĞ×Ô¶¨ÒåÍ·²¿µÄÊı¾İ°ü
+    // åˆ›å»ºå¸¦æœ‰è‡ªå®šä¹‰å¤´éƒ¨çš„æ•°æ®åŒ…
     vector<unsigned char> CreatePacket(const string& data) const
     {
         vector<unsigned char> packet;
-        // Ìí¼Ó°üÍ·
+        // æ·»åŠ åŒ…å¤´
         packet.insert(packet.end(), PACKET_HEADER, PACKET_HEADER + HEADER_SIZE);
-        // Ìí¼ÓÊı¾İ
+        // æ·»åŠ æ•°æ®
         packet.insert(packet.end(), data.begin(), data.end());
         return packet;
     }
 
-    // ½âÎöÊı¾İ°ü£¬·µ»ØÊı¾İºÍÊÇ·ñÓĞĞ§
+    // è§£ææ•°æ®åŒ…ï¼Œè¿”å›æ•°æ®å’Œæ˜¯å¦æœ‰æ•ˆ
     pair<string, bool> ParsePacket(const vector<unsigned char>& packet) const
     {
         if (packet.size() < HEADER_SIZE)
             return { "", false };
 
-        // ¼ì²é°üÍ·
+        // æ£€æŸ¥åŒ…å¤´
         if (equal(PACKET_HEADER, PACKET_HEADER + HEADER_SIZE, packet.begin()))
         {
-            // ÌáÈ¡Êı¾İ²¿·Ö
+            // æå–æ•°æ®éƒ¨åˆ†
             string data(packet.begin() + HEADER_SIZE, packet.end());
             return { data, true };
         }
@@ -68,7 +68,7 @@ public:
         if (getaddrinfo(domain.c_str(), NULL, &hints, &res) != 0)
             return "0";
 
-        // ±éÀúËùÓĞ½á¹û²¢»ñÈ¡µÚÒ»¸öIPv4µØÖ·
+        // éå†æ‰€æœ‰ç»“æœå¹¶è·å–ç¬¬ä¸€ä¸ªIPv4åœ°å€
         for (addrinfo* p = res; p != NULL; p = p->ai_next)
         {
             void* addr;
@@ -88,7 +88,7 @@ public:
         return "0";
     }
 
-    // ³õÊ¼»¯Winsock£»³É¹¦·µ»Ø true¡£Ô­Ê§°ÜÈÕÖ¾£¨PrintLog£©ÒòÑ­»·ÒÀÀµÒÆÖÁµ÷ÓÃ´¦£¨Network.h£©´¦Àí¡£
+    // åˆå§‹åŒ–Winsockï¼›æˆåŠŸè¿”å› trueã€‚åŸå¤±è´¥æ—¥å¿—ï¼ˆPrintLogï¼‰å› å¾ªç¯ä¾èµ–ç§»è‡³è°ƒç”¨å¤„ï¼ˆNetwork.hï¼‰å¤„ç†ã€‚
     bool Init()
     {
         WSADATA wsaData;
@@ -98,14 +98,14 @@ public:
     int CreateSocket()
     {
         lock_guard<mutex> lock(sockMtx);
-        // ĞŞ¸´£ºÖØÁ¬Ê±¾É socket ¿ÉÄÜÎ´¹Ø±Õ£¨NetworkClientThread ¶Ï¿ªºó²»Ö÷¶¯ CloseSocket£©£¬
-        // Ö±½Ó¸²¸Ç»áĞ¹Â©ÏµÍ³×ÊÔ´¡£ÏÈ×Ô²é¹Ø±Õ¡£
+        // ä¿®å¤ï¼šé‡è¿æ—¶æ—§ socket å¯èƒ½æœªå…³é—­ï¼ˆNetworkClientThread æ–­å¼€åä¸ä¸»åŠ¨ CloseSocketï¼‰ï¼Œ
+        // ç›´æ¥è¦†ç›–ä¼šæ³„æ¼ç³»ç»Ÿèµ„æºã€‚å…ˆè‡ªæŸ¥å…³é—­ã€‚
         if (sock != INVALID_SOCKET)
         {
             closesocket(sock);
             sock = INVALID_SOCKET;
         }
-        // ´´½¨UDP socket
+        // åˆ›å»ºUDP socket
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sock == INVALID_SOCKET)
             return 1;
@@ -129,10 +129,10 @@ public:
         return 0;
     }
 
-    // Ê¹ÓÃ»º´æµØÖ·
+    // ä½¿ç”¨ç¼“å­˜åœ°å€
     int Send(const string& message)
     {
-        // try_lock£ºÍøÂçÏß³Ì¿ÉÄÜÔÚ Receive/²Ù×÷ÖĞ£¬Ö÷Ïß³Ì£¨ÍË³öÊ±£©ÄÃ²»µ½ËøÔò·ÅÆú·¢ËÍ£¬²»×èÈûÍË³ö
+        // try_lockï¼šç½‘ç»œçº¿ç¨‹å¯èƒ½åœ¨ Receive/æ“ä½œä¸­ï¼Œä¸»çº¿ç¨‹ï¼ˆé€€å‡ºæ—¶ï¼‰æ‹¿ä¸åˆ°é”åˆ™æ”¾å¼ƒå‘é€ï¼Œä¸é˜»å¡é€€å‡º
         unique_lock<mutex> lock(sockMtx, try_to_lock);
         if (!lock.owns_lock() || sock == INVALID_SOCKET)
             return -1;
@@ -145,7 +145,7 @@ public:
             sizeof(server_addr));
     }
 
-    // ÊÖ¶¯Ö¸¶¨µØÖ·
+    // æ‰‹åŠ¨æŒ‡å®šåœ°å€
     int SendTo(const string& message, const string& ip, int port) const
     {
         unique_lock<mutex> lock(sockMtx, try_to_lock);
@@ -171,7 +171,7 @@ public:
         if (sock == INVALID_SOCKET)
             return -1;
 
-        // ÉèÖÃ³¬Ê±£¨¿ÉÑ¡£©
+        // è®¾ç½®è¶…æ—¶ï¼ˆå¯é€‰ï¼‰
         if (timeoutMs > 0)
             setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
 
@@ -190,15 +190,15 @@ public:
             if (pack.second)
             {
                 str = pack.first;
-                return (int)str.size();   // ĞŞ¸´£ºÏÔÊ½×ª»»Ïû³ı size_t¡úint ½Ø¶Ï¾¯¸æ
+                return (int)str.size();   // ä¿®å¤ï¼šæ˜¾å¼è½¬æ¢æ¶ˆé™¤ size_tâ†’int æˆªæ–­è­¦å‘Š
             }
             else
-                return -2; // ÎŞĞ§µÄÊı¾İ°ü£¨°üÍ·²»Æ¥Åä£©
+                return -2; // æ— æ•ˆçš„æ•°æ®åŒ…ï¼ˆåŒ…å¤´ä¸åŒ¹é…ï¼‰
         }
         else if (len == 0)
-            return -3; // Á¬½Ó¹Ø±Õ
+            return -3; // è¿æ¥å…³é—­
         else
-            return -4; // ´íÎó»ò³¬Ê±
+            return -4; // é”™è¯¯æˆ–è¶…æ—¶
     }
 
     string ReceiveFrom(string& fromIp, int& fromPort, int timeoutMs = 0) const
@@ -207,10 +207,10 @@ public:
         if (sock == INVALID_SOCKET)
             return "-1";
 
-        // ÉèÖÃ³¬Ê±£¨¿ÉÑ¡£©
+        // è®¾ç½®è¶…æ—¶ï¼ˆå¯é€‰ï¼‰
         if (timeoutMs > 0)
             setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
-       
+
         vector<unsigned char> buf(512);
         sockaddr_in from_addr{};
         int from_len = sizeof(from_addr);
@@ -234,12 +234,12 @@ public:
             if (pack.second)
                 return pack.first;
             else
-                return "-2"; // ÎŞĞ§µÄÊı¾İ°ü£¨°üÍ·²»Æ¥Åä£©
+                return "-2"; // æ— æ•ˆçš„æ•°æ®åŒ…ï¼ˆåŒ…å¤´ä¸åŒ¹é…ï¼‰
         }
         else if (len == 0)
-            return "0"; // Á¬½Ó¹Ø±Õ
+            return "0"; // è¿æ¥å…³é—­
         else
-            return "-1"; // ´íÎó»ò³¬Ê±
+            return "-1"; // é”™è¯¯æˆ–è¶…æ—¶
     }
 
     void CloseSocket()

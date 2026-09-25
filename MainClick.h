@@ -68,7 +68,6 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 				SaveConfig(GetPresetFile(PresetConfig::CurrentName));
 				RenderTip(config.UseChinese ? u8"已保存配置" : "Successfully saved config", 4.0f, PT_INFO);
 
-				InitRandom();
 				ClickerDynamicDelay.right = 1000.0f / static_cast<int>(max(config.RCPS, 0));
 				ClickerDynamicDelay.left = 1000.0f / static_cast<int>(max(config.LCPS, 0));
 				IsClickerSuccess = true;
@@ -428,6 +427,10 @@ struct FPOINT {
 
 POINT MouseShakeAlgorithm(POINT& view, POINT center)
 {
+	static RandomGenerator rng(GenerateGen_mersenne_twister, config.MouseShake_RandomDist);
+	if (VarHasChanged(config.MouseShake_RandomDist, "MSA_MouseShake_RandomDist", false))
+		rng = RandomGenerator(GenerateGen_mersenne_twister, config.MouseShake_RandomDist);
+
 	RECT ShakeRect{};
 	ShakeRect.left = center.x - config.MouseShakeRect;
 	ShakeRect.top = center.y - config.MouseShakeRect;
@@ -449,8 +452,8 @@ POINT MouseShakeAlgorithm(POINT& view, POINT center)
 
 		// 设置随机后的坐标
 		points = {
-			Random(min.x, max.x, GenerateGen_mersenne_twister, config.MouseShake_RandomDist),
-			Random(min.y, max.y, GenerateGen_mersenne_twister, config.MouseShake_RandomDist)
+			rng.Random(min.x, max.x),
+			rng.Random(min.y, max.y)
 		};
 		MousePos = { center.x + points.x, center.y + points.y };
 		// 设置视角，加上偏移
@@ -461,8 +464,8 @@ POINT MouseShakeAlgorithm(POINT& view, POINT center)
 	{
 		// 设置随机后的坐标
 		MousePos = {
-			Random(ShakeRect.left, ShakeRect.right, GenerateGen_mersenne_twister, config.MouseShake_RandomDist),
-			Random(ShakeRect.top, ShakeRect.bottom, GenerateGen_mersenne_twister, config.MouseShake_RandomDist)
+			rng.Random(ShakeRect.left, ShakeRect.right),
+			rng.Random(ShakeRect.top, ShakeRect.bottom)
 		};
 	}
 

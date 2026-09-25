@@ -2649,9 +2649,9 @@ struct IMGUI_API ImGuiWindow
     ImVec2                  Pos;                                // Position (always rounded-up to nearest pixel)
     ImVec2                  Size;                               // Current size (==SizeFull or collapsed title bar size)
     ImVec2                  SizeFull;                           // Size when non collapsed
-    ImVec2                  ContentSize;                        // Size of contents/scrollable client area (calculated from the extents reach of the cursor) from previous frame. Does not include window decoration or window padding.
+    ImVec2                  ContentSize;                        // Size of contents/scrollable NetworkClient area (calculated from the extents reach of the cursor) from previous frame. Does not include window decoration or window padding.
     ImVec2                  ContentSizeIdeal;
-    ImVec2                  ContentSizeExplicit;                // Size of contents/scrollable client area explicitly request by the user via SetNextWindowContentSize().
+    ImVec2                  ContentSizeExplicit;                // Size of contents/scrollable NetworkClient area explicitly request by the user via SetNextWindowContentSize().
     ImVec2                  WindowPadding;                      // Window padding at the time of Begin().
     float                   WindowRounding;                     // Window rounding at the time of Begin(). May be clamped lower to avoid rendering artifacts with title bar, menu bar etc.
     float                   WindowBorderSize;                   // Window border size at the time of Begin().
