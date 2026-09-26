@@ -282,11 +282,13 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
             continue;
         }
 
-        ULONGLONG LastHBTime = 0;
         int err = 0;
-        bool no_err = false;
-        while (!IsGCExit)
+        bool IsShowedError = false;
+        while (true)
         {
+			if (IsGCExit)
+				return 0;
+
             string ip = NetworkClient.ResolveDomain(ServerIP);
             if (ip == "0")
             {
@@ -294,47 +296,56 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 return 1;
             }
             
+            bool HasError = false;
             NetworkClient.SetTarget(ip, ServerPort);
-            err = NetworkClient.Send("connect gc " + MachineCode + " " + version);
-            if (err > 0)
+            if (NetworkClient.Send("connect gc " + MachineCode + " " + version) > 0)
             {
                 string str;
-                int try_count = 16;
-                while (NetworkClient.Receive(str) <= 0 && try_count > 0)
-                    try_count--;
-
-                string CurClientID;
+                int try_count = 4;
+                while (NetworkClient.Receive(str, 2000) <= 0 && try_count > 0)
                 {
-                    lock_guard<mutex> lock(ClientIDMtx);
-                    ClientID = str;
+                    if (str.size() > 2)
+                        break;
+                    NetworkClient.Send("connect gc " + MachineCode + " " + version);
+                    try_count--;
                 }
+                if (str.size() > 2)
+                {
+                    string CurClientID;
+                    {
+                        lock_guard<mutex> lock(ClientIDMtx);
+                        ClientID = str;
+                    }
 
-                PrintLog("[Server] 当前客户端ID：" + str, PL_INFO);
-                break;
+                    PrintLog("[Server] 当前客户端ID：" + str, PL_INFO);
+                    break;
+                }
+                else
+                    HasError = true;
             }
             else
+                HasError = true;
+
+            if (HasError && !IsShowedError)
             {
-                if (!no_err)
-                {
-                    PrintLog("[Server] 服务器连接失败，错误代码:" + to_string(err), PL_ERROR);
-                    PrintLog("[Server] 将尝试重复连接服务器，直到成功", PL_INFO);
-                    no_err = true;
-                }
+                PrintLog("[Server] 服务器连接失败，错误代码:" + to_string(err), PL_ERROR);
+                PrintLog("[Server] 将尝试重复连接服务器，直到成功", PL_INFO);
+                IsShowedError = true;
             }
         }
 
         PrintLog("[Server] 服务器连接成功！", PL_INFO);
 
-        LastHBTime = GetNowMs();
+        ULONGLONG LastHBTime = GetTickCount64();
         IsServerClosed = false;
         while (!IsServerClosed)
         {
             if (!AllowConnectServer)
                 return 0;
 
-            if (GetNowMs() - LastHBTime > (ULONGLONG)40 * 1000) // 40秒
+            if (GetTickCount64() - LastHBTime > (ULONGLONG)40 * 1000) // 40 秒
             {
-                PrintLog("[Server] 服务器太久没有发送心跳·消息，已视为服务器关闭", PL_WARNING);
+                PrintLog("[Server] 服务器太久没有发送心跳消息，已视为服务器关闭", PL_WARNING);
                 IsServerClosed = true;
                 break;
             }
@@ -356,18 +367,21 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 if (tokens[0] == "hb")
                 {
                     NetworkClient.Send("online");
-                    LastHBTime = GetNowMs();
+                    LastHBTime = GetTickCount64();
                     continue;
                 }
-
-                if (tokens[0] == "close")
+                else if (tokens[0] == "ack")
+                {
+                    LastHBTime = GetTickCount64();
+                    continue;
+                }
+                else if (tokens[0] == "close")
                 {
                     PrintLog("[Server] 服务器关闭，正在等待重新连接", PL_WARNING);
                     IsServerClosed = true;
                     continue;
                 }
-
-                if (tokens[0] == "msg")
+                else if (tokens[0] == "msg")
                 {
                     if (tokens.size() >= 2)
                     {
@@ -381,7 +395,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                     break;
                 }
             }
-            Sleep(10);
+            Sleep(20);
         }
         if (!IsGCExit)
         {

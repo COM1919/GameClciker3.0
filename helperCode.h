@@ -2483,10 +2483,7 @@ void ExceptionHandling(DWORD code, string what)
 	int ret = MessageBoxW(NULL, msg.c_str(), config.UseChinese ? L"软件错误" : L"Software Error", MB_YESNO | MB_ICONERROR);
 
 	if (ret == IDYES) // 上报
-		NetworkClient.Send("error " + to_string(code) + " " + what);
-
-	if (ClientID.size() > 2)
-		NetworkClient.Send("exit");
+		NetworkClient.SendTo("error " + to_string(code) + " " + what, ServerIP, ServerPort); // 如果初始化时崩溃，这样就可以避免Network没有初始化导致无法上报的情况
 
 	// 强制用记事本打开
 	ShellExecute(NULL, "open", "notepad.exe", LogFile.c_str(), NULL, SW_SHOWNORMAL);

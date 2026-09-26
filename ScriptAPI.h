@@ -3,6 +3,9 @@
 #include "Log.h"
 #include "HelperCode.h"
 #include "GC.h"
+#include <deque>
+#include <unordered_map>
+#include <memory>
 
 extern "C"
 {
@@ -119,303 +122,424 @@ std::string GetMinecraftGameDir(HWND hwnd)
 
 std::string GetMinecraftLogPath(HWND hwnd)
 {
+    std::vector<std::string> candidates;
+
+    // 1) 从 --gameDir 命令行参数解析的目录
     std::string gameDir = GetMinecraftGameDir(hwnd);
-    if (gameDir.empty())
-        return "";
-    // 拼接日志路径
-    std::string logPath = gameDir + "\\logs\\latest.log";
-    return logPath;
+    if (!gameDir.empty())
+        candidates.push_back(gameDir + "\\logs\\latest.log");
+
+    // 2) 常见默认目录兜底（官方启动器 / HMCL / PCL 等）
+    char buf[MAX_PATH] = { 0 };
+    if (GetEnvironmentVariableA("APPDATA", buf, MAX_PATH) > 0)
+    {
+        const std::string base = buf;
+        candidates.push_back(base + "\\.minecraft\\logs\\latest.log");
+        candidates.push_back(base + "\\minecraft\\logs\\latest.log");
+        candidates.push_back(base + "\\.hmcl\\logs\\latest.log");
+    }
+    if (GetEnvironmentVariableA("GAMEDIR", buf, MAX_PATH) > 0)
+        candidates.push_back(std::string(buf) + "\\logs\\latest.log");
+
+    // 返回第一个真实存在的日志；都不存在则返回第一个候选路径等待其生成
+    for (const auto& c : candidates)
+    {
+        if (GetFileAttributesA(c.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return c;
+    }
+    return candidates.empty() ? "" : candidates.front();
 }
 
-class MinecraftChatReader
+namespace Minecraft
 {
-public:
-    // 消息结构体：一条聊天解析结果
-    struct ChatMessage
+    namespace chat
     {
-        std::string sender;    // 发送者（解析失败时为空）
-        std::string content;   // 消息内容（已去颜色代码）
-        std::string raw;       // 原始整行日志（可选，便于调试）
-    };
-
-    // 消息回调类型，在监听线程中被调用
-    using MessageCallback = std::function<void(const ChatMessage&)>;
-
-    // 构造：传入 latest.log 路径；为空则使用默认路径
-    explicit MinecraftChatReader(const std::string& logPath = "") : logPath(logPath) {}
-
-    ~MinecraftChatReader() { stop(); }
-
-    // 禁止拷贝（内含线程和文件句柄）
-    MinecraftChatReader(const MinecraftChatReader&) = delete;
-    MinecraftChatReader& operator=(const MinecraftChatReader&) = delete;
-
-    // 设置消息回调
-    void setCallback(MessageCallback cb) { callback = std::move(cb); }
-    bool isRunning() const { return running.load(); }
-
-    // 启动监听线程
-    void start()
-    {
-        if (running.exchange(true))
-            return; // 已在运行
-        openFile(true);  // 首次打开，跳过已有内容
-        worker = std::thread(&MinecraftChatReader::loop, this);
-    }
-
-    // 停止监听线程
-    void stop()
-    {
-        if (!running.exchange(false))
-            return;
-        if (worker.joinable())
-            worker.join();
-        std::lock_guard<std::mutex> lk(fileMutex);
-        if (file.is_open())
-            file.close();
-    }
-
-private:
-    void loop() {
-        while (running.load())
+        // 聊天读取器：负责增量读取 Minecraft latest.log 中的 [CHAT] 消息。
+        // 位于 Minecraft::chat 命名空间，使用短名 Reader 即可引用。
+        class Reader
         {
-            std::vector<std::string> newLines = readNewLines();
-            for (const auto& line : newLines)
+        public:
+            // 一条解析结果
+            struct ChatMessage
             {
-                ChatMessage msg;
-                if (parseChatLine(line, msg))
+                std::string sender;    // 发送者（无法解析时为空）
+                std::string content;   // 消息内容（已去除颜色码）
+                std::string raw;       // 原始日志行（用于调试）
+            };
+
+            using MessageCallback = std::function<void(const ChatMessage&)>;
+            // 日志路径提供器：读取线程每次（重新）打开文件时调用，
+            // 用于在游戏尚未启动而拿不到路径时，待游戏启动后自动恢复
+            using PathProvider = std::function<std::string()>;
+
+            // logPath 为固定路径；provider 可动态提供路径，优先于 logPath
+            explicit Reader(std::string logPath = "", PathProvider provider = nullptr)
+                : logPath(std::move(logPath)), pathProvider(std::move(provider)) {}
+
+            // 只提供动态路径时的构造
+            explicit Reader(PathProvider provider)
+                : pathProvider(std::move(provider)) {}
+
+            ~Reader() { stop(); }
+
+            Reader(const Reader&) = delete;
+            Reader& operator=(const Reader&) = delete;
+
+            void setCallback(MessageCallback cb) { callback = std::move(cb); }
+            bool isRunning() const { return running.load(); }
+
+            // 同步检查日志文件当前是否可用（路径可解析且文件可打开）
+            bool IsAvailable()
+            {
+                std::lock_guard<std::mutex> lk(fileMutex);
+                std::string p = pathProvider ? pathProvider() : logPath;
+                if (p.empty())
+                    return false;
+                logPath = p;
+                std::ifstream probe(p, std::ios::binary);
+                return probe.is_open();
+            }
+
+            // 启动读取线程
+            void start()
+            {
+                if (running.exchange(true))
+                    return;                       // 已在运行
+                worker = std::thread(&Reader::loop, this);
+            }
+
+            // 停止读取线程
+            void stop()
+            {
+                if (!running.exchange(false))
+                    return;
+                if (worker.joinable())
+                    worker.join();
+                std::lock_guard<std::mutex> lk(fileMutex);
+                if (file.is_open())
+                    file.close();
+            }
+
+        private:
+            static constexpr DWORD kPollMs = 200;   // 轮询间隔
+
+            // 后台读取循环
+            void loop()
+            {
+                while (running.load())
                 {
-                    if (callback)
-                        callback(msg);
+                    std::vector<std::string> newLines = readNewLines();
+                    for (const auto& line : newLines)
+                    {
+                        ChatMessage msg;
+                        if (parseChatLine(line, msg) && callback)
+                            callback(msg);
+                    }
+                    Sleep(kPollMs);
                 }
             }
-            Sleep(200);
-        }
-    }
 
-    bool openFile(bool skipExisting)
-    {
-        std::lock_guard<std::mutex> lk(fileMutex);
-        if (file.is_open())
-            file.close();
-        file.clear();
-        file.open(logPath, std::ios::binary);
-        if (!file.is_open())
-            return false;
+            // 打开日志文件（加锁）
+            // 读取新增日志行：每次轮询重新打开文件，确保读到文件最新大小
+            // （Windows 下对共享写入的 latest.log，持久 ifstream 句柄可能看不到增长）
+            std::vector<std::string> readNewLines()
+            {
+                std::vector<std::string> lines;
+                std::lock_guard<std::mutex> lk(fileMutex);
 
-        if (skipExisting)
-        {
-            file.seekg(0, std::ios::end);
-            lastPos = file.tellg();
-        }
-        else
-        {
-            file.seekg(0, std::ios::beg);
-            lastPos = 0;
-        }
-        if (lastPos == std::streampos(-1))
-            lastPos = 0;
-        return true;
-    }
+                // 解析当前日志路径（游戏尚未启动时路径可能为空，之后自动恢复）
+                std::string p = pathProvider ? pathProvider() : logPath;
+                if (p.empty())
+                    return lines;
+                logPath = p;
 
-    std::vector<std::string> readNewLines()
-    {
-        std::vector<std::string> lines;
+                // 每次轮询重新打开文件
+                if (file.is_open())
+                    file.close();
+                file.clear();
+                file.open(p, std::ios::binary);
+                if (!file.is_open())
+                    return lines;
 
-        std::lock_guard<std::mutex> lk(fileMutex);
+                file.seekg(0, std::ios::end);
+                const std::streampos fileEnd = file.tellg();
+                if (fileEnd == std::streampos(-1))
+                {
+                    file.close();
+                    return lines;
+                }
 
-        // 文件未打开或已被删除：尝试重新打开
-        if (!file.is_open())
-        {
-            if (!openFileUnlocked(false))
+                // 首次成功打开：跳过已有内容，只读之后新增
+                if (!everOpened)
+                {
+                    everOpened = true;
+                    lastPos = fileEnd;
+                    return lines;
+                }
+
+                // 日志被清空/重建（latest.log 轮转）：从头开始再读
+                if (fileEnd < lastPos)
+                    lastPos = 0;
+
+                if (fileEnd == lastPos)
+                    return lines;
+
+                // 读取新增内容 [lastPos, 末尾)
+                const std::streampos readStart = lastPos;
+                file.clear();
+                file.seekg(lastPos);
+
+                std::string line;
+                while (std::getline(file, line))
+                    lines.push_back(std::move(line));
+
+                // 游标推进到实际读取结束位置（文件可能在读取期间又增长）
+                const std::streampos newEnd = file.tellg();
+                lastPos = (newEnd == std::streampos(-1) || newEnd < readStart) ? fileEnd : newEnd;
+
+                // 若文件末尾不是换行符，最后一行可能尚未写完：回退到该行行首
+                if (!lines.empty())
+                {
+                    file.clear();
+                    file.seekg(0, std::ios::end);
+                    const std::streampos curEnd = file.tellg();
+                    bool endsWithLF = false;
+                    if (curEnd > 0)
+                    {
+                        file.seekg(curEnd - std::streampos(1));
+                        char c = 0;
+                        file.read(&c, 1);
+                        endsWithLF = (c == '\n');
+                    }
+                    if (!endsWithLF)
+                    {
+                        const std::streamoff back = std::streamoff(lines.back().size());
+                        if (lastPos - back >= readStart)
+                        {
+                            lastPos -= back;
+                            lines.pop_back();
+                        }
+                    }
+                }
+
+                // 去掉首行 UTF-8 BOM（仅当真的从文件头开始读取时）
+                if (readStart == 0 && !lines.empty())
+                {
+                    std::string& first = lines[0];
+                    if (first.size() >= 3 &&
+                        (unsigned char)first[0] == 0xEF &&
+                        (unsigned char)first[1] == 0xBB &&
+                        (unsigned char)first[2] == 0xBF)
+                        first.erase(0, 3);
+                }
+
+                // 统一去掉行尾 CR（Windows CRLF 换行）
+                for (auto& s : lines)
+                    if (!s.empty() && s.back() == '\r')
+                        s.pop_back();
+
                 return lines;
-        }
+            }
 
-        // 获取当前文件大小
-        file.seekg(0, std::ios::end);
-        std::streampos currentSize = file.tellg();
-        if (currentSize == std::streampos(-1))
-        {
-            // 文件可能被删/被锁，重试
-            file.clear();
-            return lines;
-        }
-
-        // 文件被截断（游戏重启，latest.log 被清空）→ 从 0 重新读
-        if (currentSize < lastPos)
-            lastPos = 0;
-
-        if (currentSize == lastPos)
-            return lines; // 无新增
-
-        // 定位并读取
-        file.clear();
-        file.seekg(lastPos);
-        std::string line;
-        std::streampos readStart = lastPos;
-        while (std::getline(file, line))
-            lines.push_back(line);
-
-        // 处理 UTF-8 BOM（仅当从头读且文件带 BOM 时）
-        if (readStart == 0 && !lines.empty())
-        {
-            const std::string& first = lines[0];
-            if (first.size() >= 3 &&
-                static_cast<unsigned char>(first[0]) == 0xEF &&
-                static_cast<unsigned char>(first[1]) == 0xBB &&
-                static_cast<unsigned char>(first[2]) == 0xBF)
+            // 提取 [CHAT] 后的完整聊天消息原始文本（不解析发送者/前缀/颜色码），成功返回 true
+            static bool parseChatLine(const std::string& line, ChatMessage& msg)
             {
-                lines[0] = first.substr(3);
+                const std::string chatTag = "[CHAT]";
+                const size_t chatPos = line.find(chatTag);
+                if (chatPos == std::string::npos)
+                    return false;
+
+                msg.raw = line;
+                std::string content = line.substr(chatPos + chatTag.length());
+
+                // 去掉前导空白："[CHAT] xxx"
+                const size_t start = content.find_first_not_of(" \t");
+                if (start == std::string::npos)
+                    return false;
+                content = content.substr(start);
+
+                // 仅去除颜色码，保留其余原始文本
+                msg.content = removeColorCodes(content);
+                msg.sender.clear();
+                return true;
             }
-        }
 
-        // 更新偏移：如果结尾是不完整行（没有换行符），
-        // 保留该行下次再读，避免读到半行
-        if (!lines.empty())
-        {
-            file.clear();
-            file.seekg(0, std::ios::end);
-            std::streampos fileEnd = file.tellg();
-
-            // 检查文件末尾是否为换行符 '\n'
-            bool endsWithNewline = false;
-            if (fileEnd > 0)
+            // 去颜色码：UTF-8 编码的 0xC2 0xA7（§）及其后的一个格式码字符
+            static std::string removeColorCodes(const std::string& input)
             {
-                file.seekg(fileEnd - std::streampos(1));
-                char lastChar = 0;
-                file.read(&lastChar, 1);
-                endsWithNewline = (lastChar == '\n');
+                std::string out;
+                out.reserve(input.size());
+                for (size_t i = 0; i < input.size(); ++i)
+                {
+                    if (i + 2 < input.size() && (unsigned char)input[i] == 0xC2 && (unsigned char)input[i + 1] == 0xA7)
+                        i += 2;      // 跳过 §、下一字符（颜色/格式码）由 for 递增跳过
+                    else
+                        out += input[i];
+                }
+                return out;
             }
 
-            if (!endsWithNewline && fileEnd == currentSize)
+        private:
+            std::string logPath;
+            PathProvider pathProvider;
+            std::ifstream file;
+            std::streampos lastPos = 0;
+            bool everOpened = false;         // 是否成功打开过（决定首开是否跳过已有）
+            std::mutex fileMutex;
+
+            std::thread worker;
+            std::atomic<bool> running = false;
+
+            MessageCallback callback;
+        };
+
+        struct ChatMsgEntry
+        {
+            size_t seq;
+            std::string sender;
+            std::string content;
+            std::string raw;
+        };
+
+        class ChatManager
+        {
+        public:
+            static ChatManager& instance()
             {
-                // 最后一行还没写完，把它推回去下次再读
-                lastPos = currentSize - std::streamoff(lines.back().size());
-                lines.pop_back();
+                static ChatManager inst;
+                return inst;
             }
-            else
-                lastPos = fileEnd;
-        }
 
-        return lines;
-    }
-
-    // 无锁版本的 open（供已持锁的 readNewLines 内部使用）
-    bool openFileUnlocked(bool skipExisting) {
-        if (file.is_open()) file.close();
-        file.clear();
-        file.open(logPath, std::ios::binary);
-        if (!file.is_open())
-            return false;
-        if (skipExisting)
-        {
-            file.seekg(0, std::ios::end);
-            lastPos = file.tellg();
-        }
-        else
-        {
-            file.seekg(0, std::ios::beg);
-            lastPos = 0;
-        }
-        if (lastPos == std::streampos(-1))
-            lastPos = 0;
-        return true;
-    }
-
-    // 命中 [CHAT] 则填充 msg 并返回 true
-    bool parseChatLine(const std::string& line, ChatMessage& msg)
-    {
-        const std::string chatTag = "[CHAT]";
-        size_t chatPos = line.find(chatTag);
-        if (chatPos == std::string::npos) return false;
-
-        msg.raw = line;
-        std::string rawContent = line.substr(chatPos + chatTag.length());
-
-        // 去掉首部空格（"[CHAT] xxx" 中通常有一个空格）
-        size_t start = rawContent.find_first_not_of(" \t");
-        if (start == std::string::npos) return false;
-        rawContent = rawContent.substr(start);
-
-        // 去颜色代码
-        std::string cleaned = removeColorCodes(rawContent);
-
-        static const std::regex reAngle(R"(^<([^>]+)>\s*(.*)$)");
-        static const std::regex reColon(R"(^([^:]{1,64}):\s*(.*)$)");
-
-        std::smatch m;
-        if (std::regex_match(cleaned, m, reAngle))
-        {
-            msg.sender = m[1].str();
-            msg.content = m[2].str();
-        }
-        else if (std::regex_match(cleaned, m, reColon))
-        {
-            msg.sender = m[1].str();
-            msg.content = m[2].str();
-        }
-        else
-        {
-            // 系统消息 / 无发送者格式
-            msg.sender.clear();
-            msg.content = cleaned;
-        }
-        return true;
-    }
-
-    // 移除 Minecraft 颜色/格式代码（§ 的 UTF-8 编码是 C2 A7）
-    static std::string removeColorCodes(const std::string& input) {
-        std::string out;
-        out.reserve(input.size());
-        for (size_t i = 0; i < input.size(); ++i) {
-            if (i + 2 < input.size() &&
-                static_cast<unsigned char>(input[i]) == 0xC2 &&
-                static_cast<unsigned char>(input[i + 1]) == 0xA7) {
-                i += 2; // 跳过 § 及其后的一个字符（颜色/格式码）
+            bool OpenReader(const std::string& scriptFile)
+            {
+                bool shouldStart = false;
+                {
+                    std::lock_guard<std::mutex> lk(mtx);
+                    if (cursors.find(scriptFile) == cursors.end())
+                    {
+                        cursors.emplace(scriptFile, CurrentHeadLocked());
+                        shouldStart = (cursors.size() == 1);
+                    }
+                }
+                if (shouldStart)
+                    EnsureRunning();
+                // 初始化/读取可用时才返回 true
+                return ReaderAvailable();
             }
-            else {
-                out += input[i];
+
+            void CloseReader(const std::string& scriptFile)
+            {
+                std::unique_ptr<Reader> stopped;
+                {
+                    std::lock_guard<std::mutex> lk(mtx);
+                    cursors.erase(scriptFile);
+                    if (cursors.empty())
+                    {
+                        running = false;
+                        stopped = std::move(reader);
+                        messages.clear();
+                        nextSeq = 0;
+                    }
+                }
+                if (stopped)
+                    stopped->stop();
             }
-        }
-        return out;
+
+            bool GetNewMsg(const std::string& scriptFile, std::string& outContent)
+            {
+                std::lock_guard<std::mutex> lk(mtx);
+                auto it = cursors.find(scriptFile);
+                if (it == cursors.end())
+                    return false;
+                for (const auto& m : messages)
+                {
+                    if (m.seq >= it->second)
+                    {
+                        it->second = m.seq + 1;
+                        outContent = m.content;
+                        PruneLocked();
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+        private:
+            ChatManager() = default;
+            ~ChatManager()
+            {
+                if (reader)
+                    reader->stop();
+            }
+            ChatManager(const ChatManager&) = delete;
+            ChatManager& operator=(const ChatManager&) = delete;
+
+            size_t CurrentHeadLocked() const
+            {
+                return messages.empty() ? nextSeq : messages.front().seq;
+            }
+
+            // reader 存在且日志文件当前可打开，才视为可用
+            bool ReaderAvailable()
+            {
+                std::lock_guard<std::mutex> lk(mtx);
+                return reader && reader->IsAvailable();
+            }
+
+            void EnsureRunning()
+            {
+                std::lock_guard<std::mutex> lk(mtx);
+                if (running)
+                    return;
+                // 通过动态路径提供器延迟解析 latest.log：
+                // 游戏尚未启动时也能在启动后自动恢复读取
+                reader = std::make_unique<Reader>([]
+                {
+                    return GetMinecraftLogPath(GameHwnd);
+                });
+                reader->setCallback([this](const Reader::ChatMessage& m)
+                {
+                    std::lock_guard<std::mutex> lk(mtx);
+                    if (!running)
+                        return;
+                    messages.push_back(ChatMsgEntry{ nextSeq++, m.sender, m.content, m.raw });
+                    PruneLocked();
+                });
+                running = true;
+                reader->start();
+            }
+
+            void PruneLocked()
+            {
+                const size_t kMaxMessages = 1024;
+                while (!messages.empty())
+                {
+                    const size_t oldest = messages.front().seq;
+                    bool allRead = true;
+                    for (const auto& kv : cursors)
+                    {
+                        if (kv.second <= oldest)
+                        {
+                            allRead = false;
+                            break;
+                        }
+                    }
+                    if (!(allRead || messages.size() > kMaxMessages))
+                        break;
+                    messages.pop_front();
+                }
+            }
+
+            mutable std::mutex mtx;
+            std::unordered_map<std::string, size_t> cursors;
+            std::deque<ChatMsgEntry> messages;
+            size_t nextSeq = 0;
+            bool running = false;
+            std::unique_ptr<Reader> reader;
+        };
     }
-
-private:
-    std::string logPath;
-    std::string path;               // 未使用，保留占位
-    std::ifstream file;
-    std::streampos lastPos = 0;
-    std::mutex fileMutex;
-
-    std::thread worker;
-    std::atomic<bool> running = false;
-
-    MessageCallback callback;
-};
-
-DWORD WINAPI MinecraftChatReaderThread(LPVOID lpParam)
-{
-    HWND* hwnd = (HWND*)lpParam;
-    while (*hwnd == NULL)
-        Sleep(200);
-    cout << "Asdasdas" << endl;
-    MinecraftChatReader reader(GetMinecraftGameDir(*hwnd));
-
-    reader.setCallback([](const MinecraftChatReader::ChatMessage& msg)
-        {
-            if (msg.sender.empty())
-                std::cout << "[系统] " << msg.content << "\n";
-            else
-                std::cout << "[" << msg.sender << "] " << msg.content << "\n";
-        });
-
-    reader.start();
-
-    // 按回车退出
-    std::cin.get();
-    reader.stop();
-    return 0;
 }
+
 
 // 当前脚本线程正在执行的脚本 file（thread_local：每个脚本线程/主线程各自独立）。
 // 用途：让 ScriptAPI（IsScriptKeyDown/Up/Click、SetScriptLoopDelay）无需遍历 LuaStates 即可
@@ -1310,6 +1434,34 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "IsPlayerMoving的参数太多");
         lua_pushboolean(L, ::IsMoving);
+        return 1;
+    }
+
+    int MinecraftChatOpenReader(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "minecraft.chat.OpenReader的参数太多");
+        if (CurrentScriptFile.empty())
+        {
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        const bool ok = Minecraft::chat::ChatManager::instance().OpenReader(CurrentScriptFile);
+        lua_pushboolean(L, ok ? 1 : 0);
+        return 1;
+    }
+
+    int MinecraftChatGetNewMsg(lua_State* L)
+    {
+        if (lua_gettop(L) != 0)
+            luaL_error(L, "minecraft.chat.GetNewMsg的参数太多");
+        std::string content;
+        if (!CurrentScriptFile.empty() && Minecraft::chat::ChatManager::instance().GetNewMsg(CurrentScriptFile, content))
+        {
+            lua_pushstring(L, UTF8ToString(content).c_str());
+            return 1;
+        }
+        lua_pushnil(L);
         return 1;
     }
 

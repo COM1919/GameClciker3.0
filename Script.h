@@ -138,6 +138,14 @@ lua_State* LuaInit()
         lua_pushcfunction(L, ScriptAPI::MoveCursorX);        lua_setglobal(L, "MoveCursorX");
         lua_pushcfunction(L, ScriptAPI::MoveCursorY);        lua_setglobal(L, "MoveCursorY");
         lua_pushcfunction(L, ScriptAPI::GetItemBarKey);      lua_setglobal(L, "GetItemBarKey");
+        lua_newtable(L);
+        lua_newtable(L);
+        lua_pushcfunction(L, ScriptAPI::MinecraftChatOpenReader);
+        lua_setfield(L, -2, "OpenReader");
+        lua_pushcfunction(L, ScriptAPI::MinecraftChatGetNewMsg);
+        lua_setfield(L, -2, "GetNewMsg");
+        lua_setfield(L, -2, "chat");
+        lua_setglobal(L, "minecraft");
         
         //=================================================GUI的API=================================================
         lua_pushcfunction(L, ScriptAPI::IsCloseUI);          lua_setglobal(L, "IsCloseUI");
@@ -595,6 +603,7 @@ HANDLE StartScript(const string& file)
             lock_guard<mutex> run_lock(lua->RunningMtx);
             lua->release();
         }
+        Minecraft::chat::ChatManager::instance().CloseReader(file);
         MarkNotRunning();   // 正常退出：复位运行标记（供"启用"开关下次启动）
         PrintLog("[Script] 脚本线程退出：" + file, PL_INFO);
     };

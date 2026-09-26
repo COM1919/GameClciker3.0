@@ -555,7 +555,6 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     CreateThreadSafe(SystemMsgHookLoop, NULL, 0, "SystemMsgHookLoop");
     CreateThreadSafe(NetworkClientThread, NULL, 0, "NetworkClientThread");
     CreateThreadSafe(ScriptKeyControlThread, NULL, 0, "ScriptKeyControlThread");
-    CreateThreadSafe(MinecraftChatReaderThread, &GameHwnd, 0, "MinecraftChatReaderThread");
 
     //CreateThreadSafe(GameGuiThread, NULL, 0, "GameGuiThread");
 
