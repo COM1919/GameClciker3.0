@@ -250,7 +250,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
     while (UseServerOfType < 0)
         Sleep(100);
     string content;
-    if (ReadURLDatas((UseServerOfType == 1) ? URL_LZY_CONNECT : URL_GITEE_CONNECT, content) > 0)
+    if (ReadURLDatas((UseServerOfType == 2) ? URL_LZY_CONNECT : URL_GITEE_CONNECT, content) > 0)
     {
         if (UseServerOfType == 1)
         {
@@ -282,7 +282,6 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
             continue;
         }
 
-        int err = 0;
         bool IsShowedError = false;
         while (true)
         {
@@ -292,8 +291,9 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
             string ip = NetworkClient.ResolveDomain(ServerIP);
             if (ip == "0")
             {
-                PrintLog("[Server] 服务器域名解析失败", PL_ERROR);
-                return 1;
+                PrintLog("[Server] 服务器域名解析失败，5秒后重试", PL_ERROR);
+                Sleep(5000);
+                continue;
             }
             
             bool HasError = false;
@@ -328,10 +328,11 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
 
             if (HasError && !IsShowedError)
             {
-                PrintLog("[Server] 服务器连接失败，错误代码:" + to_string(err), PL_ERROR);
+                PrintLog("[Server] 服务器连接失败，错误代码:" + to_string(WSAGetLastError()), PL_ERROR);
                 PrintLog("[Server] 将尝试重复连接服务器，直到成功", PL_INFO);
                 IsShowedError = true;
             }
+            Sleep(1000);   // 连接失败后稍作等待再重试，避免忙转
         }
 
         PrintLog("[Server] 服务器连接成功！", PL_INFO);
@@ -340,6 +341,8 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
         IsServerClosed = false;
         while (!IsServerClosed)
         {
+            if (IsGCExit)   // 退出时立即中断，避免套接字关闭后仍在等待心跳超时
+                break;
             if (!AllowConnectServer)
                 return 0;
 

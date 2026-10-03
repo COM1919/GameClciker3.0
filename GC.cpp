@@ -159,6 +159,8 @@ int StartUpGC(HINSTANCE hInstance)
     PrintLog("[Render] 释放GUI", PL_INFO);
     // 先关闭脚本线程, 避免其仍在用 D3D 加载纹理(LoadTextureFromFile)时 ReleasGui 释放设备
     CloseAllLua();
+    // 停止并等待所有后台线程结束，再释放 GUI/全局对象，避免退出时访问已析构内存
+    StopAndWaitBackgroundThreads();
     ReleasGui(wcex, &MainGuiData);
 
     PrintLog("[Render] 释放Dx11", PL_INFO);
@@ -177,8 +179,6 @@ int StartUpGC(HINSTANCE hInstance)
 
     SaveConfig(GetPresetFile(PresetConfig::CurrentName));
 
-    PrintLog("[Render] 等待其他线程退出 - 你是不是闲着来看日志了awa", PL_INFO);
-    Sleep(450);
     PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
     return 1919;
 }

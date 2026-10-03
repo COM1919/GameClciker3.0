@@ -1,5 +1,6 @@
 #pragma once
 #include "Definitons.h"
+#include <chrono>
 
 #define PL_INFO     0
 #define PL_WARNING  1
@@ -27,6 +28,7 @@ string LogContext; // 完整日志内容，用于imgui显示
 mutex LogQueueMtx; // 更轻量的互斥锁
 condition_variable LogQueueCv;  // 条件变量
 static deque<LogItem> LogQueue; // erase开头元素和push back都比vector快！！！
+atomic<bool> LogThreadExited = false;  // 日志线程是否已退出
 
 // 调试模式标志：命令行带 "debug" 参数时置 true（GC.exe debug）。
 // 开启后 PrintLog 同步 cout 输出原始日志（崩溃前可立即看到，不依赖异步写日志线程）。
@@ -49,68 +51,73 @@ void InitLogSystem(const string& filename)
 static void WriteLogThread()
 {
     static fstream fLog(LogFilePath, ios::app | ios::out);
-    while (!IsGCExit)
+    // 退出时先把队列里剩下的日志写完，避免主线程退出时全局对象被销毁而本线程仍在访问
+    while (!IsGCExit || !LogQueue.empty())
     {
-        if (LogQueue.size() > 0)
+        LogItem item;
+        bool has = false;
         {
-            LogItem item;
+            unique_lock<mutex> lock(LogQueueMtx);
+            if (LogQueue.empty())
             {
-                unique_lock<mutex> lock(LogQueueMtx);
-                // 条件等待：队列为空时释放锁并阻塞，直到被唤醒且队列非空
-                LogQueueCv.wait(lock, [] { return !LogQueue.empty(); });
-
-                // 取出队首元素
-                item = move(LogQueue.front());
-                LogQueue.pop_front();
-            } // 锁在此处释放，不影响后续耗时的 IO 操作
-
-             // 无锁区域：处理日志输出（耗时操作）
-            const string FullTimeStr = FormatTime(item.time);
-            const string SimpleTimeStr = FormatTime(item.time, true);
-            const string TypeStr = (item.type == PL_INFO) ? "info" : (item.type == PL_WARNING) ? "warning" : "error";
-            fLog << "[" + FullTimeStr + "] " + TypeStr + " : " + item.str + "\n";
-            fLog.flush();
-
-            const string SimpleText = "&7[" + SimpleTimeStr + "] " + TypeStr + " : " + item.str + "\n";
-
-            {
-                const string TypeStr = (item.type == PL_INFO) ? "&finfo" : (item.type == PL_WARNING) ? "&ewarning" : "&cerror";
-                lock_guard<mutex> lock(LogContextMtx);
-                LogContext += ("&7[" + SimpleTimeStr + "] " + TypeStr + " : " + item.str + "\n");
-                while (LogContext.size() > 1024 * 40)
-                {
-                    size_t CutPos = LogContext.find('\n', 512);
-                    if (CutPos != string::npos)
-                        LogContext.erase(0, CutPos + 1);
-                }
+                if (IsGCExit)
+                    break;
+                // 使用带超时的等待，保证 IsGCExit 后能及时退出（原 wait 无超时会永久阻塞）
+                LogQueueCv.wait_for(lock, chrono::milliseconds(50));
+                if (LogQueue.empty())
+                    continue;
             }
+            item = move(LogQueue.front());
+            LogQueue.pop_front();
+            has = true;
+        }
+        if (!has)
+            continue;
+
+        const string FullTimeStr = FormatTime(item.time);
+        const string SimpleTimeStr = FormatTime(item.time, true);
+        const string TypeStr = (item.type == PL_INFO) ? "info" : (item.type == PL_WARNING) ? "warning" : "error";
+        fLog << "[" + FullTimeStr + "] " + TypeStr + " : " + item.str + "\n";
+        fLog.flush();
+
+        const string SimpleText = "&7[" + SimpleTimeStr + "] " + TypeStr + " : " + item.str + "\n";
+
+        {
+            const string TypeStr2 = (item.type == PL_INFO) ? "&finfo" : (item.type == PL_WARNING) ? "&ewarning" : "&cerror";
+            lock_guard<mutex> lock(LogContextMtx);
+            LogContext += ("&7[" + SimpleTimeStr + "] " + TypeStr2 + " : " + item.str + "\n");
+            while (LogContext.size() > 1024 * 40)
+            {
+                size_t CutPos = LogContext.find('\n', 512);
+                if (CutPos != string::npos)
+                    LogContext.erase(0, CutPos + 1);
+            }
+        }
 
 #ifdef GC_DEBUG_CMD
-            switch (item.type)
-            {
-            case PL_INFO:
-                SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-                break;
-            case PL_WARNING:
-                SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_RED);
-                break;
-            case PL_ERROR:
-                SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
-                break;
-            }
-            cout << SimpleText;
-            cout.flush();
+        switch (item.type)
+        {
+        case PL_INFO:
+            SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+            break;
+        case PL_WARNING:
+            SetConsoleColor(FOREGROUND_GREEN | FOREGROUND_RED);
+            break;
+        case PL_ERROR:
+            SetConsoleColor(FOREGROUND_RED | FOREGROUND_INTENSITY);
+            break;
+        }
+        cout << SimpleText;
+        cout.flush();
 #endif // GC_DEBUG_CMD
 
 #ifdef GC_DEBUG_VS
-            OutputDebugString(SimpleText.c_str());
+        OutputDebugString(SimpleText.c_str());
 #endif // GC_DEBUG_VS
 
-            Sleep(1);
-        }
-        else
-            Sleep(50); // 空闲时每秒20次
+        Sleep(1);
     }
+    LogThreadExited = true;
 }
 
 static string FormatTime(time_t time, bool OnlyOneDay)

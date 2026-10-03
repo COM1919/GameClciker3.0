@@ -749,6 +749,10 @@ static DWORD WINAPI SafeThreadEntry(LPVOID lpContext)
 	return ExitCode;
 }
 
+// 前台线程句柄登记表：用于进程退出时等待所有后台线程结束后再销毁全局对象
+static vector<HANDLE> BackgroundThreads;
+static mutex BackgroundThreadsMtx;
+
 HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, LPDWORD lpThreadId, const string& name)
 {
 	// 在堆上创建上下文，确保新线程能访问到
@@ -764,8 +768,54 @@ HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParamete
 		PrintLog("[Thread] " + name + "线程创建失败", PL_ERROR);
 	}
 	else
+	{
 		PrintLog("[Thread] " + name + "线程已启动", PL_INFO);
+		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		BackgroundThreads.push_back(hThread);
+	}
 	return hThread;
+}
+
+// 退出前调用：先置 IsGCExit 并关闭网络套接字解锁阻塞接收，
+// 再等待所有登记的后台线程结束，最后等待日志线程排空队列，
+// 确保全局对象析构时没有任何线程仍在访问它们。
+void StopAndWaitBackgroundThreads()
+{
+	IsGCExit = true;
+	NetworkClient.CloseSocket();
+
+	vector<HANDLE> handles;
+	{
+		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		handles = BackgroundThreads;
+	}
+	if (!handles.empty())
+	{
+		const DWORD count = (DWORD)handles.size();
+		if (count <= 60)
+		{
+			const DWORD wr = WaitForMultipleObjects(count, handles.data(), TRUE, 5000);
+			if (wr == WAIT_TIMEOUT)
+				PrintLog("[Thread] 部分后台线程超时未退出，继续退出流程", PL_WARNING);
+		}
+		else
+		{
+			for (HANDLE h : handles)
+				WaitForSingleObject(h, 2000);
+		}
+	}
+	{
+		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		for (HANDLE h : handles)
+			if (h && h != INVALID_HANDLE_VALUE) CloseHandle(h);
+		BackgroundThreads.clear();
+	}
+
+	// 等待日志线程把队列写完后退出
+	for (int i = 0; i < 300 && !LogThreadExited; ++i)
+		Sleep(10);
+	if (!LogThreadExited)
+		PrintLog("[Thread] 日志线程超时未退出", PL_WARNING);
 }
 
 void ClearProcessMemory()
