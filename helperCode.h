@@ -83,6 +83,7 @@ bool RemoveStartup(const string& file = "0");
 int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
 bool RemoveFollowStartup();
 bool DeleteDirectoryRecursively(const string& dirPath);
+inline void FlushUsageDuration();
 static DWORD WINAPI SafeThreadEntry(LPVOID lpContext);
 HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, LPDWORD lpThreadId, const string& name);
 bool IsCursorHidden();
@@ -99,9 +100,27 @@ inline string RemoveBeforeString(const string& str, const string& before);
 inline int FindFirstMissingNumber(const vector<int>& numbers, int max);
 inline void ReplaceString(string& str, const string& to_find, const string& to_replace);
 inline void SplitString(const string& str, const string& sep, vector<string>& res);
+inline string RemoveEnter(const string& str);
 inline string RemoveSubString(const string& original, const string& toRemove);
 inline string ExtractString(const string& str, const string& start, const string& end);
 inline double FileTimeToDouble(const FILETIME* ft);
+inline string FormatDuration(long double hours);
+
+inline void FlushUsageDuration()
+{
+	lock_guard<mutex> lock(UsageDurationMtx);
+	const ULONGLONG Now = GetTickCount64();
+	if (UsageDurationLastTick == 0)   // 首次调用只记录起点
+	{
+		UsageDurationLastTick = Now;
+		return;
+	}
+	if (Now > UsageDurationLastTick)
+	{
+		app_status.UsageDuration += (long double)(Now - UsageDurationLastTick) / 3600000.0L;   // 毫秒 -> 小时
+		UsageDurationLastTick = Now;
+	}
+}
 
 class SmoothCPS
 {
@@ -334,6 +353,19 @@ inline string RemoveSubString(const string& original, const string& toRemove)
 	return result;
 }
 
+inline string RemoveEnter(const string& str)
+{
+	string result;
+	result.reserve(str.size()); // 预留空间，减少扩容
+	for (char ch : str)
+	{
+		// 删除 '\n' 和 '\r'，兼容 Unix、Windows、旧 Mac 换行
+		if (ch != '\n' && ch != '\r')
+			result.push_back(ch);
+	}
+	return result;
+}
+
 inline string ExtractString(const string& str, const string& start, const string& end)
 {
 	size_t startPos = str.find(start);
@@ -355,6 +387,22 @@ inline double FileTimeToDouble(const FILETIME* ft)
 	uli.LowPart = ft->dwLowDateTime;
 	uli.HighPart = ft->dwHighDateTime;
 	return static_cast<double>(uli.QuadPart);
+}
+
+// 时长显示格式化   不足 1 小时显示整数分钟（四舍五入）| 达到 1 小时显示 x.x 小时（四舍五入保留一位小数）
+inline string FormatDuration(long double hours)
+{
+	const double h = (double)hours;
+	char num[32] = { 0 };
+	if (h < 1.0)
+	{
+		snprintf(num, sizeof(num), "%lld", (long long)(h * 60.0 + 0.5));
+		return string(num) + (config.UseChinese ? "分钟" : " min");
+	}
+	// 四舍五入到一位小数（printf 的 %.1f 默认是银行家舍入，这里显式进位）
+	const double rounded = floor(h * 10.0 + 0.5) / 10.0;
+	snprintf(num, sizeof(num), "%.1f", rounded);
+	return string(num) + (config.UseChinese ? "小时" : " h");
 }
 
 POINT GetGameWindowCenter(HWND hwnd)

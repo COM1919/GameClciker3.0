@@ -515,30 +515,47 @@ void SaveGlobalConfig()
 
 	//-----------------------统计信息-----------------------
 	{
-		HKEY hKey;
-		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
-			REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS)
+		// 保存前先把本会话已使用时间计入总时长
+		FlushUsageDuration();
+
+		HKEY hKey = NULL;
+		const LSTATUS StatsCreateRet = RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
+			REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, &hKey, NULL);
+		if (StatsCreateRet != ERROR_SUCCESS)
 		{
+			// 注册表不可用时只记录日志，不打断配置保存
+			PrintLog("[Stats] 创建注册表统计项失败，错误码：" + to_string(StatsCreateRet), PL_ERROR);
+		}
+		else
+		{
+			// 写入注册表统计项，失败只记录日志
+			auto WriteStat = [hKey](const char* name, DWORD type, const void* data, DWORD size)
+			{
+				const LSTATUS ret = RegSetValueEx(hKey, name, 0, type, (const BYTE*)data, size);
+				if (ret != ERROR_SUCCESS)
+					PrintLog(string("[Stats] 写入注册表统计项 ") + name + " 失败，错误码：" + to_string(ret), PL_ERROR);
+			};
+
 			ULONGLONG val = app_status.ClickerClickCount.left;
-			RegSetValueEx(hKey, "0", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+			WriteStat("0", REG_QWORD, &val, sizeof(val));
 
 			val = app_status.ClickerClickCount.right;
-			RegSetValueEx(hKey, "1", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+			WriteStat("1", REG_QWORD, &val, sizeof(val));
 
 			val = app_status.MouseClickCount.left;
-			RegSetValueEx(hKey, "2", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+			WriteStat("2", REG_QWORD, &val, sizeof(val));
 
 			val = app_status.MouseClickCount.right;
-			RegSetValueEx(hKey, "3", 0, REG_QWORD, (const BYTE*)&val, sizeof(val));
+			WriteStat("3", REG_QWORD, &val, sizeof(val));
 
 			unsigned int uval = app_status.StartCount;
-			RegSetValueEx(hKey, "4", 0, REG_DWORD, (const BYTE*)&uval, sizeof(uval));
+			WriteStat("4", REG_DWORD, &uval, sizeof(uval));
 
 			// UsageDuration -> 转为字符串存储
 			stringstream ss;
 			ss << fixed << setprecision(18) << (long double)app_status.UsageDuration;
 			string str = ss.str();
-			RegSetValueEx(hKey, "5", 0, REG_SZ, (const BYTE*)str.c_str(), (DWORD)(str.size() + 1));
+			WriteStat("5", REG_SZ, str.c_str(), (DWORD)(str.size() + 1));
 
 			RegCloseKey(hKey);
 		}
@@ -1046,49 +1063,59 @@ void LoadGlobalConfig()
 
 	//==================================================统计信息==================================================
 	{
-		HKEY hKey;
-		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
-			REG_OPTION_NON_VOLATILE, KEY_READ, NULL, &hKey, NULL) == ERROR_SUCCESS)
+		HKEY hKey = NULL;
+		// 读取改用 RegOpenKeyEx：键不存在（首次运行）时不创建空键
+		const LSTATUS StatsOpenRet = RegOpenKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, KEY_READ, &hKey);
+		if (StatsOpenRet != ERROR_SUCCESS)
 		{
-			DWORD type, size;
-
-			ULONGLONG temp;
-			size = sizeof(temp);
-			if (RegQueryValueEx(hKey, "0", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
-				type == REG_QWORD && size == sizeof(temp))
-				app_status.ClickerClickCount.left = temp;
-
-			size = sizeof(temp);
-			if (RegQueryValueEx(hKey, "1", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
-				type == REG_QWORD && size == sizeof(temp))
-				app_status.ClickerClickCount.right = temp;
-
-			size = sizeof(temp);
-			if (RegQueryValueEx(hKey, "2", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
-				type == REG_QWORD && size == sizeof(temp))
-				app_status.MouseClickCount.left = temp;
-
-			size = sizeof(temp);
-			if (RegQueryValueEx(hKey, "3", NULL, &type, (LPBYTE)&temp, &size) == ERROR_SUCCESS &&
-				type == REG_QWORD && size == sizeof(temp))
-				app_status.MouseClickCount.right = temp;
-
-			unsigned int tempUInt;
-			size = sizeof(tempUInt);
-			if (RegQueryValueEx(hKey, "4", NULL, &type, (LPBYTE)&tempUInt, &size) == ERROR_SUCCESS &&
-				type == REG_DWORD && size == sizeof(tempUInt))
-				app_status.StartCount = tempUInt;
-
-			char buffer[64] = { 0 };
-			size = sizeof(buffer);
-			if (RegQueryValueEx(hKey, "5", NULL, &type, (LPBYTE)buffer, &size) == ERROR_SUCCESS &&
-				type == REG_SZ)
+			// 首次运行或注册表被清理时没有统计项属正常，只记录日志
+			PrintLog("[Stats] 打开注册表统计项失败（首次运行属正常），错误码：" + to_string(StatsOpenRet), PL_WARNING);
+		}
+		else
+		{
+			// 读取固定长度的统计项；失败（值不存在除外）只记录日志
+			auto ReadStat = [hKey](const char* name, DWORD expectType, void* out, DWORD expectSize) -> bool
 			{
-				try {
-					long double val = std::stold(buffer);
-					app_status.UsageDuration = val;
+				DWORD type = 0, size = expectSize;
+				const LSTATUS ret = RegQueryValueEx(hKey, name, NULL, &type, (LPBYTE)out, &size);
+				if (ret == ERROR_SUCCESS && type == expectType && size == expectSize)
+					return true;
+				if (ret != ERROR_FILE_NOT_FOUND)
+					PrintLog(string("[Stats] 读取注册表统计项 ") + name + " 失败，错误码：" + to_string(ret), PL_WARNING);
+				return false;
+			};
+
+			ULONGLONG temp = 0;
+			if (ReadStat("0", REG_QWORD, &temp, sizeof(temp))) app_status.ClickerClickCount.left = temp;
+			if (ReadStat("1", REG_QWORD, &temp, sizeof(temp))) app_status.ClickerClickCount.right = temp;
+			if (ReadStat("2", REG_QWORD, &temp, sizeof(temp))) app_status.MouseClickCount.left = temp;
+			if (ReadStat("3", REG_QWORD, &temp, sizeof(temp))) app_status.MouseClickCount.right = temp;
+
+			unsigned int tempUInt = 0;
+			if (ReadStat("4", REG_DWORD, &tempUInt, sizeof(tempUInt))) app_status.StartCount = tempUInt;
+
+			// UsageDuration 以字符串存储：用足够大的缓冲区读取，避免原 64 字节缓冲被截断
+			char durationBuf[128] = { 0 };
+			DWORD type5 = 0, size5 = sizeof(durationBuf);
+			const LSTATUS ret5 = RegQueryValueEx(hKey, "5", NULL, &type5, (LPBYTE)durationBuf, &size5);
+			if (ret5 == ERROR_SUCCESS && type5 == REG_SZ)
+			{
+				try
+				{
+					app_status.UsageDuration = std::stold(durationBuf);
 				}
-				catch (...){}
+				catch (...)
+				{
+					PrintLog("[Stats] 使用时长字符串解析失败：" + string(durationBuf), PL_WARNING);
+				}
+			}
+			else if (ret5 == ERROR_MORE_DATA)
+			{
+				PrintLog("[Stats] 注册表中的使用时长字符串过长，已跳过", PL_WARNING);
+			}
+			else if (ret5 != ERROR_FILE_NOT_FOUND)
+			{
+				PrintLog("[Stats] 读取注册表统计项 5 失败，错误码：" + to_string(ret5), PL_WARNING);
 			}
 
 			RegCloseKey(hKey);

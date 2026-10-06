@@ -25,7 +25,7 @@
 #define MAX_CPS          40   //最大CPS
 #define MIN_CPS          1    //最小CPS
 #define MAX_TRYVALUE     3    //最大尝试次数
-#define MAX_SCRIPT_ERROR_RECORDS 100 //最多保留的脚本报错记录数
+#define MAX_SCRIPT_ERROR_RECORDS 20 //最多保留的脚本报错记录数
 
 //托盘图标消息
 #define WM_TRAYICON (WM_USER + 1145)
@@ -413,7 +413,7 @@ namespace Sponsor
 }
 
 const string version = "3.57";          //版本号
-string title = "GAMECLICKER 3.57 内部测试版 / 新增脚本API";      //标题名字
+string title = "GAMECLICKER 3.57";      //标题名字
 constexpr int ConfigVersion = 5;        //配置文件版本号
 constexpr int AgreementVersion = 8;     //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
@@ -432,7 +432,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -658,7 +658,7 @@ namespace OverheatTimer
     float Heat = 0;                                     //过热保护计时器
     float Cooldown = 0;                                 //过热保护冷却计时器
 }
-int UseServerOfType = -1;                               //使用的服务器的类型
+int UseServerOfType = -1;                               //使用的服务器的类型（1是gitee，2是lzy）
 int ItemBarPos = 1;                                     //物品栏位置
 
 shared_mutex CurrentCPSMutex;
@@ -694,6 +694,9 @@ struct AppStaus
 shared_mutex InitSuccessTimeMutex;
 ULONGLONG StartTime = 0;                                //GC启动时的时间
 ULONGLONG InitSuccessTime = 0;                          //初始化成功的时间
+
+mutex UsageDurationMtx;
+ULONGLONG UsageDurationLastTick = 0;                    // 使用时长统计（累计总时长，单位：小时）
 
 namespace MessageBoxMsg
 {

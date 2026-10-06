@@ -665,7 +665,6 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 			if (config.RClickerMode & C_MOUSESMODE && !(config.RClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static ULONGLONG LastTime = 0;
-				static bool IsStopedClicker = false;
 				const bool IsKeyPressed = GetKeyDown(2, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
@@ -713,7 +712,6 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 						}
 						else
 							SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
-						IsStopedClicker = false;
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
 					}
@@ -727,10 +725,11 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				{
 					IsClickering.right = false;
 					// »Ö¸´Êó±êÔ­Ê¼×´Ì¬
-					if (!IsStopedClicker)
+					const bool HumanDown = GetKeyDown(Click::Right, true, config.ReadKeyStateMode);
+					const bool RealDown = GetKeyDown(Click::Right, false, GK_HOOK);
+					if (HumanDown != RealDown)
 					{
-						IsStopedClicker = true;
-						if (IsKeyPressed) SetKeyDown(Click::Right, config.SimulateClickMode);
+						if (HumanDown) SetKeyDown(Click::Right, config.SimulateClickMode, false);
 						else SetKeyUp(Click::Right, config.SimulateClickMode);
 					}
 				}
@@ -920,7 +919,6 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 			if (config.LClickerMode & C_MOUSESMODE && !(config.LClickerMode & C_ASSISTMODE) && GCHWND != GetForegroundWindow())
 			{
 				static ULONGLONG LastTime = 0;
-				static bool IsStopedClicker = false;
 				const bool IsKeyPressed = GetKeyDown(Click::Left, true, config.ReadKeyStateMode);
 				const bool IsRestTime = config.UseRestTimeOnStopClicker && !IsKeyPressed;
 				bool IsDelayEnd = false;
@@ -968,7 +966,6 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 						}
 						else
 							SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
-						IsStopedClicker = false;
 						ptime.EndSleep(ClickerDynamicDelay.left);
 						goto label_lc_end;
 					}
@@ -982,10 +979,11 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				{
 					IsClickering.left = false;
 					// »Ö¸´Êó±êÔ­Ê¼×´Ì¬
-					if (!IsStopedClicker)
+					const bool HumanDown = GetKeyDown(Click::Left, true, config.ReadKeyStateMode);
+					const bool RealDown = GetKeyDown(Click::Left, false, GK_HOOK);
+					if (HumanDown != RealDown)
 					{
-						IsStopedClicker = true;
-						if (IsKeyPressed) SetKeyDown(Click::Left, config.SimulateClickMode);
+						if (HumanDown) SetKeyDown(Click::Left, config.SimulateClickMode, false);
 						else SetKeyUp(Click::Left, config.SimulateClickMode);
 					}
 				}

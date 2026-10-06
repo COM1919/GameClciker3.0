@@ -37,7 +37,7 @@ void AddLeftClickCPS();
 inline bool GetKeyDown(int key, bool only_human = false, int mode = GK_API);
 inline bool GetKeyUp(int key, bool only_human = false, int mode = GK_API);
 inline bool GetKeyClick(int key, bool only_human = false, int mode = GK_API);
-inline void SetKeyDown(int key, int mode = SC_POST_MESSAGE);
+inline void SetKeyDown(int key, int mode = SC_POST_MESSAGE, bool countStat = true);
 inline void SetKeyUp(int key, int mode = SC_POST_MESSAGE);
 inline void SetKeyClick(int key, int sleep = 20, int mode = SC_POST_MESSAGE);
 
@@ -463,17 +463,21 @@ inline bool GetKeyUp(int key, bool only_human, int mode)
 	return false;
 }
 
-inline void SetKeyDown(int key, int mode)
+inline void SetKeyDown(int key, int mode, bool countStat)
 {
-	if (key == Click::Left)
+	// countStat=false 时只注入按键，不计入连点次数与 CPS（用于停止连点后恢复鼠标状态）
+	if (countStat)
 	{
-		app_status.ClickerClickCount.left++;
-		AddLeftClickCPS();
-	}
-	else if (key == Click::Right)
-	{
-		app_status.ClickerClickCount.right++;
-		AddRightClickCPS();
+		if (key == Click::Left)
+		{
+			app_status.ClickerClickCount.left++;
+			AddLeftClickCPS();
+		}
+		else if (key == Click::Right)
+		{
+			app_status.ClickerClickCount.right++;
+			AddRightClickCPS();
+		}
 	}
 
 	switch (mode)

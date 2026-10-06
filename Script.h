@@ -292,9 +292,9 @@ void ReportScriptError(const string& file, const string& message)
 {
     lock_guard lock(ScriptData::ErrorRecordsMtx);
     ScriptErrorRecord record;
-    record.file = file;
-    record.message = message;
-    record.time = FormatTime(time(0), true);
+    record.file = StringToUTF8(file);
+    record.message = StringToUTF8(message);
+    record.time = StringToUTF8(FormatTime(time(0), true));
     ScriptData::ErrorRecords.push_back(record);
     if (ScriptData::ErrorRecords.size() > MAX_SCRIPT_ERROR_RECORDS)
         ScriptData::ErrorRecords.erase(ScriptData::ErrorRecords.begin());
@@ -308,8 +308,7 @@ static int panic_handler(lua_State* L)
         msg = "(no error message)";
     ::PrintLog("Lua脚本错误: " + msg, PL_ERROR);
     //IsEnableScript = false;
-    msg = StringToUTF8(msg);
-    RenderMessageBox(msg.c_str(), config.UseChinese ? u8"出现致命错误" : "Fatal error occurred", MB_OK);
+    RenderMessageBox(StringToUTF8(msg).c_str(), config.UseChinese ? u8"脚本系统出现致命错误" : "Script system fatal error occurred", MB_OK);
     IsGCExit = true;
     return 0;
 }

@@ -1028,7 +1028,14 @@ void RenderGui(ImGuiIO& io)
                 rotate(tempInstant.begin(), tempInstant.begin() + RRecordsInstantCPS.size(), tempInstant.end());
                 RecordsCPSMutex.unlock();
 
-                Text(config.UseChinese ? u8"右键CPS监控  &b普通CPS &7/ &6瞬时CPS" : "RCPS monitoring  Normal / Instant");
+                TextColored(ImVec4(0.07f, 0.49f, 0.73f, 1.0f), u8"正常CPS");
+                SameLine();
+                Text(u8"/");
+                SameLine();
+                TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), u8"瞬时CPS");
+                SameLine();
+                Text(config.UseChinese ? u8"右键CPS监控" : "RCPS Monitoring");
+
                 const float PosY2 = GetCursorPosY();
                 BeginChild("##RRecordsBeginChild", { 250, 120 }, false, flags);
                 {
@@ -1082,12 +1089,15 @@ void RenderGui(ImGuiIO& io)
                     rotate(tempInstant.begin(), tempInstant.begin() + LRecordsInstantCPS.size(), tempInstant.end());
                 }
 
-                TextColored(ImVec4(0.07f, 0.49f, 0.73f, 1.0f), u8"CPU");
+                TextColored(ImVec4(0.07f, 0.49f, 0.73f, 1.0f), u8"正常CPS");
                 SameLine();
+                SetCursorPosY(PosY);
                 Text(u8"/");
                 SameLine();
-                TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), u8"GPU");
+                SetCursorPosY(PosY);
+                TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), u8"瞬时CPS");
                 SameLine();
+                SetCursorPosY(PosY);
                 Text(config.UseChinese ? u8"左键CPS监控" : "LCPS Monitoring");
 
                 SetCursorPos({ PosX, PosY2 });
@@ -1255,15 +1265,15 @@ void RenderGui(ImGuiIO& io)
                     SetCursorPosX(300);
                     Text("%llu", app_status.ClickerClickCount.right);
 
-                    Text(config.UseChinese ? u8"使用GC的时长：" : "Duration of using GC:");
+                    Text(config.UseChinese ? u8"软件使用时长：" : "Software usage duration:");
                     SameLine();
                     SetCursorPosX(300);
-                    Text("%Lf", app_status.UsageDuration);
+                    Text("%s", FormatDuration(app_status.UsageDuration).c_str());
 
-                    Text(config.UseChinese ? u8"本次使用GC的时长：" : "The duration of using GC this time:");
+                    Text(config.UseChinese ? u8"本次软件使用时长：" : "The duration of software usage this time:");
                     SameLine();
                     SetCursorPosX(300);
-                    Text("%Lf", ThisUseTime);
+                    Text("%s", FormatDuration((long double)ThisUseTime / 60.0L).c_str());
 
                     //-----------------------点击次数的比值-----------------------
                     Text(config.UseChinese ? u8"GC与手动点击次数的比值" : "The ratio of GC to manual clicks");
@@ -4352,7 +4362,7 @@ void RenderGui(ImGuiIO& io)
                             PushID(count);
                             ImVec2 AnimPos = CalcWidgetsAnimHoriz(GetID(label.c_str()));
                             SetNextWindowPos(AnimPos);
-                            BeginChild("##ScriptData::Installed", ImVec2(680, 72), true, flags);
+                            BeginChild("##InstalledScripts", ImVec2(680, 72), true, flags);
                             {
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
@@ -4641,32 +4651,31 @@ void RenderGui(ImGuiIO& io)
                         }
                         else
                         {
-                            BeginChild("##script_error_list", ImVec2(0, 0), true);
+                            // 最新的报错排在最前面
+                            for (int i = (int)errorRecords.size() - 1; i >= 0; i--)
                             {
-                                // 最新的报错排在最前面
-                                for (int i = (int)errorRecords.size() - 1; i >= 0; i--)
+                                const ScriptErrorRecord& record = errorRecords[i];
+                                PushID(i);
+
+                                // 从完整路径中取出文件名作为标题
+                                string shortName = record.file;
                                 {
-                                    const ScriptErrorRecord& record = errorRecords[i];
-                                    PushID(i);
-                                    // 从完整路径中取出文件名作为标题
-                                    string shortName = record.file;
                                     const size_t splitPos = shortName.find_last_of("\\/");
                                     if (splitPos != string::npos)
                                         shortName = shortName.substr(splitPos + 1);
-                                    const string header = shortName + "##script_error_" + to_string(i);
-                                    if (CollapsingHeader(header.c_str()))
-                                    {
-                                        AttachTooltip(record.file.c_str());
-                                        Text(((config.UseChinese ? u8"脚本路径："s : "Path: "s) + record.file).c_str());
-                                        Text(((config.UseChinese ? u8"报错时间："s : "Time: "s) + record.time).c_str());
-                                        string detail = record.message;
-                                        InputTextMultiline(("##script_error_detail_" + to_string(i)).c_str(), &detail, ImVec2(-1, 160), ImGuiInputTextFlags_ReadOnly);
-                                        DrawSpiltLine(GetContentRegionAvail().x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-                                    }
-                                    PopID();
                                 }
+
+                                const string header = shortName + "##script_error_" + to_string(i);
+                                if (CollapsingHeader(header.c_str()))
+                                {
+                                    AttachTooltip(record.file.c_str());
+                                    Text(((config.UseChinese ? u8"脚本路径："s : "Path: "s) + record.file).c_str());
+                                    Text(((config.UseChinese ? u8"报错时间："s : "Time: "s) + record.time).c_str());
+                                    string detail = record.message;
+                                    InputTextMultiline(("##script_error_detail_" + to_string(i)).c_str(), &detail, ImVec2(-1, 160), ImGuiInputTextFlags_ReadOnly);
+                                }
+                                PopID();
                             }
-                            EndChild();
                         }
                         EndTabItem();
                     }
@@ -4679,7 +4688,7 @@ void RenderGui(ImGuiIO& io)
                 {
                     static bool IsRunning = false;
                     static HANDLE ThreadHandle = nullptr;
-                    static int StartKey = VK_END; // 用于持久化按键信息，防止每次启动都要设置
+                    static int StartKey = VK_END; // 用于持久化按键信息，防止每次打开都要设置
                     
                     const float PosX = GetCursorPosX();
                     SetCursorPosY(pos.y - 22);
@@ -4689,7 +4698,7 @@ void RenderGui(ImGuiIO& io)
                     SetNextItemWidth(100);
                     {
                         // 修复：原代码 ScriptData::States.count(ScriptTestFile) 在锁外执行（与 ScriptKeyControlThread
-                        // 的遍历、StartScript 线程的插入并发 → map 结构竞争）。移入写锁内。
+                        // 的遍历、StartScript 线程的插入并发 -> map 结构竞争）。移入写锁内。
                         // 写入锁
                         lock_guard lock(ScriptData::StatesMtx);
                         const bool IsNoState = !IsRunning || (ScriptData::States.count(ScriptTestFile) == 0);

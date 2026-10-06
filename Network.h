@@ -252,7 +252,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
     string content;
     if (ReadURLDatas((UseServerOfType == 2) ? URL_LZY_CONNECT : URL_GITEE_CONNECT, content) > 0)
     {
-        if (UseServerOfType == 1)
+        if (UseServerOfType == 2) // lzyÊ±´¦Àí×Ö·û´®
         {
             content = RemoveSubString(content, "<br />");
             content = ExtractString(content, "=connect=", "=connectend=");
