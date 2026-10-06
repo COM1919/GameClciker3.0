@@ -45,12 +45,12 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         {
             string SpoonsText = ExtractString(content, "=spoons=", "=spoons-end=");
             // 修复：gitee 分支无锁写入 Sponsor::List，与主线程（持 Sponsor::Mtx 读锁）并发 → 竞争
-            lock_guard<shared_mutex> lock(Sponsor::Mtx);
+            lock_guard lock(Sponsor::Mtx);
             SplitString(SpoonsText, "\n", Sponsor::List);
         }
         // 修复：NoticeStr 写入时加锁（ReadURLDatas 内部直接写入 NoticeStr），与主线程每帧读取（c_str()）并发安全
         {
-            lock_guard<shared_mutex> lock(NoticeMutex);
+            lock_guard lock(NoticeMutex);
             if (ReadURLDatas(URL_GITEE_NOTICE, NoticeStr) <= 0)
             {
                 PrintLog("[Init] Gitee: 获取公告失败", PL_ERROR);
@@ -79,7 +79,7 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         else
         {
             // 修复：NoticeStr 连续修改期间加写锁（主线程每帧无锁读 c_str() 会悬垂）
-            lock_guard<shared_mutex> lock(NoticeMutex);
+            lock_guard lock(NoticeMutex);
             NoticeStr = ExtractString(content, "=n=", "=nend=");
             NoticeStr = RemoveSubString(NoticeStr, "<br />");
             NoticeStr = RemoveSubString(NoticeStr, "</span>");
@@ -99,7 +99,7 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
             content = RemoveSubString(content, "<span style=\"color:#81bf7e\">");
             ReplaceString(content, "&amp;", "&");
             // 写入锁
-            lock_guard<shared_mutex> lock(Sponsor::Mtx);
+            lock_guard lock(Sponsor::Mtx);
             SplitString(content, "\n", Sponsor::List);
         }
 
@@ -120,7 +120,7 @@ DWORD WINAPI GetInfo(LPVOID lpParam)
         }
     }
     {
-        lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
+        lock_guard lock(InitSuccessTimeMutex);
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
             InitSuccessTime = GetNowMs();
     }

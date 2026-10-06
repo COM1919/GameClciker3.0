@@ -773,7 +773,7 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					{
 						IsClickering.right = true;
 						if (config.UseRClickPressTime)
-						apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right * 0.75f) : (ClickerDynamicDelay.right - config.RPressDuration);
+							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
 						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
 						ptime.EndSleep(ClickerDynamicDelay.right);
 						goto label_rc_end;
@@ -790,33 +790,35 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 				static ULONGLONG LastTime = 0;
 				static int AssistModeCount = 0;
 
-				int HumanCPSCopy;
-				{
-					shared_lock<shared_mutex> lock(HumanCPSMutex);
-					HumanCPSCopy = HumanCPS.right;
-				}
-
+				const int HumanCPSCopy = GetHumanCPSFast(Click::Right); // 使用获取的瞬时CPS
 				const bool IsClicker = HumanCPSCopy >= config.AssistModeCPSThreshold;
 				// ClickDealy的CPS保持在AssistModeMinCPS以上，防止CurrentCPS太低导致连点时间过长
-				const int ClickDealy = min(1000 / max(HumanCPSCopy, 1), 500) / max(config.RMultipleClickValue, 1);
-				const bool IsClickKey = GetKeyClick(Click::Right, true, config.ReadKeyStateMode);
+				const int ClickDealy = max(1, (int)(min(1000 / max(HumanCPSCopy, 1), 500) / max(config.RMultipleClickValue, 1) * 0.6f));   // 0.6 余量系数：补满 M 次的总时长必须明显小于人类点击周期，否则后几次会撞上人类的下一次按下，注入被游戏合并吞掉
+
+				// 钩子每次人类按下事件都做了 ++，此处原子读取并清零，
+				// 避免GetKeyClick的低频轮询导致的漏计数（人类按下过快，GetKeyClick没轮询到）
+				const int NewPresses = ConsumeHumanPresses(Click::Right);
 
 				if (!IsClicker && LastTime != 0)
 					LastTime = 0;
 
 				if (config.EnableRightClicker && IsClicker)
 				{
-					if (IsClickKey)
-						AssistModeCount += config.RMultipleClickValue;
+					if (NewPresses > 0)
+						AssistModeCount += NewPresses * config.RMultipleClickValue;
+					// 防止长时间按住导致积压、松开后一次性爆发
+					if (AssistModeCount > config.RMultipleClickValue * 2)
+						AssistModeCount = config.RMultipleClickValue * 2;
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
-					if ((AssistModeCount > 0) && (!config.UseRStartClickerDelay || (LastTime + config.RStartClickerDelay) <= GetTickCount64()))
+					// 人类仍按住时不能点击。否则注入的 down 无效（游戏里已是按下），
+					if ((AssistModeCount > 0) && !GetKeyDown(Click::Right, true) && (!config.UseRStartClickerDelay || (LastTime + config.RStartClickerDelay) <= GetTickCount64()))
 					{
 						IsClickering.right = true;
 						if (config.UseRClickPressTime)
 							apd = config.UseRAutoPressDuration ? (ClickerDynamicDelay.right / 2) : (ClickerDynamicDelay.right - config.RPressDuration);
 						SetKeyClick(Click::Right, config.UseRClickPressTime ? (config.UseRAutoPressDuration ? apd : config.RPressDuration) : 0, config.SimulateClickMode);
-						
+
 						AssistModeCount--;
 						ptime.EndSleep(ClickDealy);
 						goto label_rc_end;
@@ -1043,33 +1045,38 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 				static ULONGLONG LastTime = 0;
 				static int AssistModeCount = 0;
 
-				int HumanCPSCopy;
-				{
-					shared_lock<shared_mutex> lock(HumanCPSMutex);
-					HumanCPSCopy = HumanCPS.left;
-				}
-
+				const int HumanCPSCopy = GetHumanCPSFast(Click::Left);  // 使用获取的瞬时CPS
 				const bool IsClicker = HumanCPSCopy >= config.AssistModeCPSThreshold;
 				// ClickDealy的CPS保持在AssistModeMinCPS以上，防止CurrentCPS太低导致连点时间过长
-				const int ClickDealy = min(1000 / max(HumanCPSCopy, 1), 500) / max(config.LMultipleClickValue, 1);
-				const bool IsClickKey = GetKeyClick(Click::Left, true, config.ReadKeyStateMode);
-				
+				const int ClickDealy = max(1, (int)(min(1000 / max(HumanCPSCopy, 1), 500) / max(config.LMultipleClickValue, 1) * 0.6f));   // 0.6 余量系数：补满 M 次的总时长必须明显小于人类点击周期，否则后几次会撞上人类的下一次按下，注入被游戏合并吞掉
+
+				// 钩子每次人类按下事件都做了 ++，此处原子读取并清零，
+				// 避免GetKeyClick的低频轮询导致的漏计数（人类按下过快，GetKeyClick没轮询到）
+				const int NewPresses = ConsumeHumanPresses(Click::Left);
+
 				if (!IsClicker && LastTime != 0)
 					LastTime = 0;
 
 				if (config.EnableLeftClicker && IsClicker)
 				{
-					if (IsClickKey)
-						AssistModeCount += config.LMultipleClickValue;
+					if (NewPresses > 0)
+						AssistModeCount += NewPresses * config.LMultipleClickValue;
+					// 防止长时间按住导致积压、松开后一次性爆发
+					if (AssistModeCount > config.LMultipleClickValue * 2)
+						AssistModeCount = config.LMultipleClickValue * 2;
 					if (LastTime == 0)
 						LastTime = GetTickCount64();
-					if ((AssistModeCount > 0) && (!config.UseLStartClickerDelay || (LastTime + config.LStartClickerDelay) <= GetTickCount64()))
+					// 人类仍按住时不能点击。否则注入的 down 无效（游戏里已是按下），
+					const bool HumanHolding = GetKeyDown(Click::Left, true);
+					if ((AssistModeCount > 0) && !HumanHolding && (!config.UseLStartClickerDelay || (LastTime + config.LStartClickerDelay) <= GetTickCount64()))
 					{
 						IsClickering.left = true;
 						if (config.UseLClickPressTime)
 							apd = config.UseLAutoPressDuration ? (ClickDealy * 0.75f) : max(ClickDealy - config.LPressDuration, 1);
+						// 未启用"按下时长"时也要给一个最小按住时长，
+						// 否则 down/up 间隔接近 0，会被游戏忽略（吞点击）。
 						SetKeyClick(Click::Left, config.UseLClickPressTime ? (config.UseLAutoPressDuration ? apd : config.LPressDuration) : 0, config.SimulateClickMode);
-						
+
 						AssistModeCount--;
 						ptime.EndSleep(ClickDealy);
 						goto label_lc_end;

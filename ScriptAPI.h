@@ -871,7 +871,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetCpsRight的参数太多");
         {
-            shared_lock<shared_mutex> lock(CurrentCPSMutex);
+            shared_lock lock(CurrentCPSMutex);
             lua_pushinteger(L, CurrentCPS.right);
         }
         return 1;
@@ -882,7 +882,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetCpsLeft的参数太多");
         {
-            shared_lock<shared_mutex> lock(CurrentCPSMutex);
+            shared_lock lock(CurrentCPSMutex);
             lua_pushinteger(L, CurrentCPS.left);
         }
         return 1;
@@ -893,7 +893,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetHumanCpsLeft的参数太多");
         {
-            shared_lock<shared_mutex> lock(HumanCPSMutex);
+            shared_lock lock(HumanCPSMutex);
             lua_pushinteger(L, HumanCPS.left);
         }
         return 1;
@@ -904,7 +904,7 @@ namespace ScriptAPI
         if (lua_gettop(L) != 0)
             luaL_error(L, "GetHumanCpsRight的参数太多");
         {
-            shared_lock<shared_mutex> lock(HumanCPSMutex);
+            shared_lock lock(HumanCPSMutex);
             lua_pushinteger(L, HumanCPS.right);
         }
         return 1;
@@ -1030,7 +1030,7 @@ namespace ScriptAPI
             return false;
         int perm = 0;
         {
-            shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+            shared_lock lock(ScriptData::StatesMtx);
             auto it = ScriptData::States.find(CurrentScriptFile);
             if (it == ScriptData::States.end())
                 return false;
@@ -1048,7 +1048,7 @@ namespace ScriptAPI
         int ret = ::RenderMessageBox(msg, title.c_str(), MB_OKCANCEL);
         const bool allowed = (ret == IDOK);
         {
-            lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+            lock_guard lock(ScriptData::StatesMtx);
             auto it = ScriptData::States.find(CurrentScriptFile);
             if (it != ScriptData::States.end())
                 it->second.NetworkPermission = allowed ? 1 : 2;
@@ -1067,7 +1067,7 @@ namespace ScriptAPI
         static mutex WsaMtx;
         if (WsaStarted)
             return true;
-        lock_guard<mutex> lock(WsaMtx);
+        lock_guard lock(WsaMtx);
         if (WsaStarted)
             return true;
         WSADATA wsa;
@@ -1081,7 +1081,7 @@ namespace ScriptAPI
 
     static SOCKET FindScriptSocket(int id)
     {
-        lock_guard<mutex> lock(ScriptSocketsMtx);
+        lock_guard lock(ScriptSocketsMtx);
         auto outer = ScriptSockets.find(CurrentScriptFile);
         if (outer == ScriptSockets.end())
             return INVALID_SOCKET;
@@ -1135,7 +1135,7 @@ namespace ScriptAPI
         }
         const int id = NextSocketId++;
         {
-            lock_guard<mutex> lock(ScriptSocketsMtx);
+            lock_guard lock(ScriptSocketsMtx);
             ScriptSockets[CurrentScriptFile][id] = s;
         }
         lua_pushinteger(L, id);
@@ -1203,7 +1203,7 @@ namespace ScriptAPI
             return 1;
         }
         {
-            lock_guard<mutex> lock(ScriptSocketsMtx);
+            lock_guard lock(ScriptSocketsMtx);
             auto outer = ScriptSockets.find(CurrentScriptFile);
             if (outer == ScriptSockets.end())
             {
@@ -1334,7 +1334,7 @@ namespace ScriptAPI
             return 1;
         }
         // 读取锁
-        shared_lock<shared_mutex> lock(ScriptData::StatesMtx);
+        shared_lock lock(ScriptData::StatesMtx);
         auto st = ScriptData::States.find(CurrentScriptFile);
         lua_pushboolean(L, st != ScriptData::States.end() ? st->second.IsPressedKey : false);
         return 1;
@@ -1351,7 +1351,7 @@ namespace ScriptAPI
             return 1;
         }
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        lock_guard lock(ScriptData::StatesMtx);
         auto st = ScriptData::States.find(CurrentScriptFile);
         if (st == ScriptData::States.end())
         {
@@ -1374,7 +1374,7 @@ namespace ScriptAPI
             return 1;
         }
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        lock_guard lock(ScriptData::StatesMtx);
         auto st = ScriptData::States.find(CurrentScriptFile);
         if (st == ScriptData::States.end())
         {
@@ -1414,7 +1414,7 @@ namespace ScriptAPI
         if (CurrentScriptFile.empty())
             return 0;
         // 写入锁
-        lock_guard<shared_mutex> lock(ScriptData::StatesMtx);
+        lock_guard lock(ScriptData::StatesMtx);
         auto st = ScriptData::States.find(CurrentScriptFile);
         if (st != ScriptData::States.end())
             st->second.LoopDelay = delay;

@@ -9,6 +9,8 @@ x86/
 Debug/
 Release/
 
+VSCodeExtension/node_modules/
+
 # VS本地配置文件
 *.user
 *.suo

@@ -97,7 +97,7 @@ public:
 
     int CreateSocket()
     {
-        lock_guard<mutex> lock(sockMtx);
+        lock_guard lock(sockMtx);
         // 修复：重连时旧 socket 可能未关闭（NetworkClientThread 断开后不主动 CloseSocket），
         // 直接覆盖会泄漏系统资源。先自查关闭。
         if (sock != INVALID_SOCKET)
@@ -115,7 +115,7 @@ public:
 
     int SetTarget(const string& ip, int port)
     {
-        lock_guard<mutex> lock(sockMtx);
+        lock_guard lock(sockMtx);
         if (sock == INVALID_SOCKET)
             return 1;
 
@@ -167,7 +167,7 @@ public:
 
     int Receive(string& str, int timeoutMs = 6000) const
     {
-        lock_guard<mutex> lock(sockMtx);
+        lock_guard lock(sockMtx);
         if (sock == INVALID_SOCKET)
             return -1;
 
@@ -203,7 +203,7 @@ public:
 
     string ReceiveFrom(string& fromIp, int& fromPort, int timeoutMs = 0) const
     {
-        lock_guard<mutex> lock(sockMtx);
+        lock_guard lock(sockMtx);
         if (sock == INVALID_SOCKET)
             return "-1";
 
@@ -244,7 +244,7 @@ public:
 
     void CloseSocket()
     {
-        lock_guard<mutex> lock(sockMtx);
+        lock_guard lock(sockMtx);
         if (sock != INVALID_SOCKET)
         {
             closesocket(sock);

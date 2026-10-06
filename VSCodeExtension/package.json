@@ -1,0 +1,400 @@
+{
+  "name": "gclua",
+  "displayName": "GC Lua",
+  "description": "GC 连点器脚本语言（GC Lua）支持：语法高亮、智能补全、悬停文档、参数提示、错误/警告识别、语法纠正与括号自动补全。",
+  "version": "1.0.9",
+  "publisher": "GameClicker",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "lua",
+    "gclua",
+    "gc",
+    "gameclicker",
+    "连点器",
+    "intellisense",
+    "脚本"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onLanguage:gclua",
+    "onLanguage:lua"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "gclua",
+        "aliases": [
+          "GC Lua",
+          "gclua",
+          "GC 脚本"
+        ],
+        "extensions": [
+          ".gclua",
+          ".lua"
+        ],
+        "filenamePatterns": [
+          "script.lua",
+          "test.lua"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gclua",
+        "scopeName": "source.gclua",
+        "path": "./syntaxes/gclua.tmLanguage.json"
+      },
+      {
+        "language": "lua",
+        "scopeName": "source.gclua",
+        "path": "./syntaxes/gclua.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "gclua",
+        "path": "./snippets/gclua.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "GC Lua — VS2026 Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/vs2026-dark.json"
+      }
+    ],
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "comment.line.double-dash.gclua",
+              "comment.block.gclua",
+              "punctuation.definition.comment.gclua"
+            ],
+            "settings": {
+              "foreground": "#57A64A"
+            }
+          },
+          {
+            "scope": [
+              "keyword.control.gclua",
+              "keyword.other.gclua",
+              "keyword.operator.gclua",
+              "keyword.operator.vararg.gclua",
+              "constant.language.gclua"
+            ],
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          },
+          {
+            "scope": [
+              "support.function.gc.gclua",
+              "support.function.library.gclua",
+              "entity.name.function.gclua",
+              "entity.name.function.call.gclua"
+            ],
+            "settings": {
+              "foreground": "#DCDCAA"
+            }
+          },
+          {
+            "scope": "entity.name.function.entry.gclua",
+            "settings": {
+              "foreground": "#DCDCAA",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "string.quoted.double.gclua",
+              "string.quoted.single.gclua",
+              "string.quoted.long.gclua",
+              "punctuation.definition.string.begin.gclua",
+              "punctuation.definition.string.end.gclua",
+              "punctuation.definition.string.gclua"
+            ],
+            "settings": {
+              "foreground": "#D69D85"
+            }
+          },
+          {
+            "scope": "constant.character.escape.gclua",
+            "settings": {
+              "foreground": "#D7BA7D"
+            }
+          },
+          {
+            "scope": "constant.other.placeholder.gclua",
+            "settings": {
+              "foreground": "#B5CEA8"
+            }
+          },
+          {
+            "scope": [
+              "constant.numeric.gclua",
+              "constant.numeric.hex.gclua",
+              "constant.other.key.gclua",
+              "constant.other.clickmode.gclua",
+              "constant.other.keymode.gclua"
+            ],
+            "settings": {
+              "foreground": "#B5CEA8"
+            }
+          },
+          {
+            "scope": "variable.language.gclua",
+            "settings": {
+              "foreground": "#4EC9B0"
+            }
+          },
+          {
+            "scope": [
+              "punctuation.section.gclua",
+              "punctuation.separator.gclua",
+              "punctuation.accessor.gclua"
+            ],
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          },
+          {
+            "scope": "keyword.operator.concat.gclua",
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          },
+          {
+            "scope": [
+              "invalid.deprecated.gclua",
+              "invalid.illegal.gclua"
+            ],
+            "settings": {
+              "foreground": "#D16969",
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      }
+    },
+    "commands": [
+      {
+        "command": "gclua.insertTemplate",
+        "title": "GC Lua: 插入标准脚本模板"
+      },
+      {
+        "command": "gclua.setLanguage",
+        "title": "GC Lua: 将当前文件设为 GC Lua 语言"
+      },
+      {
+        "command": "gclua.showEntryInfo",
+        "title": "GC Lua: 显示事件函数说明"
+      }
+    ],
+    "configuration": {
+      "title": "GC Lua",
+      "properties": {
+        "gclua.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用错误与警告识别（括号/块配对、未定义函数、参数数量、已弃用 API 等）。"
+        },
+        "gclua.diagnostics.undefinedFunction": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "hint",
+          "description": "调用未定义的全局函数时报告的严重级别（默认提示）。"
+        },
+        "gclua.diagnostics.undefinedVariable": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "hint",
+          "description": "读取了未定义变量（既未声明也未赋值）时报告的严重级别。"
+        },
+        "gclua.diagnostics.argumentCount": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "调用 GC API 时参数数量不匹配报告的严重级别。"
+        },
+        "gclua.diagnostics.deprecated": {
+          "type": "boolean",
+          "default": true,
+          "description": "对已弃用或被移除的 API（如 Helpmarker、PopTip）给出警告。"
+        },
+        "gclua.diagnostics.contextScope": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "上下文 API 限制：render 函数内只能使用 UI 系列的 API，main 和其他函数内不允许使用 UI 系列的 API。设为 off 可关闭此检查。"
+        },
+        "gclua.diagnostics.unused": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "hint",
+          "description": "未使用的局部变量 / 函数的报告级别。以 `_` 开头的名称以及生命周期函数会被忽略。"
+        },
+        "gclua.diagnostics.redundant": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "hint",
+          "description": "冗余代码的报告级别：恒真/恒假条件、恒真导致的冗余分支、空代码块、不可达代码。"
+        },
+        "gclua.diagnostics.suspicious": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "可疑逻辑的报告级别：`=` 与 `==` 混淆、死循环、除零、自我赋值、恒真/恒假条件、空代码块、重复定义函数等。"
+        },
+        "gclua.diagnostics.typeCheck": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "GC API 调用实参类型明显不匹配（如把字符串字面量传给需要整数的参数）时的报告级别。"
+        },
+        "gclua.diagnostics.entry": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "缺少入口函数（initScript / main / render / saveConfig）时报告的严重级别。若文件一个入口函数都没定义，则视为普通 Lua 文件而不检查。"
+        },
+        "gclua.diagnostics.missingLocal": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "warning",
+          "description": "在函数体内定义变量却未使用 `local` 关键词时报告的严重级别。"
+        },
+        "gclua.diagnostics.topLevelCode": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "error",
+          "description": "在顶层（函数之外）编写会自动执行的可执行代码时报告的严重级别。GC 脚本不允许自动执行的 chunk。"
+        },
+        "gclua.diagnostics.duplicateEntry": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "information",
+            "hint",
+            "off"
+          ],
+          "default": "error",
+          "description": "重复定义入口函数时报告的严重级别。"
+        },
+        "gclua.codeLens.entryFunctions": {
+          "type": "boolean",
+          "default": true,
+          "description": "在入口函数（initScript / main / render / saveConfig）上方显示事件函数标记（CodeLens）。"
+        },
+        "gclua.completion.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用 GC API 智能补全。"
+        },
+        "gclua.hover.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用悬停文档提示。"
+        },
+        "gclua.signatureHelp.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用函数参数提示。"
+        },
+        "gclua.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "保留项：用于调试输出详细程度。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0"
+  }
+}

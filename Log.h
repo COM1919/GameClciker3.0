@@ -84,7 +84,7 @@ static void WriteLogThread()
 
         {
             const string TypeStr2 = (item.type == PL_INFO) ? "&finfo" : (item.type == PL_WARNING) ? "&ewarning" : "&cerror";
-            lock_guard<mutex> lock(LogContextMtx);
+            lock_guard lock(LogContextMtx);
             LogContext += ("&7[" + SimpleTimeStr + "] " + TypeStr2 + " : " + item.str + "\n");
             while (LogContext.size() > 1024 * 40)
             {
@@ -145,7 +145,7 @@ static string FormatTime(time_t time, bool OnlyOneDay)
 
 void PrintLog(const string& str, UINT type)
 {
-    lock_guard<mutex> lock(LogQueueMtx);  // 独占锁（RAII）：同时串行化 cout（非线程安全）与队列
+    lock_guard lock(LogQueueMtx);  // 独占锁（RAII）：同时串行化 cout（非线程安全）与队列
     // 调试模式：第一行直接同步 cout 原始消息（程序崩溃前能立即看到，不依赖异步 WriteLogThread）
     if (LogDebugCout)
     {

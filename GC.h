@@ -1387,7 +1387,7 @@ void RenderControl()
     //=======================MessageBox处理===========================
     {
         // 读取锁
-        shared_lock<shared_mutex> lock(MessageBoxMsg::Mtx);
+        shared_lock lock(MessageBoxMsg::Mtx);
         if (MessageBoxMsg::IsOpen)
         {
             if (MessageBoxMsg::ButtonType == -1)
@@ -1397,7 +1397,7 @@ void RenderControl()
                 {
                     lock.unlock();
                     // 写入锁
-                    lock_guard<shared_mutex> lock2(MessageBoxMsg::Mtx);
+                    lock_guard lock2(MessageBoxMsg::Mtx);
                     MessageBoxMsg::ReturnCode = ret;
                     MessageBoxMsg::IsOpen = false;
                 }
@@ -1409,7 +1409,7 @@ void RenderControl()
                 {
                     lock.unlock();
                     // 写入锁
-                    lock_guard<shared_mutex> lock2(MessageBoxMsg::Mtx);
+                    lock_guard lock2(MessageBoxMsg::Mtx);
                     MessageBoxMsg::ReturnCode = ret;
                     MessageBoxMsg::IsOpen = false;
                 }
@@ -1688,8 +1688,6 @@ void InitializationGui(ImGuiIO& imio)
 
     if (!IconFont)
 		PrintLog("[Render] 无法加载图标字体", PL_ERROR);
-
-    imio.Fonts->Build();
 }
 
 // 返回-1是没有点击按钮
@@ -1965,7 +1963,7 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
 {
     if (!CacheDisabled)
     {
-        shared_lock<shared_mutex> lock(TextureMutex);
+        shared_lock lock(TextureMutex);
         auto it = TextureMap.find(id);
         if (it != TextureMap.end())
         {
@@ -1994,7 +1992,7 @@ Texture2D LoadTextureFromMemory(const unsigned char* buffer, int len, const char
     // 添加到缓存（写锁：防止与并发读取/写入互相破坏 map 结构）
     if (!CacheDisabled && textureSRV != nullptr)
     {
-        lock_guard<shared_mutex> lock(TextureMutex);
+        lock_guard lock(TextureMutex);
         TextureMap[id].texture = textureSRV;
         TextureMap[id].width = image_width;
         TextureMap[id].height = image_height;
@@ -2007,7 +2005,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
 {
     if (!CacheDisabled)
     {
-        shared_lock<shared_mutex> lock(TextureMutex);
+        shared_lock lock(TextureMutex);
         auto it = TextureMap.find(filename);
         if (it != TextureMap.end())
         {
@@ -2040,7 +2038,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
     // 添加到缓存
     if (!CacheDisabled && textureSRV != nullptr)
     {
-        lock_guard<shared_mutex> lock(TextureMutex);
+        lock_guard lock(TextureMutex);
         TextureMap[filename].texture = textureSRV;
         TextureMap[filename].width = image_width;
         TextureMap[filename].height = image_height;
@@ -2052,7 +2050,7 @@ Texture2D LoadTextureFromFile(const string& filename, bool CacheDisabled, int* w
 // 清理纹理缓存的函数
 void ClearTextureCache()
 {
-    lock_guard<shared_mutex> lock(TextureMutex);
+    lock_guard lock(TextureMutex);
     for (auto& pair : TextureMap)
     {
         if (pair.second.texture != nullptr)

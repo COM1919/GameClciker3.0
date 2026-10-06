@@ -2,30 +2,32 @@
 #include "framework.h"
 #include "AgreementString.h"
 #include "UDPSocket.h"
+#include <atomic>
 
 #define PI 3.14159265358979323846f
 
-//Ä¬ÈÏÊýÖµ
-#define DEFAULT_CPS     12    //Ä¬ÈÏµÄCPS
-#define DEFAULT_MCV     2     //Ä¬ÈÏµÄµã»÷±¶Êý
-#define DEFAULT_RCTIME  1000  //Ä¬ÈÏµÄµã»÷Ê±³¤
-#define DEFAULT_RCSLEEP 500   //Ä¬ÈÏµÄÍ£Ö¹µã»÷Ê±³¤
-#define DEFAULT_LCTIME  1000  //Ä¬ÈÏµÄµã»÷Ê±³¤
-#define DEFAULT_LCSLEEP 200   //Ä¬ÈÏµÄÍ£Ö¹µã»÷Ê±³¤
-#define RESEND_SLEEP    2     //ÖØÐÂ³¢ÊÔ·¢ËÍµÄÑÓ³Ù
-#define FILTER_SC_SLEEP 130   //¹ýÂËµ¥´Îµã»÷µÄÑÓ³Ù
+//Ä¬ï¿½ï¿½ï¿½ï¿½Öµ
+#define DEFAULT_CPS     12    //Ä¬ï¿½Ïµï¿½CPS
+#define DEFAULT_MCV     2     //Ä¬ï¿½ÏµÄµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define DEFAULT_RCTIME  1000  //Ä¬ï¿½ÏµÄµï¿½ï¿½Ê±ï¿½ï¿½
+#define DEFAULT_RCSLEEP 500   //Ä¬ï¿½Ïµï¿½Í£Ö¹ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+#define DEFAULT_LCTIME  1000  //Ä¬ï¿½ÏµÄµï¿½ï¿½Ê±ï¿½ï¿½
+#define DEFAULT_LCSLEEP 200   //Ä¬ï¿½Ïµï¿½Í£Ö¹ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+#define RESEND_SLEEP    2     //ï¿½ï¿½ï¿½Â³ï¿½ï¿½Ô·ï¿½ï¿½Íµï¿½ï¿½Ó³ï¿½
+#define FILTER_SC_SLEEP 130   //ï¿½ï¿½ï¿½Ëµï¿½ï¿½Îµï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½
 
-//×î´óÖµºÍ×îÐ¡Öµ
-#define MAX_VALUE        4096 //×î¸ßµÄÊýÖµ
-#define MAX_BUF          2048 //×î¸ßµÄ»º´æ´óÐ¡
-#define MAX_QUICK_SWITCH 6    //¿ìËÙÇÐ»»CPSµÄCPSÖµ
-#define MAX_RECORDS      1800 //×î´ó¼ÇÂ¼Êý
-#define MAX_PERF_RECORDS 600  //×î´óÐÔÄÜ¼ÇÂ¼Êý
-#define MAX_CPS          40   //×î´óCPS
-#define MIN_CPS          1    //×îÐ¡CPS
-#define MAX_TRYVALUE     3    //×î´ó³¢ÊÔ´ÎÊý
+//ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½Ð¡Öµ
+#define MAX_VALUE        4096 //ï¿½ï¿½ßµï¿½ï¿½ï¿½Öµ
+#define MAX_BUF          2048 //ï¿½ï¿½ßµÄ»ï¿½ï¿½ï¿½ï¿½Ð¡
+#define MAX_QUICK_SWITCH 6    //ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½CPSï¿½ï¿½CPSÖµ
+#define MAX_RECORDS      1800 //ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½
+#define MAX_PERF_RECORDS 600  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü¼ï¿½Â¼ï¿½ï¿½
+#define MAX_CPS          40   //ï¿½ï¿½ï¿½CPS
+#define MIN_CPS          1    //ï¿½ï¿½Ð¡CPS
+#define MAX_TRYVALUE     3    //ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½
+#define MAX_SCRIPT_ERROR_RECORDS 100 //ï¿½ï¿½à±£ï¿½ï¿½ï¿½Ä½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½
 
-//ÍÐÅÌÍ¼±êÏûÏ¢
+//ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ï¢
 #define WM_TRAYICON (WM_USER + 1145)
 
 #define URL_LZY_VER        "https://gameclicker.lanzouj.com/b00jdu3i5a"
@@ -49,39 +51,39 @@
 #define URL_GITEE_SC_ROOT  "https://gitee.com/com1919/gameclicker-information/raw/master/script/"
 #define URL_GITEE_SOUNDS   "https://gitee.com/com1919/gameclicker-information/releases/download/KeySound2/keys.zip"
 
-#define MAIN_R_KEY    5       //Ä¬ÈÏÊó±ê²à¼ü£¬Á¬µãÓÒ¼üµÄ¿ì½Ý¼ü
-#define MAIN_L_KEY    6       //Ä¬ÈÏÊó±ê²à¼ü£¬Á¬µã×ó¼üµÄ¿ì½Ý¼ü
-#define C_BUTTONMODE  0b0001  //°´ÏÂ¿ì½Ý¼üÁ¬µã£¬ËÉ¿ªÍ£Ö¹
-#define C_SWITCHMODE  0b0010  //°´ÏÂ¿ì½Ý¼üÁ¬µã£¬ÔÙ°´ÏÂÍ£Ö¹
-#define C_ASSISTMODE  0b0100  //°´ÏÂÊó±ê×ó¼ü»òÕßÓÒ¼ü£¬×Ô¶¯µã»÷Ò»´Î»òÕß¶þ´Î£¬¾ÍÊÇË«±¶µã»÷
-#define C_MOUSESMODE  0b1000  //°´×¡Êó±ê¼ü½øÐÐÁ¬µã
+#define MAIN_R_KEY    5       //Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½Ä¿ï¿½Ý¼ï¿½
+#define MAIN_L_KEY    6       //Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½Ý¼ï¿½
+#define C_BUTTONMODE  0b0001  //ï¿½ï¿½ï¿½Â¿ï¿½Ý¼ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½É¿ï¿½Í£Ö¹
+#define C_SWITCHMODE  0b0010  //ï¿½ï¿½ï¿½Â¿ï¿½Ý¼ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½Ù°ï¿½ï¿½ï¿½Í£Ö¹
+#define C_ASSISTMODE  0b0100  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î»ï¿½ï¿½ß¶ï¿½ï¿½Î£ï¿½ï¿½ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ï¿½ï¿½ï¿½
+#define C_MOUSESMODE  0b1000  //ï¿½ï¿½×¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-#define SC_MOUSE_EVENT  0     //Ê¹ÓÃmouse_eventº¯Êý»òÕßkeybd_eventº¯Êý
-#define SC_SEND_INPUT   1     //Ê¹ÓÃSendInputº¯Êý
-#define SC_POST_MESSAGE 2     //Ê¹ÓÃPostMessageº¯Êý
+#define SC_MOUSE_EVENT  0     //Ê¹ï¿½ï¿½mouse_eventï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½keybd_eventï¿½ï¿½ï¿½ï¿½
+#define SC_SEND_INPUT   1     //Ê¹ï¿½ï¿½SendInputï¿½ï¿½ï¿½ï¿½
+#define SC_POST_MESSAGE 2     //Ê¹ï¿½ï¿½PostMessageï¿½ï¿½ï¿½ï¿½
 
-#define GK_HOOK 1             //Ê¹ÓÃÈ«¾ÖÏµÍ³¹³×Ó»ñÈ¡°´¼ü×´Ì¬
-#define GK_API  2             //Ê¹ÓÃÏµÍ³API¼àÌý°´¼ü×´Ì¬
-#define GK_BOTH 3             //¶¼Ê¹ÓÃ
+#define GK_HOOK 1             //Ê¹ï¿½ï¿½È«ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½Ó»ï¿½È¡ï¿½ï¿½ï¿½ï¿½×´Ì¬
+#define GK_API  2             //Ê¹ï¿½ï¿½ÏµÍ³APIï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
+#define GK_BOTH 3             //ï¿½ï¿½Ê¹ï¿½ï¿½
 
-#define MS_NC         10      //Æ½µã
-#define MS_JC         20      //¶¶¶¯µã»÷
-#define MS_OLD        40      //¾É°æµã»÷
+#define MS_NC         10      //Æ½ï¿½ï¿½
+#define MS_JC         20      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define MS_OLD        40      //ï¿½É°ï¿½ï¿½ï¿½
 
-#define FRM_GL        1       //Öð½¥Ôö´ó
-#define FRM_GS        2       //Öð½¥¼õÐ¡
-#define FRM_SL        3       //Ð¡µ½´ó
-#define FRM_LS        4       //´óµ½Ð¡
-#define FRM_SLS       5       //Ð¡µ½´ó£¬´óµ½Ð¡
-#define FRM_LSL       6       //´óµ½Ð¡£¬Ð¡µ½´ó
+#define FRM_GL        1       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define FRM_GS        2       //ï¿½ð½¥¼ï¿½Ð¡
+#define FRM_SL        3       //Ð¡ï¿½ï¿½ï¿½ï¿½
+#define FRM_LS        4       //ï¿½ï¿½Ð¡
+#define FRM_SLS       5       //Ð¡ï¿½ï¿½ï¿½ó£¬´ï¿½Ð¡
+#define FRM_LSL       6       //ï¿½ï¿½Ð¡ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½
 
-#define CP_NONE       0       //ÎÞÓÅÏÈ¼¶
-#define CP_RC         1       //ÓÒ¼üÁ¬µãÓÅÏÈ
-#define CP_LC         2       //×ó¼üÁ¬µãÓÅÏÈ
+#define CP_NONE       0       //ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
+#define CP_RC         1       //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+#define CP_LC         2       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-#define WARNING_NONE    0     //ÎÞ¾¯¸æÒôÐ§
-#define WARNING_SYSTEM  1     //ÏµÍ³Ä¬ÈÏ¾¯¸æÒôÐ§
-#define WARNING_SOUND   2     //×Ô¶¨Òå¾¯¸æÒôÐ§
+#define WARNING_NONE    0     //ï¿½Þ¾ï¿½ï¿½ï¿½ï¿½ï¿½Ð§
+#define WARNING_SYSTEM  1     //ÏµÍ³Ä¬ï¿½Ï¾ï¿½ï¿½ï¿½ï¿½ï¿½Ð§
+#define WARNING_SOUND   2     //ï¿½Ô¶ï¿½ï¿½å¾¯ï¿½ï¿½ï¿½ï¿½Ð§
 
 typedef ID3D11ShaderResourceView* Texture2D;
 
@@ -117,232 +119,235 @@ public:
     LRPair(T _left, T _right) : left(_left), right(_right) {}
 };
 
-//Ëæ»úÊýÉú³ÉÆ÷¶¨Òå
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 enum GenerateDis
 {
-    GenerateDis_bernoulli_distribution = 0,     //²®Å¬Àû·Ö²¼
-    GenerateDis_uniform_int_distribution,       //¾ùÔÈ·Ö²¼
-    GenerateDis_binomial_distribution,          //¶þÏî·Ö²¼
+    GenerateDis_bernoulli_distribution = 0,     //ï¿½ï¿½Å¬ï¿½ï¿½ï¿½Ö²ï¿½
+    GenerateDis_uniform_int_distribution,       //ï¿½ï¿½ï¿½È·Ö²ï¿½
+    GenerateDis_binomial_distribution,          //ï¿½ï¿½ï¿½ï¿½Ö²ï¿½
 };
 
 enum GenerateGen
 {
-    GenerateGen_mersenne_twister = 0,            //Ã·É­Ðý×ªËã·¨
-    GenerateGen_ranlux24_base,                   //RANLUX24Ëã·¨
-    GenerateGen_minstd_rand,                     //×îÐ¡±ê×¼Ëæ»úÊýËã·¨
-    GenerateGen_discard_block_engine,            //¶ªÆú¿éËã·¨
-    GenerateGen_independent_bits_engine,         //¶ÀÁ¢Î»Ëã·¨
-    GenerateGen_shuffle_order_engine,            //Ëæ»úÅÅÐòËã·¨
-    GenerateGen_linear_congruential_engine,      //ÏßÐÔÍ¬ÓàËã·¨
-    GenerateGen_subtract_with_carry_engine,      //¼õÈ¥ÓàÊýËã·¨
+    GenerateGen_mersenne_twister = 0,            //Ã·É­ï¿½ï¿½×ªï¿½ã·¨
+    GenerateGen_ranlux24_base,                   //RANLUX24ï¿½ã·¨
+    GenerateGen_minstd_rand,                     //ï¿½ï¿½Ð¡ï¿½ï¿½×¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã·¨
+    GenerateGen_discard_block_engine,            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã·¨
+    GenerateGen_independent_bits_engine,         //ï¿½ï¿½ï¿½ï¿½Î»ï¿½ã·¨
+    GenerateGen_shuffle_order_engine,            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã·¨
+    GenerateGen_linear_congruential_engine,      //ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ã·¨
+    GenerateGen_subtract_with_carry_engine,      //ï¿½ï¿½È¥ï¿½ï¿½ï¿½ï¿½ï¿½ã·¨
 };
 
 enum RandomBoolMode
 {
-    RandomBoolMode_UNIFORM,   // ÆÕÍ¨Ëæ»ú£º±ê×¼¾ùÔÈ¸¡µã·Ö²¼£¨ÕýÍ³Ëæ»ú£©
-    RandomBoolMode_FATIGUE,   // Æ£ÀÍÐ§Ó¦£ºËæÊ±¼äÍÆÒÆÊ§ÎóÂÊÉÏÉý
-    RandomBoolMode_BIONIC     // ·ÂÉúÓÄÁé£ºÆ£ÀÍ + ÊÖ¶¶ + Âí¶û¿É·ò¾À´í
+    RandomBoolMode_UNIFORM,   // ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×¼ï¿½ï¿½ï¿½È¸ï¿½ï¿½ï¿½Ö²ï¿½ï¿½ï¿½ï¿½ï¿½Í³ï¿½ï¿½ï¿½ï¿½ï¿½
+    RandomBoolMode_FATIGUE,   // Æ£ï¿½ï¿½Ð§Ó¦ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    RandomBoolMode_BIONIC     // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é£ºÆ£ï¿½ï¿½ + ï¿½Ö¶ï¿½ + ï¿½ï¿½ï¿½ï¿½ï¿½É·ï¿½ï¿½ï¿½ï¿½
 };
 
-// CPS²¨¶¯
+// CPSï¿½ï¿½ï¿½ï¿½
 struct WaveParam
 {
-    float amplitude;   // Õñ·ù£¨CPS²¨¶¯·ù¶È£©
-    float frequency;   // ÆµÂÊ£¨Hz£©
-    float phase;       // ÏàÎ»£¨»¡¶È£©
-    bool enabled;      // ÊÇ·ñÆôÓÃ£¨¿ÉÔÝÊ±¹Ø±Õ£©
+    float amplitude;   // ï¿½ï¿½ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È£ï¿½
+    float frequency;   // Æµï¿½Ê£ï¿½Hzï¿½ï¿½
+    float phase;       // ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½È£ï¿½
+    bool enabled;      // ï¿½Ç·ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ø±Õ£ï¿½
 };
 
-//--------------------»ù±¾ÉèÖÃ------------------------------
+//--------------------ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½------------------------------
 
 class Config
 {
 public:
-    int LKEY = 6;                           //×ó¼ü¿ì½Ý¼ü
-    int RKEY = 5;                           //ÓÒ¼ü¿ì½Ý¼ü
-    int LCPS = DEFAULT_CPS;                 //×ó¼üCPS
-    int RCPS = DEFAULT_CPS;                 //ÓÒ¼üCPS
-    float RFluctuationCPS = 1;              //ÓÒ¼üCPS²¨¶¯
-    float LFluctuationCPS = 1;              //×ó¼üCPS²¨¶¯
-    int MainClickSleep = 4;                 //Á¬µãÖ÷Ñ­»·Ã¿´ÎÑ­»·µÄÑÓ³Ù£¨ºÁÃë£©
-    int RMultipleClickValue = DEFAULT_MCV;  //¸¨ÖúÄ£Ê½µã»÷Êý
-    int LMultipleClickValue = DEFAULT_MCV;  //¸¨ÖúÄ£Ê½µã»÷Êý
-    int RQuickSwitch[MAX_QUICK_SWITCH]{};   //ÓÒ¼ü¿ìËÙÇÐ»»CPS
-    int LQuickSwitch[MAX_QUICK_SWITCH]{};   //×ó¼ü¿ìËÙÇÐ»»CPS
-    int QuickSwitchKey[MAX_QUICK_SWITCH]{}; //¿ìËÙÇÐ»»CPS¿ì½Ý¼ü
-    int QuickSwitchTotal = 0;               //¿ìËÙÇÐ»»CPSµÄ´óÐ¡
-    int REmptyRateValue = 20;               //ÓÒ¼ü¿Õµ¶¸ÅÂÊ(%)
-    int LEmptyRateValue = 20;               //×ó¼ü¿Õµ¶¸ÅÂÊ(%)
-    int RCTime = DEFAULT_RCTIME;            //ÓÒ¼üµã»÷Ê±³¤(ºÁÃë)
-    int RCSleep = DEFAULT_RCSLEEP;          //ÓÒ¼üÍ£Ö¹µã»÷Ê±³¤(ºÁÃë)
-    int LCTime = DEFAULT_LCTIME;            //×ó¼üµã»÷Ê±³¤(ºÁÃë)
-    int LCSleep = DEFAULT_LCSLEEP;          //×ó¼üÍ£Ö¹µã»÷Ê±³¤(ºÁÃë)
-    int RClickerMode = C_BUTTONMODE;        //ÓÒ¼üÁ¬µãÄ£Ê½
-    int LClickerMode = C_BUTTONMODE;        //×ó¼üÁ¬µãÄ£Ê½
-    int RPressDuration = 20;                //ÓÒ¼üÊó±êÁ¬µã°´ÏÂÊ±³¤(ºÁÃë)
-    int LPressDuration = 20;                //×ó¼üÊó±êÁ¬µã°´ÏÂÊ±³¤(ºÁÃë)
-    int EnableRightClickerKey;              //¿ª¹ØÓÒ¼üÁ¬µã¿ì½Ý¼ü
-    int EnableLeftClickerKey;               //¿ª¹Ø×ó¼üÁ¬µã¿ì½Ý¼ü
-    int ChatBarKey = 'T';                   //ÁÄÌìÀ¸¿ì½Ý¼ü
-    int BagBarKey = 'E';                    //±³°üÀ¸¿ì½Ý¼ü
-    int MouseShakeSpeed = 300;              //Êó±ê¶¶¶¯ËÙ¶È
-    int MouseShakeRect = 8;                 //Êó±ê¶¶¶¯·¶Î§
-    array<int, 10>                          //ÎïÆ·À¸¿ª¹ØÁ¬µã¿ì½Ý¼ü
+    int LKEY = 6;                           //ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    int RKEY = 5;                           //ï¿½Ò¼ï¿½ï¿½ï¿½Ý¼ï¿½
+    int LCPS = DEFAULT_CPS;                 //ï¿½ï¿½ï¿½CPS
+    int RCPS = DEFAULT_CPS;                 //ï¿½Ò¼ï¿½CPS
+    float RFluctuationCPS = 1;              //ï¿½Ò¼ï¿½CPSï¿½ï¿½ï¿½ï¿½
+    float LFluctuationCPS = 1;              //ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½
+    int MainClickSleep = 4;                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½Ã¿ï¿½ï¿½Ñ­ï¿½ï¿½ï¿½ï¿½ï¿½Ó³Ù£ï¿½ï¿½ï¿½ï¿½ë£©
+    int RMultipleClickValue = DEFAULT_MCV;  //ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int LMultipleClickValue = DEFAULT_MCV;  //ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int RQuickSwitch[MAX_QUICK_SWITCH]{};   //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½CPS
+    int LQuickSwitch[MAX_QUICK_SWITCH]{};   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½CPS
+    int QuickSwitchKey[MAX_QUICK_SWITCH]{}; //ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½CPSï¿½ï¿½Ý¼ï¿½
+    int QuickSwitchTotal = 0;               //ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½CPSï¿½Ä´ï¿½Ð¡
+    int REmptyRateValue = 20;               //ï¿½Ò¼ï¿½ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½(%)
+    int LEmptyRateValue = 20;               //ï¿½ï¿½ï¿½ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½(%)
+    int RCTime = DEFAULT_RCTIME;            //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int RCSleep = DEFAULT_RCSLEEP;          //ï¿½Ò¼ï¿½Í£Ö¹ï¿½ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int LCTime = DEFAULT_LCTIME;            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int LCSleep = DEFAULT_LCSLEEP;          //ï¿½ï¿½ï¿½Í£Ö¹ï¿½ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int RClickerMode = C_BUTTONMODE;        //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    int LClickerMode = C_BUTTONMODE;        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    int RPressDuration = 20;                //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã°´ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int LPressDuration = 20;                //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã°´ï¿½ï¿½Ê±ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int EnableRightClickerKey;              //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    int EnableLeftClickerKey;               //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    int ChatBarKey = 'T';                   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    int BagBarKey = 'E';                    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    int MouseShakeSpeed = 300;              //ï¿½ï¿½ê¶¶ï¿½ï¿½ï¿½Ù¶ï¿½
+    int MouseShakeRect = 8;                 //ï¿½ï¿½ê¶¶ï¿½ï¿½ï¿½ï¿½Î§
+    array<int, 10>                          //ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
         ItemBarKey = { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39 };
-    LRPair<array<int, 10>>                  //ÎïÆ·À¸CPSÔ¤Éè
+    LRPair<array<int, 10>>                  //ï¿½ï¿½Æ·ï¿½ï¿½CPSÔ¤ï¿½ï¿½
         ItemBarPresetCPS = {
             { DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS },
             { DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS, DEFAULT_CPS }
         };
     LRPair<array<bool, 10>>
-        ItemBarEnablePresetCPS = {          //ÎïÆ·À¸Ô¤ÉèCPS
+        ItemBarEnablePresetCPS = {          //ï¿½ï¿½Æ·ï¿½ï¿½Ô¤ï¿½ï¿½CPS
             { false, false, false, false, false, false, false, false, false },
             { false, false, false, false, false, false, false, false, false }
         };
-    int MouseShake_RandomDist =             //Êó±ê¶¶¶¯Ëæ»úÊýÉú³É·Ö²¼
+    int MouseShake_RandomDist =             //ï¿½ï¿½ê¶¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É·Ö²ï¿½
     GenerateDis_uniform_int_distribution;
-    int EmptyRate_RandomDist =              //¿Õµ¶¸ÅÂÊËæ»úÊýÉú³É·Ö²¼
+    int EmptyRate_RandomDist =              //ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É·Ö²ï¿½
     GenerateDis_bernoulli_distribution;
-    int EmptyRate_RandomMode =              //CPS²¨¶¯Ëæ»úÊýÉú³ÉÄ£Ê½
+    int EmptyRate_RandomMode =              //CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
     RandomBoolMode_UNIFORM;
-    int MouseSoundSleep = 5;                //Êó±êµã»÷ÉùÒôµÄÑ­»·ÑÓ³Ù
-    int AssistModeCPSThreshold = 4;         //¸¨ÖúÄ£Ê½µÄCPSÃÅÏÞ
-    bool UseOverheatThrottle = false;       //¹ýÈÈ½µÆµ¿ª¹Ø
-    int Overheat_MinCPS = 10;               //¹ýÈÈ½µÆµµÄCPS×îµÍÏÞÖÆ£¨²»ÄÜµÍÓÚ´ËÖµ£©
-    float Overheat_Time = 5.0f;             //¹ýÈÈËÙ¶È£ºÁ¬µã³ÖÐø¶àÉÙÃëºó´ïµ½¹ýÈÈµã
-    float Overheat_ThrottleTime = 5.0f;     //½µÆµËÙ¶È£ºµ½´ï¹ýÈÈµãºó£¬¶àÉÙÃëÄÚ½µµ½CPS×îµÍÏÞÖÆ
-    int SelfDestructionKey = 0;             //×Ô»Ù¿ì½Ý¼ü
-    int UseLFluctuationRandMode = FRM_SL;   //×ó¼üCPS²¨¶¯Ëæ»úÄ£Ê½
-    int UseRFluctuationRandMode = FRM_SL;   //ÓÒ¼üCPS²¨¶¯Ëæ»úÄ£Ê½
-    int RStartClickerDelay = 1000;          //ÓÒ¼üÆô¶¯ÑÓ³Ù(ºÁÃë)
-    int LStartClickerDelay = 1000;          //×ó¼üÆô¶¯ÑÓ³Ù(ºÁÃë)
-    int SetGameWindowKey = 0;               //ÉèÖÃÓÎÏ·´°¿Ú¿ì½Ý¼ü
-    int HideClickerKey = 0;                 //Òþ²ØÁ¬µãÆ÷¿ì½Ý¼ü
-    vector<int> RCPSChangeTrendList;        //ÓÒ¼üCPS±ä»¯Ç÷ÊÆÁÐ±í
-    vector<int> LCPSChangeTrendList;        //×ó¼üCPS±ä»¯Ç÷ÊÆÁÐ±í
-    float OverheatTime = 5.0f;              //¹ýÈÈÊ±³¤
-    float OverheatCooldownTime = 3.0f;      //¹ýÈÈ±£»¤µÄÀäÈ´Ê±³¤
-	int OverheatSoundType = WARNING_SYSTEM; //¹ýÈÈ¼ÆÊ±Æ÷µÄÊ±¼äÁ÷ÊÅËÙ¶È
-    int SimulateClickMode = SC_MOUSE_EVENT; //Ä£Äâµã»÷Ä£Ê½
-    int ReadKeyStateMode = GK_BOTH;         //»ñÈ¡°´¼ü×´Ì¬Ä£Ê½
-    int ClickerPriorityMode = CP_NONE;      //×óÓÒ¼üÁ¬µãµÄÓÅÏÈ¼¶Ä£Ê½
+    int MouseSoundSleep = 5;                //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½ï¿½Ó³ï¿½
+    int AssistModeCPSThreshold = 4;         //ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½
+    bool UseOverheatThrottle = false;       //ï¿½ï¿½ï¿½È½ï¿½Æµï¿½ï¿½ï¿½ï¿½
+    int Overheat_MinCPS = 10;               //ï¿½ï¿½ï¿½È½ï¿½Æµï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½ï¿½Üµï¿½ï¿½Ú´ï¿½Öµï¿½ï¿½
+    float Overheat_Time = 5.0f;             //ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ïµ½ï¿½ï¿½ï¿½Èµï¿½
+    float Overheat_ThrottleTime = 5.0f;     //ï¿½ï¿½Æµï¿½Ù¶È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Èµï¿½ó£¬¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú½ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int SelfDestructionKey = 0;             //ï¿½Ô»Ù¿ï¿½Ý¼ï¿½
+    int UseLFluctuationRandMode = FRM_SL;   //ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    int UseRFluctuationRandMode = FRM_SL;   //ï¿½Ò¼ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    int RStartClickerDelay = 1000;          //ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int LStartClickerDelay = 1000;          //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½(ï¿½ï¿½ï¿½ï¿½)
+    int SetGameWindowKey = 0;               //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½Ú¿ï¿½Ý¼ï¿½
+    int HideClickerKey = 0;                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½
+    vector<int> RCPSChangeTrendList;        //ï¿½Ò¼ï¿½CPSï¿½ä»¯ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
+    vector<int> LCPSChangeTrendList;        //ï¿½ï¿½ï¿½CPSï¿½ä»¯ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
+    float OverheatTime = 5.0f;              //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    float OverheatCooldownTime = 3.0f;      //ï¿½ï¿½ï¿½È±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È´Ê±ï¿½ï¿½
+	int OverheatSoundType = WARNING_SYSTEM; //ï¿½ï¿½ï¿½È¼ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½
+    int SimulateClickMode = SC_MOUSE_EVENT; //Ä£ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    int ReadKeyStateMode = GK_BOTH;         //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½×´Ì¬Ä£Ê½
+    int ClickerPriorityMode = CP_NONE;      //ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½Ä£Ê½
    
     LRPair<vector<WaveParam>> CPSWaves;
 
-    //--------------------Êó±êÉùÒôÉèÖÃ------------------------------
+    //--------------------ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½------------------------------
 
-    bool UseMouseSound = false;             //¿ª¹ØÊó±êµã»÷ÉùÒô
-    bool UseKeybdSound = false;             //¿ª¹Ø¼üÅÌµã»÷ÉùÒô
-    int MouseSoundVolume = 100;             //Êó±êµã»÷ÉùÒôÒôÁ¿
-    int KeybdSoundVolume = 100;             //¼üÅÌµã»÷ÉùÒôÒôÁ¿
-    int NoiseVolume = 90;                   //ÔëÒôÒôÁ¿
-    string MouseSoundType =                 //Êó±êÉùÒôµÄÀàÐÍ
+    bool UseMouseSound = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseKeybdSound = false;             //ï¿½ï¿½ï¿½Ø¼ï¿½ï¿½Ìµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int MouseSoundVolume = 100;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int KeybdSoundVolume = 100;             //ï¿½ï¿½ï¿½Ìµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    int NoiseVolume = 90;                   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    string MouseSoundType =                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         "Corsair M65 Elite";
-    string KeybdSoundType =                 //¼üÅÌÉùÒôµÄÀàÐÍ
+    string KeybdSoundType =                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         "CherryMX Blue - PBT keycaps";
 
-    //--------------------¹¦ÄÜ¿ª¹Ø------------------------------
+    //--------------------ï¿½ï¿½ï¿½Ü¿ï¿½ï¿½ï¿½------------------------------
 
-    bool UseREmptyRate = false;             //¿ª¹ØÓÒ¼ü¿Õµ¶¸ÅÂÊ
-    bool UseLEmptyRate = false;             //¿ª¹Ø×ó¼ü¿Õµ¶¸ÅÂÊ
-    bool UseRFluctuation = false;           //¿ª¹ØÓÒ¼üCPS²¨¶¯
-    bool UseLFluctuation = false;           //¿ª¹Ø×ó¼üCPS²¨¶¯
-    bool UseLClickTime = false;             //¿ª¹Ø×ó¼üÁ¬µã¼ä¸ô
-    bool UseRClickTime = false;             //¿ª¹ØÓÒ¼üÁ¬µã¼ä¸ô
-    bool UseGUIDetection = false;           //¿ª¹ØGUI¼ì²â
-    bool UseLClickPressTime = false;        //¿ª¹Ø×ó¼ü°´ÏÂ¼ä¸ô
-    bool UseRClickPressTime = false;        //¿ª¹ØÓÒ¼ü°´ÏÂ¼ä¸ô
-    bool UseRAutoPressDuration = true;      //¿ª¹Ø×Ô¶¯ÉèÖÃÓÒ¼ü°´ÏÂÊ±³¤
-    bool UseLAutoPressDuration = true;      //¿ª¹Ø×Ô¶¯ÉèÖÃ×ó¼ü°´ÏÂÊ±³¤
-    bool UseStartWithWindows = false;       //¿ª¹Ø¿ª»úÆô¶¯
-    bool EnableRightClicker = true;         //¿ª¹ØÓÒ¼üÁ¬µã
-    bool EnableLeftClicker = true;          //¿ª¹Ø×ó¼üÁ¬µã
-    bool UseBroadcasterMode = false;        //¿ª¹Ø·ÀÖ¹²¶»ñGC´°¿Ú
-    bool UseAutoGuiDetect = false;          //¿ª¹ØÍ¨¹ý°´¼ü¼ì²âÓÎÏ·ui
-    bool UseROnlyMoveClicker = false;       //¿ª¹Ø½öÒÆ¶¯Ê±ÓÒ¼üÁ¬µã
-    bool UseLOnlyMoveClicker = false;       //¿ª¹Ø½öÒÆ¶¯Ê±×ó¼üÁ¬µã
-    bool UseDisableMoveOnStopMove = false;  //¿ª¹ØÁ¬µãÍ£Ö¹ÒÆ¶¯Ê±½ûÓÃÁ¬µã
-    bool UseMouseShake = false;             //¿ª¹ØÊó±ê¶¶¶¯
-    bool UseMouseShakeRawInput = false;     //¿ª¹ØÊÇ·ñÊó±êÒÆ¶¯Ê±Ê¹ÓÃÔ­Ê¼ÊäÈë
-    bool UseMSPreventViewSliding = true;    //¿ª¹Ø·ÀÖ¹ÊÓ½Ç»¬¶¯
-    bool UseMSSmoothSpeed = true;           //¿ª¹ØÆ½»¬ËÙ¶È
-    bool UseItembarUseMemSearch = true;     //¿ª¹ØÎïÆ·À¸¿ª¹ØÊ¹ÓÃÄÚ´æËÑË÷
-    LRPair<array<bool, 10>> ItemEnableClicker = {//ÎïÆ·À¸¿ª¹ØÁ¬µã
+    bool UseREmptyRate = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseLEmptyRate = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseRFluctuation = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½CPSï¿½ï¿½ï¿½ï¿½
+    bool UseLFluctuation = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½
+    bool UseLClickTime = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseRClickTime = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseGUIDetection = false;           //ï¿½ï¿½ï¿½ï¿½GUIï¿½ï¿½ï¿½
+    bool UseLClickPressTime = false;        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½
+    bool UseRClickPressTime = false;        //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½
+    bool UseRAutoPressDuration = true;      //ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    bool UseLAutoPressDuration = true;      //ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    bool UseStartWithWindows = false;       //ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool EnableRightClicker = true;         //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool EnableLeftClicker = true;          //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseBroadcasterMode = false;        //ï¿½ï¿½ï¿½Ø·ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½GCï¿½ï¿½ï¿½ï¿½
+    bool UseAutoGuiDetect = false;          //ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ui
+    bool UseROnlyMoveClicker = false;       //ï¿½ï¿½ï¿½Ø½ï¿½ï¿½Æ¶ï¿½Ê±ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseLOnlyMoveClicker = false;       //ï¿½ï¿½ï¿½Ø½ï¿½ï¿½Æ¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseDisableMoveOnStopMove = false;  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í£Ö¹ï¿½Æ¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseMouseShake = false;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê¶¶ï¿½ï¿½
+    bool UseMouseShakeRawInput = false;     //ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½Ê±Ê¹ï¿½ï¿½Ô­Ê¼ï¿½ï¿½ï¿½ï¿½
+    bool UseMSPreventViewSliding = true;    //ï¿½ï¿½ï¿½Ø·ï¿½Ö¹ï¿½Ó½Ç»ï¿½ï¿½ï¿½
+    bool UseMSSmoothSpeed = true;           //ï¿½ï¿½ï¿½ï¿½Æ½ï¿½ï¿½ï¿½Ù¶ï¿½
+    bool UseItembarUseMemSearch = true;     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½
+    LRPair<array<bool, 10>> ItemEnableClicker = {//ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         { true, true, true, true, true, true, true, true, true },
         { true, true, true, true, true, true, true, true, true }
     };
-    bool UseChinese = true;                 //¿ª¹ØÖÐÎÄÄ£Ê½
-    bool UseDriverProtect = false;          //¿ª¹ØÇý¶¯±£»¤
-    bool UseHiddenProcess = false;          //¿ª¹ØÒþ²Ø½ø³Ì
-    bool UseSuspendNetease = false;         //¿ª¹Ø¹ÒÆðÍøÒ×ÓÎÏ·
-    bool AllowSetLClicker = true;           //¿ª¹ØÔÊÐí¿ØÖÆ×ó¼ü¿ª¹Ø
-    bool AllowSetRClicker = true;           //¿ª¹ØÔÊÐí¿ØÖÆÓÒ¼ü¿ª¹Ø
-    bool UseEnableGameGui = false;          //¿ª¹Ø¿ªÆôÓÎÏ·ÊÓ¾õÐ§¹û
-    bool UseROnlyJumpClicker = false;       //¿ª¹ØÌøÔ¾Ê±ÆôÓÃÓÒ¼üÁ¬µã
-    bool UseLOnlyJumpClicker = false;       //¿ª¹ØÌøÔ¾Ê±ÆôÓÃ×ó¼üÁ¬µã
-    bool UseRestTimeOnStopClicker = true;   //¿ª¹ØÍ£Ö¹Á¬µãÊ±£¬ÖØÖÃÁ¬µã¼ä¸ôµÄÊ±¼ä
-    bool UseBrutalMode = false;             //¿ª¹Ø±©Á¦Ä£Ê½
-    bool UseLClickerTrigInter = false;      //¿ª¹ØÁ¬µãÊ±¿ÉÒÔÍÚ¾ò·½¿é
-    bool UseRClickerTrigInter = false;      //¿ª¹ØÁ¬µãÊ±¿ÉÒÔÊ¹ÓÃÎïÆ·
-    bool UseOldMethodToTrigInter = false;   //¿ª¹ØÊ¹ÓÃÀÏ°ì·¨ÊµÏÖÆÆ»µ·½¿é/Ê¹ÓÃÎïÆ·
-    bool UseRStartClickerDelay = false;     //¿ª¹ØÓÒ¼üÆô¶¯ÑÓ³Ù
-    bool UseLStartClickerDelay = false;     //¿ª¹Ø×ó¼üÆô¶¯ÑÓ³Ù
-    bool UseFilterRSingleClick = false;     //¿ª¹Ø¹ýÂËÓÒ¼üµ¥´Îµã»÷
-    bool UseFilterLSingleClick = false;     //¿ª¹Ø¹ýÂË×ó¼üµ¥´Îµã»÷
-    bool UsePerformanceMode = false;        //¿ª¹ØÐÔÄÜÄ£Ê½
-    bool UseRCPSChangeTrend = false;        //¿ª¹ØÓÒ¼üCPS±ä»¯Ç÷ÊÆ
-    bool UseLCPSChangeTrend = false;        //¿ª¹Ø×ó¼üCPS±ä»¯Ç÷ÊÆ
-    bool UseOverheatProtec = false;         //¿ª¹Ø¹ýÈÈ±£»¤
-    bool UseBEAdaptation = false;           //ÊÇ·ñÊÊÅäBedrock Edition
-    bool UseInGameOnlyClicker = false;      //½öÏÞÓÎÏ·ÖÐÊ¹ÓÃÁ¬µãÆ÷
-    bool UseItembarSwitch = false;          //ÎïÆ·À¸¿ª¹Ø
-    bool UseHumanOnlyTrigger = false;       //½öÏÞÈËÀà´¥·¢Á¬µãÆ÷
+    bool UseChinese = true;                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    bool UseDriverProtect = false;          //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseHiddenProcess = false;          //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø½ï¿½ï¿½ï¿½
+    bool UseSuspendNetease = false;         //ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·
+    bool AllowSetLClicker = true;           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool AllowSetRClicker = true;           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseEnableGameGui = false;          //ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½Ó¾ï¿½Ð§ï¿½ï¿½
+    bool UseROnlyJumpClicker = false;       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¾Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseLOnlyJumpClicker = false;       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¾Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseRestTimeOnStopClicker = true;   //ï¿½ï¿½ï¿½ï¿½Í£Ö¹ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    bool UseBrutalMode = false;             //ï¿½ï¿½ï¿½Ø±ï¿½ï¿½ï¿½Ä£Ê½
+    bool UseLClickerTrigInter = false;      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ú¾ò·½¿ï¿½
+    bool UseRClickerTrigInter = false;      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½Æ·
+    bool UseOldMethodToTrigInter = false;   //ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ï°ì·¨Êµï¿½ï¿½ï¿½Æ»ï¿½ï¿½ï¿½ï¿½ï¿½/Ê¹ï¿½ï¿½ï¿½ï¿½Æ·
+    bool UseRStartClickerDelay = false;     //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½
+    bool UseLStartClickerDelay = false;     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó³ï¿½
+    bool UseFilterRSingleClick = false;     //ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½ï¿½ï¿½ï¿½Îµï¿½ï¿½
+    bool UseFilterLSingleClick = false;     //ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îµï¿½ï¿½
+    bool UsePerformanceMode = false;        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    bool UseRCPSChangeTrend = false;        //ï¿½ï¿½ï¿½ï¿½ï¿½Ò¼ï¿½CPSï¿½ä»¯ï¿½ï¿½ï¿½ï¿½
+    bool UseLCPSChangeTrend = false;        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CPSï¿½ä»¯ï¿½ï¿½ï¿½ï¿½
+    bool UseOverheatProtec = false;         //ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½È±ï¿½ï¿½ï¿½
+    bool UseBEAdaptation = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½Bedrock Edition
+    bool UseInGameOnlyClicker = false;      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseItembarSwitch = false;          //ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool UseHumanOnlyTrigger = false;       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½à´¥ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }config;
-// config ÖØ½¨±ê¼Ç¡£Ô­´úÂëÔÚ detach Ïß³ÌÖÐÖ´ÐÐ config.~Config() + placement new£¬
-// ÓëÆäËûÏß³Ì²¢·¢¶ÁÐ´ config ¸÷×Ö¶Î -> ¶ÔÏóÉúÃüÖÜÆÚÖÐ¶Ï£¨0xC0000005£©¡£
-// ¸ÄÎªºóÌ¨Ïß³ÌÖ»×öÓÃ»§È·ÈÏ£¬È·ÈÏºóÖÃÎ»´Ë±ê¼Ç£¬ÓÉÖ÷äÖÈ¾Ïß³ÌÔÚÖ¡±ß½çÖ´ÐÐÖØ½¨¡£
+// config ï¿½Ø½ï¿½ï¿½ï¿½Ç¡ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ detach ï¿½ß³ï¿½ï¿½ï¿½Ö´ï¿½ï¿½ config.~Config() + placement newï¿½ï¿½
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì²ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ config ï¿½ï¿½ï¿½Ö¶ï¿½ -> ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶Ï£ï¿½0xC0000005ï¿½ï¿½ï¿½ï¿½
+// ï¿½ï¿½Îªï¿½ï¿½Ì¨ï¿½ß³ï¿½Ö»ï¿½ï¿½ï¿½Ã»ï¿½È·ï¿½Ï£ï¿½È·ï¿½Ïºï¿½ï¿½ï¿½Î»ï¿½Ë±ï¿½Ç£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¾ï¿½ß³ï¿½ï¿½ï¿½Ö¡ï¿½ß½ï¿½Ö´ï¿½ï¿½ï¿½Ø½ï¿½ï¿½ï¿½
 atomic<bool> IsNeedResetConfig = false;
 //shared_mutex ConfigAccessMutex;
 
-//--------------------¸öÐÔ»¯ÉèÖÃ------------------------------
-int BgOffsetX = 0;                          //±³¾°Æ«ÒÆX
-int BgOffsetY = 0;                          //±³¾°Æ«ÒÆY
-int BgScale = 100;                          //±³¾°Ëõ·Å°Ù·Ö±È
-int BgLightness = 75;                       //±³¾°ÁÁ¶È°Ù·Ö±È
-int GuiItemAlpha = 40;                      //¿Ø¼þµÄÍ¸Ã÷¶È°Ù·Ö±È£¨½öÓÐ±³¾°Í¼Æ¬Ê±²ÅÄÜÊ¹ÓÃ£©
-bool BgAutoResize = true;                   //×Ô¶¯µ÷Õû±³¾°´óÐ¡
+//--------------------ï¿½ï¿½ï¿½Ô»ï¿½ï¿½ï¿½ï¿½ï¿½------------------------------
+int BgOffsetX = 0;                          //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½X
+int BgOffsetY = 0;                          //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½Y
+int BgScale = 100;                          //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å°Ù·Ö±ï¿½
+int BgLightness = 75;                       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È°Ù·Ö±ï¿½
+int GuiItemAlpha = 40;                      //ï¿½Ø¼ï¿½ï¿½ï¿½Í¸ï¿½ï¿½ï¿½È°Ù·Ö±È£ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½Í¼Æ¬Ê±ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã£ï¿½
+bool BgAutoResize = true;                   //ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡
+bool DisableScriptAutoStart = false;        //ï¿½ï¿½ï¿½Ã½Å±ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø±ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½ï¿½ï¿½
 
 inline const array<const char*, 2> RandomDistList = {
-    (config.UseChinese ? u8"¾ùÔÈÕûÊý·Ö²¼"       : "Uniform Int Distribution"    ),
-    (config.UseChinese ? u8"¶þÏî·Ö²¼"           : "Binomial Distribution"       )
+    (config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö²ï¿½"       : "Uniform Int Distribution"    ),
+    (config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½Ö²ï¿½"           : "Binomial Distribution"       )
 };
 inline const array<const char*, 3> BoolRandomDistList = {
-    (config.UseChinese ? u8"BoolÀàÐÍ·Ö²¼"       : "Bernoulli Distribution"      ),
-    (config.UseChinese ? u8"¾ùÔÈÕûÊý·Ö²¼"       : "Uniform Int Distribution"    ),
-    (config.UseChinese ? u8"¶þÏî·Ö²¼"           : "Binomial Distribution"       )
+    (config.UseChinese ? u8"Boolï¿½ï¿½ï¿½Í·Ö²ï¿½"       : "Bernoulli Distribution"      ),
+    (config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö²ï¿½"       : "Uniform Int Distribution"    ),
+    (config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½Ö²ï¿½"           : "Binomial Distribution"       )
 };
 inline const array<const char*, 3> RandomBoolModeList = {
-    (config.UseChinese ? u8"ÆÕÍ¨Ëæ»ú£ºÊ¹ÓÃ×Ô¶¨ÒåËæ»ú·Ö²¼" : "Normal: Use custom random dist"                            ),
-    (config.UseChinese ? u8"Æ£ÀÍÐ§Ó¦£ºËæÊ±¼äÍÆÒÆÊ§ÎóÂÊÉÏÉý" : "Fatigue: error rate increases over time"                 ),
-    (config.UseChinese ? u8"·ÂÉúÓÄÁé£ºÆ£ÀÍ¡¢ÊÖ¶¶¡¢Âí¶û¿É·ò¾À´í" : "Ghost: Fatigue / Hand Shaking / Markov Error Correction" )
+    (config.UseChinese ? u8"ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö²ï¿½" : "Normal: Use custom random dist"                            ),
+    (config.UseChinese ? u8"Æ£ï¿½ï¿½Ð§Ó¦ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" : "Fatigue: error rate increases over time"                 ),
+    (config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é£ºÆ£ï¿½Í¡ï¿½ï¿½Ö¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É·ï¿½ï¿½ï¿½ï¿½" : "Ghost: Fatigue / Hand Shaking / Markov Error Correction" )
 };
 
-//--------------------ÆäËû------------------------------
+//--------------------ï¿½ï¿½ï¿½ï¿½------------------------------
 
-string GameWindowTitle = config.UseChinese ? "ÎÞ" : "None"; //ÓÎÏ·´°¿Ú±êÌâ
+string GameWindowTitle = config.UseChinese ? "ï¿½ï¿½" : "None"; //ï¿½ï¿½Ï·ï¿½ï¿½ï¿½Ú±ï¿½ï¿½ï¿½
 
-int FollowGameStartPID = 0;             //¸úËæÓÎÏ·Æô¶¯µÄ½ø³ÌID
-vector<float> RRecordsCPS;              //ÓÒ¼üCPS¼ÇÂ¼
-vector<float> LRecordsCPS;              //×ó¼üCPS¼ÇÂ¼
-vector<float> CpuRates;                 //CPUÕ¼ÓÃÂÊ¼ÇÂ¼
-vector<float> GpuRates;                 //GPUÕ¼ÓÃÂÊ¼ÇÂ¼
-vector<float> MemRates;                 //ÄÚ´æÕ¼ÓÃÂÊ¼ÇÂ¼
-vector<vector<float>> ScriptCpuRates;   //½Å±¾CPUÕ¼ÓÃÂÊ¼ÇÂ¼
+int FollowGameStartPID = 0;             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½Ä½ï¿½ï¿½ï¿½ID
+vector<float> RRecordsCPS;              //ï¿½Ò¼ï¿½CPSï¿½ï¿½Â¼ï¿½ï¿½1ï¿½ë»¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í³ï¿½Æ£ï¿½
+vector<float> LRecordsCPS;              //ï¿½ï¿½ï¿½CPSï¿½ï¿½Â¼ï¿½ï¿½1ï¿½ë»¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í³ï¿½Æ£ï¿½
+vector<float> RRecordsInstantCPS;       //ï¿½Ò¼ï¿½Ë²Ê±CPSï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½RRecordsCPSÍ¬ï¿½ï¿½Ð´ï¿½ë£©
+vector<float> LRecordsInstantCPS;       //ï¿½ï¿½ï¿½Ë²Ê±CPSï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½LRecordsCPSÍ¬ï¿½ï¿½Ð´ï¿½ë£©
+vector<float> CpuRates;                 //CPUÕ¼ï¿½ï¿½ï¿½Ê¼ï¿½Â¼
+vector<float> GpuRates;                 //GPUÕ¼ï¿½ï¿½ï¿½Ê¼ï¿½Â¼
+vector<float> MemRates;                 //ï¿½Ú´ï¿½Õ¼ï¿½ï¿½ï¿½Ê¼ï¿½Â¼
+vector<vector<float>> ScriptCpuRates;   //ï¿½Å±ï¿½CPUÕ¼ï¿½ï¿½ï¿½Ê¼ï¿½Â¼
 
-mutex RecordsCPSMutex;                  //RRecordsCPS/LRecordsCPS µÄ»¥³âËø
+mutex RecordsCPSMutex;                  //RRecordsCPS/LRecordsCPS/RRecordsInstantCPS/LRecordsInstantCPS ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½
 
-shared_mutex PerformanceMutex;          //CpuRates/GpuRates/MemRates µÄ»¥³âËø£¨RecordsPCRate Ïß³ÌÐ´¡¢Ö÷äÖÈ¾Ïß³Ì¶Á£©
-atomic<bool> ThreadExitFlag(false);     //Ïß³ÌÍË³ö±êÖ¾
+shared_mutex PerformanceMutex;          //CpuRates/GpuRates/MemRates ï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½RecordsPCRate ï¿½ß³ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¾ï¿½ß³Ì¶ï¿½ï¿½ï¿½
+atomic<bool> ThreadExitFlag(false);     //ï¿½ß³ï¿½ï¿½Ë³ï¿½ï¿½ï¿½Ö¾
 
 constexpr array<const char*, 4> ScriptRestrictedFuncs = {
     "SetClipboardText", "GetClipboardText",
@@ -355,10 +360,10 @@ struct ScriptInfo
     string name;
     string info;
     string file;
-    string texture; // Í¼Æ¬µÄÎÄ¼þÂ·¾¶
+    string texture; // Í¼Æ¬ï¿½ï¿½ï¿½Ä¼ï¿½Â·ï¿½ï¿½
     string title;
     string link;
-    string docs; // ÎÄµµÎÄ¼þÂ·¾¶
+    string docs; // ï¿½Äµï¿½ï¿½Ä¼ï¿½Â·ï¿½ï¿½
     HANDLE hThread{};
     vector<string> RestrictedFuncs;
     string RestrictedFuncsStr;
@@ -369,55 +374,65 @@ struct ScriptInfo
 struct ScriptState
 {
     int key = 0;
-    int NetworkPermission = 0; // ÍøÂçÈ¨ÏÞ: 0=Î´ÇëÇó, 1=ÒÑÔÊÐí, 2=ÒÑ¾Ü¾ø
-    bool IsPressedKey = false; // Õâ¸ö²»ÐèÒª×Ô¼º¿ØÖÆ
-    bool IsClickedKey = false; // Õâ¸öÐèÒªÔÚ¶ÁÈ¡ºóÉèÖÃÎªfalse
-    bool IsReleaseKey = false; // Õâ¸öÐèÒªÔÚ¶ÁÈ¡ºóÉèÖÃÎªfalse
+    int NetworkPermission = 0; // ï¿½ï¿½ï¿½ï¿½È¨ï¿½ï¿½: 0=Î´ï¿½ï¿½ï¿½ï¿½, 1=ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½, 2=ï¿½Ñ¾Ü¾ï¿½
+    bool IsPressedKey = false; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½
+    bool IsClickedKey = false; // ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½Ú¶ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªfalse
+    bool IsReleaseKey = false; // ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½Ú¶ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªfalse
     int LoopDelay = 0;
     bool IsExit = false;
     bool IsSuspend = false;
-    bool IsRunning = false;    // ½Å±¾Ïß³ÌÊÇ·ñÒÑÆô¶¯£¨¹©"ÆôÓÃ"¿ª¹ØÅÐ¶ÏÊÇ·ñÐèÒªÆô¶¯½Å±¾£©
+    bool IsRunning = false;    // ï¿½Å±ï¿½ï¿½ß³ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½
+};
+
+// Lua ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼
+struct ScriptErrorRecord
+{
+    string file;        // ï¿½ï¿½ï¿½ï¿½ï¿½Ä½Å±ï¿½ï¿½Ä¼ï¿½Â·ï¿½ï¿½
+    string time;        // ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    string message;     // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¶ï¿½Õ»ï¿½ï¿½
 };
 
 namespace ScriptData
 {
-    shared_mutex InstalledMtx;          //ÒÑ°²×°µÄ½Å±¾Ëø
-    shared_mutex AvaiableMtx;           //¿ÉÓÃµÄ½Å±¾Ëø
-    shared_mutex StatesMtx;             //½Å±¾×´Ì¬µÄËø
-    shared_mutex ShopListMtx;           //½Å±¾ÉÌµêÁÐ±íµÄËø£¨Ë¢ÐÂÏß³Ì clear/ÖØÌî¡¢Ö÷Ïß³Ì±éÀú¡¢¼ì²é¸üÐÂÏß³Ì±éÀú£©
-    vector<ScriptInfo> Installed;       //ÒÑ°²×°µÄ½Å±¾
-    vector<ScriptInfo> Avaiable;        //¿ÉÓÃµÄ½Å±¾
-    vector<ScriptInfo> ShopList;        //½Å±¾ÉÌµêµÄ½Å±¾ÁÐ±í
-    map<string, ScriptState> States;    //½Å±¾Ïà¹Ø×´Ì¬¿ØÖÆ
+    shared_mutex ErrorRecordsMtx;       //ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½
+    vector<ScriptErrorRecord> ErrorRecords; //ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê·ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½Âµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    shared_mutex InstalledMtx;          //ï¿½Ñ°ï¿½×°ï¿½Ä½Å±ï¿½ï¿½ï¿½
+    shared_mutex AvaiableMtx;           //ï¿½ï¿½ï¿½ÃµÄ½Å±ï¿½ï¿½ï¿½
+    shared_mutex StatesMtx;             //ï¿½Å±ï¿½×´Ì¬ï¿½ï¿½ï¿½ï¿½
+    shared_mutex ShopListMtx;           //ï¿½Å±ï¿½ï¿½Ìµï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¢ï¿½ï¿½ï¿½ß³ï¿½ clear/ï¿½ï¿½ï¿½î¡¢ï¿½ï¿½ï¿½ß³Ì±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì±ï¿½ï¿½ï¿½ï¿½ï¿½
+    vector<ScriptInfo> Installed;       //ï¿½Ñ°ï¿½×°ï¿½Ä½Å±ï¿½
+    vector<ScriptInfo> Avaiable;        //ï¿½ï¿½ï¿½ÃµÄ½Å±ï¿½
+    vector<ScriptInfo> ShopList;        //ï¿½Å±ï¿½ï¿½Ìµï¿½Ä½Å±ï¿½ï¿½Ð±ï¿½
+    map<string, ScriptState> States;    //ï¿½Å±ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½ï¿½ï¿½ï¿½
 }
 
 namespace Sponsor
 {
     shared_mutex Mtx;                       
-    vector<string> List;                //ÔÞÖúÁÐ±í
+    vector<string> List;                //ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
 }
 
-const string version = "3.57";          //°æ±¾ºÅ
-string title = "GAMECLICKER 3.57 ÄÚ²¿²âÊÔ°æ / ÐÂÔö½Å±¾API";      //±êÌâÃû×Ö
-constexpr int ConfigVersion = 5;        //ÅäÖÃÎÄ¼þ°æ±¾ºÅ
-constexpr int AgreementVersion = 8;     //Ð­ÒéÎÄ¼þ°æ±¾ºÅ
-bool IsNeedReshowAgreement = false;     //ÊÇ·ñÐèÒªÏÔÊ¾¸üÐÂµÄÐ­Òé£¬¸ù¾ÝÅäÖÃÎÄ¼þÀïÃæµÄ°æ±¾ºÅ¶Ô±È
+const string version = "3.57";          //ï¿½æ±¾ï¿½ï¿½
+string title = "GAMECLICKER 3.57 ï¿½Ú²ï¿½ï¿½ï¿½ï¿½Ô°ï¿½ / ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½API";      //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+constexpr int ConfigVersion = 5;        //ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½æ±¾ï¿½ï¿½
+constexpr int AgreementVersion = 8;     //Ð­ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½æ±¾ï¿½ï¿½
+bool IsNeedReshowAgreement = false;     //ï¿½Ç·ï¿½ï¿½ï¿½Òªï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Âµï¿½Ð­ï¿½é£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½Ä°æ±¾ï¿½Å¶Ô±ï¿½
 
-inline const int RenderFps = 60;        //äÖÈ¾Ö¡ÂÊ
+inline const int RenderFps = 60;        //ï¿½ï¿½È¾Ö¡ï¿½ï¿½
 
-//#define GC_USE_D_DRIVE                //ÊÇ·ñÊ¹ÓÃDÅÌµÄÅäÖÃÎÄ¼þ£¬·½±ãµ÷ÊÔ
-//#define GC_NO_HOOK                    //ÊÇ·ñ½ûÓÃHOOK
-//#define GC_DEBUG_VS                   //ÊÇ·ñÔÚVSµÄµ÷ÊÔ´°¿ÚÊä³öÈÕÖ¾
-#define GC_DEBUG_CMD                    //ÊÇ·ñÔÚÃüÁîÐÐÊä³öÈÕÖ¾
-//#define GC_NO_ANIMATION               //ÊÇ·ñ½ûÓÃÆô¶¯¶¯»­
-//#define GC_REMOTE_DEBUG               //ÊÇ·ñÊ¹ÓÃÔ¶³Ìµ÷ÊÔ
-//#define GC_MORE_DEBUG_INFO            //¸ü¶àÏêÏ¸µ÷ÊÔÐÅÏ¢
-//#define GC_NO_MSGBOX                  //½ûÓÃÏûÏ¢µ¯´°
-//#define GC_SERVER_DEBUG               //ÊÇ·ñ¿ªÆô·þÎñÆ÷Í¨Ñ¶µ÷ÊÔ
-#define GC_ENABLE_QUICK_EXIT            //¿ªÆôµ÷ÊÔ¿ìËÙÍË³ö
-//#define GC_DEBUG_GUIDE_UI             //¿ªÆô×ÜÊÇÏÔÊ¾Ïòµ¼UI
+//#define GC_USE_D_DRIVE                //ï¿½Ç·ï¿½Ê¹ï¿½ï¿½Dï¿½Ìµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+//#define GC_NO_HOOK                    //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½HOOK
+//#define GC_DEBUG_VS                   //ï¿½Ç·ï¿½ï¿½ï¿½VSï¿½Äµï¿½ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾
+#define GC_DEBUG_CMD                    //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾
+//#define GC_NO_ANIMATION               //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+//#define GC_REMOTE_DEBUG               //ï¿½Ç·ï¿½Ê¹ï¿½ï¿½Ô¶ï¿½Ìµï¿½ï¿½ï¿½
+//#define GC_MORE_DEBUG_INFO            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+//#define GC_NO_MSGBOX                  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½
+//#define GC_SERVER_DEBUG               //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨Ñ¶ï¿½ï¿½ï¿½ï¿½
+#define GC_ENABLE_QUICK_EXIT            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¿ï¿½ï¿½ï¿½ï¿½Ë³ï¿½
+//#define GC_DEBUG_GUIDE_UI             //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½UI
 
-//#define GC_RELEASE_MODE               //ÊÇ·ñÎª·¢²¼°æ£¨Èç¹ûÊÇ¾Í×Ô¶¯¹Ø±ÕËùÓÐµ÷ÊÔÄÚÈÝ£©
+//#define GC_RELEASE_MODE               //ï¿½Ç·ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½æ£¨ï¿½ï¿½ï¿½ï¿½Ç¾ï¿½ï¿½Ô¶ï¿½ï¿½Ø±ï¿½ï¿½ï¿½ï¿½Ðµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -435,10 +450,10 @@ inline const int RenderFps = 60;        //äÖÈ¾Ö¡ÂÊ
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
-#define USE_IN_MICROSOFT              //ÊÇ·ñÊÇÎ¢ÈíÉÌµê·¢ÐÐ°æ±¾£¨Î¢ÈíÉÌµêµÄÒª¹Ø±Õ×Ô¶¯¸üÐÂ£©
+#define USE_IN_MICROSOFT              //ï¿½Ç·ï¿½ï¿½ï¿½Î¢ï¿½ï¿½ï¿½Ìµê·¢ï¿½Ð°æ±¾ï¿½ï¿½Î¢ï¿½ï¿½ï¿½Ìµï¿½ï¿½Òªï¿½Ø±ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½Â£ï¿½
 
-//=============================´ý¸ü¸ÄÏî==========================================================
-// °ÑÕâÐ©ÎÄ¼þµÄ·â×°µ½class FileDefines£¬±äÁ¿Ãû×ÖÎªpath
+//=============================ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½==========================================================
+// ï¿½ï¿½ï¿½ï¿½Ð©ï¿½Ä¼ï¿½ï¿½Ä·ï¿½×°ï¿½ï¿½class FileDefinesï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªpath
 #ifdef GC_USE_D_DRIVE
 const string WorkPath = "D:";
 #else
@@ -516,67 +531,67 @@ inline const string LogFile =            WorkPath + "\\GameClicker\\GC.log";
 inline const string LogFileZip =         "GC_LOG-%Y-%m-%d %H-%M-%S.zip";
 
 string NoticeStr = config.UseChinese ?
-u8R"(¹«¸æ¼ÓÔØÊ§°Ü
+u8R"(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½
 ===============================================
-±¾Èí¼þ Íê È« Ãâ ·Ñ £¡Èç¹ûÄãÊÇÍ¨¹ý¹ºÂò»ñµÃµÄGCÁ¬µãÆ÷£¬Çë¼°Ê±ÍË¿î²¢¾Ù±¨¡£
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ È« ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½GCï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë¼°Ê±ï¿½Ë¿î²¢ï¿½Ù±ï¿½ï¿½ï¿½
 )" :
 R"(Notice loading failed
 ===============================================
 This software is completely free! If you obtained the GameClicker through purchase, please refund and report it promptly.
 )";
 
-// ÐÞ¸´£ºNoticeStr ÓÉ GetInfo Ïß³ÌÐ´Èë¡¢Ö÷Ïß³ÌÃ¿Ö¡¶ÁÈ¡ÏÔÊ¾£¨c_str()£©£¬ÎÞËøÊ±Ð´Ïß³Ì realloc
-// »áÁîÖ÷Ïß³Ì³ÖÐü´¹Ö¸Õë ¡ú 0xC0000005¡£
+// ï¿½Þ¸ï¿½ï¿½ï¿½NoticeStr ï¿½ï¿½ GetInfo ï¿½ß³ï¿½Ð´ï¿½ë¡¢ï¿½ï¿½ï¿½ß³ï¿½Ã¿Ö¡ï¿½ï¿½È¡ï¿½ï¿½Ê¾ï¿½ï¿½c_str()ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±Ð´ï¿½ß³ï¿½ realloc
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì³ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ ï¿½ï¿½ 0xC0000005ï¿½ï¿½
 shared_mutex NoticeMutex;
 
 inline const array<string, 48> DailyMottos = {
-    config.UseChinese ? u8"&bÊý×ÖÊÀ½çÊÇ·ç¾°£¬ÏÖÊµÉú»î²ÅÊÇ¼ÒÔ°¡£" : "&bDigital world is scenery, real life is home.",
-    config.UseChinese ? u8"&bÃ¿Ò»´Î×¨×¢Ñ§Ï°£¬¶¼ÊÇ¶ÔÎ´À´µÄÍ¶×Ê¡£" : "&bEach study session invests in your future.",
-    config.UseChinese ? u8"&bÕæÕýµÄÌôÕ½ÔÚÆÁÄ»Íâ£¬±ðÌÓ±Ü³É³¤¡£" : "&bReal challenges are off-screen - don't avoid growth.",
-    config.UseChinese ? u8"&b½ñÌìÉÙÍæÒ»Ð¡Ê±£¬Ã÷Ìì¶àÒ»·ÖÑ¡ÔñÈ¨¡£" : "&bOne less gaming hour today, more choices tomorrow.",
-    config.UseChinese ? u8"&b¼¼ÄÜÐèÒªÑµÁ·£¬´óÄÔÐèÒªÖªÊ¶¡£" : "&bSkills need practice, mind needs knowledge.",
-    config.UseChinese ? u8"&b½¡¿µµÄÈý²Í±ÈÓÎÏ·ÅÅÃû¸üÖØÒª¡£" : "&bThree healthy meals beat gaming rankings.",
-    config.UseChinese ? u8"&bÕæÕýµÄ³É¾Í²»»áÔÚÐéÄâÊÀ½çÖÐ½âËø¡£" : "&bReal achievements aren't unlocked in virtual worlds.",
-    config.UseChinese ? u8"&bËý...²»ÔÙ³öÏÖ£¬´ø×ßÁËÎÒµÄÈËÉú¡£" : "&bShe...Not appearing again, taking away my life",
-    config.UseChinese ? u8"&bÉîÒ¹µÄÐÇ¿Õ±ÈÓÎÏ·»­Ãæ¸ü×³Àö¡£" : "&bNight stars outshine game graphics.",
-    config.UseChinese ? u8"&bÔË¶¯²úÉúµÄÄÚ·ÈëÄ±ÈÓÎÏ·´Ì¼¤¸ü³Ö¾Ã¡£" : "&bExercise endorphins last longer than gaming thrills.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ç¾°ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç¼ï¿½Ô°ï¿½ï¿½" : "&bDigital world is scenery, real life is home.",
+    config.UseChinese ? u8"&bÃ¿Ò»ï¿½ï¿½×¨×¢Ñ§Ï°ï¿½ï¿½ï¿½ï¿½ï¿½Ç¶ï¿½Î´ï¿½ï¿½ï¿½ï¿½Í¶ï¿½Ê¡ï¿½" : "&bEach study session invests in your future.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ½ï¿½ï¿½ï¿½ï¿½Ä»ï¿½â£¬ï¿½ï¿½ï¿½Ó±Ü³É³ï¿½ï¿½ï¿½" : "&bReal challenges are off-screen - don't avoid growth.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»Ð¡Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Ñ¡ï¿½ï¿½È¨ï¿½ï¿½" : "&bOne less gaming hour today, more choices tomorrow.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÒªÑµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÒªÖªÊ¶ï¿½ï¿½" : "&bSkills need practice, mind needs knowledge.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í±ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½" : "&bThree healthy meals beat gaming rankings.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½Ä³É¾Í²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð½ï¿½ï¿½ï¿½ï¿½ï¿½" : "&bReal achievements aren't unlocked in virtual worlds.",
+    config.UseChinese ? u8"&bï¿½ï¿½...ï¿½ï¿½ï¿½Ù³ï¿½ï¿½Ö£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" : "&bShe...Not appearing again, taking away my life",
+    config.UseChinese ? u8"&bï¿½ï¿½Ò¹ï¿½ï¿½ï¿½Ç¿Õ±ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½×³ï¿½ï¿½ï¿½ï¿½" : "&bNight stars outshine game graphics.",
+    config.UseChinese ? u8"&bï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú·ï¿½ï¿½Ä±ï¿½ï¿½ï¿½Ï·ï¿½Ì¼ï¿½ï¿½ï¿½ï¿½Ö¾Ã¡ï¿½" : "&bExercise endorphins last longer than gaming thrills.",
     config.UseChinese ? u8"&b..." : "&b...",
-    config.UseChinese ? u8"&b°ïÖú¸¸Ä¸×ö¼ÒÎñ£¬Äã»áÊÕ»ñ¸ü¶à×ðÖØ¡£" : "&bHelp with chores, earn more respect.",
-    config.UseChinese ? u8"&bÅàÑøÒ»ÏîÒÕÊõ°®ºÃ£¬·¢ÏÖ¸ü¶àÃÀºÃ¡£" : "&bDevelop an art hobby, discover more beauty.",
-    config.UseChinese ? u8"&bÓÎÏ·½ÇÉ«»áÖØÖÃ£¬ÈËÉúÃ»ÓÐÖØÐÂ¿ªÊ¼¡£" : "&bGame characters reset, life doesn't restart.",
-    config.UseChinese ? u8"&bÕæÕýµÄÍÅ¶ÓºÏ×÷ÔÚÏÖÊµÏîÄ¿ÖÐÄ¥Á·¡£" : "&bReal teamwork sharpens in actual projects.",
-    config.UseChinese ? u8"&b²»Òª...²»Òª...²»..." : "&bNo...NO..NOOO...",
-    config.UseChinese ? u8"&bÃ¿Ìì¶Á10Ò³Êé£¬Ò»Äê¾ÍÊÇ3650Ò³¡£" : "&bRead 10 pages daily, 3650 pages a year.",
-    config.UseChinese ? u8"&bÓÎÏ·ÈÎÎñ»áË¢ÐÂ£¬ÈËÉú»ú»á²»µÈ´ý¡£" : "&bGame quests refresh, life chances don't wait.",
-    config.UseChinese ? u8"&bÍ¶×Ê×Ô¼ºµÄ¼¼ÄÜ£¬ÕâÊÇ×îºÃµÄ×°±¸¡£" : "&bInvest in skills - your best equipment.",
-    config.UseChinese ? u8"&bÕæÊµµÄÓÑÒêÐèÒªÕæÊµµÄÊ±¼äÀ´ÅàÑø¡£" : "&bReal friendships need real time to grow.",
-    config.UseChinese ? u8"&bºÃ...ºÃ..ÄÑÊÜ¡£" : "&b...Asdfasd....It's uncomfortable.",
-    config.UseChinese ? u8"&bÑ§»áÅëâ¿£¬Îª×Ô¼º×öÒ»¶Ù½¡¿µµÄ²Í¡£" : "&bLearn cooking, make yourself a healthy meal.",
-    config.UseChinese ? u8"&bÓÎÏ·ÅÅÃûÖ»ÊÇÊý¾Ý£¬¸öÈË³É³¤²ÅÊÇÕæÊµ¡£" : "&bGame ranks are data, personal growth is real.",
-    config.UseChinese ? u8"&bºÃÏë...½âÍÑ..." : "&bI really want to ... liberation ..",
-    config.UseChinese ? u8"&b°ïÖúÍ¬Ñ§½â¾öÎÊÌâ£¬Äã»á»ñµÃ¸ü¶à¿ìÀÖ¡£" : "&bHelp classmates solve problems, gain more joy.",
-    config.UseChinese ? u8"&bÕâÊÀ½ç...ÔõÃ´ÁË£¿" : "&bThis world..... What's wrong?",
-    config.UseChinese ? u8"&b¿ÕÎÞÒ»Îï¡£" : "&bEmpty nothing.",
-    config.UseChinese ? u8"&bÐ´ÈÕ¼Ç¼ÇÂ¼³É³¤£¬±ÈÓÎÏ·³É¾Í¸üÓÐÒâÒå¡£" : "&bKeep diary for growth, more meaningful than achievements.",
-    config.UseChinese ? u8"&b¹Ø×¢¿Æ¼¼ÐÂÎÅ£¬ÁË½âÕæÊµÊÀ½çµÄ´´ÐÂ¡£" : "&bFollow tech news, learn real-world innovation.",
-    config.UseChinese ? u8"&b°¡...ºÃÍ´¿à...ÄÜ²»ÄÜ..." : "&bAh...It's so painful...Can y....",
-    config.UseChinese ? u8"&bÐéÄâÊÀ½çµÄÓ¢ÐÛ£¬²»ÈçÏÖÊµÖÐµÄÓÂÊ¿¡£" : "&bVirtual heroes can't match real warriors.",
-    config.UseChinese ? u8"&bÎÒ...¼á³Ö²»×¡ÁË..." : "&bI...I can't hold on anymore",
-    config.UseChinese ? u8"&bÎÒ²»ÄÜ¿´¼û¹âÁË¡£" : "&bI can't see the light anymore.",
-    config.UseChinese ? u8"&b²Î¼ÓÖ¾Ô¸Õß»î¶¯£¬¸ÐÊÜ¸øÓèµÄ¿ìÀÖ¡£" : "&bVolunteer to feel the joy of giving.",
-    config.UseChinese ? u8"&bÅàÑø½â¾öÎÊÌâµÄÄÜÁ¦£¬ÕâÊÇÖÕ¼«¼¼ÄÜ¡£" : "&bDevelop problem-solving - the ultimate skill.",
-    config.UseChinese ? u8"&b³öÈ¥¿´¿´ÊÀ½ç°É£¬Ê±¼ä²»¶àÁË¡£" : "&bGo out and see the world, time is running out.",
-    config.UseChinese ? u8"&bÓë²»Í¬±³¾°µÄÈË½»Á÷£¬ÍØÕ¹ÊÓÒ°¡£" : "&bTalk to diverse people, broaden horizons.",
-    config.UseChinese ? u8"&bÎÒ²»ÔÙÊÇÎÒ×Ô¼ºÁË£¬ÔÙ¼ûÊÀ½ç¡£" : "&bI am no longer myself, goodbye to the world.",
-    config.UseChinese ? u8"&bÎÒÏàÐÅÄã»á¸üºÃµÄ£¬²»ÏñÎÒ... ºÃÍ´..." : "&bI believe you will be better, unlike me....It hurts so much...",
-    config.UseChinese ? u8"&bÁ·Ï°¹«¹²ÑÝ½²£¬ÌáÉý±í´ï×ÔÐÅ¡£" : "&bPractice public speaking, boost confidence.",
-    config.UseChinese ? u8"&bÅ¶²»²»²»£¬ÄãµÄµ¨×ÓÕæµÄ·Êà½à½µÄ¡£" : "&bTIME ARE CHANGING",
-    config.UseChinese ? u8"&bÓÎÏ·¼¼ÄÜ»á¹ýÊ±£¬Ñ§Ï°ÄÜÁ¦ÓÀÔ¶±£Öµ¡£" : "&bGame skills expire, learning ability lasts.",
-    config.UseChinese ? u8"&b¾¡ÌýÀÏÈËÑÔ£¬ÖÕÉíÄÑÏòÇ°¡£" : "&bListen to the elderly more often, it's hard to progress.",
-    config.UseChinese ? u8"&bÊ±¼ä..." : "&bTime...",
-    config.UseChinese ? u8"&bÑ§Ï°ÐÄÀíÑ§£¬¸üºÃµØÀí½â×Ô¼ººÍËûÈË¡£" : "&bStudy psychology, understand yourself and others.",
-    config.UseChinese ? u8"&bÄãºÃÎÒµÄÅóÓÑ¡£" : "&bHello my friends.",
-    config.UseChinese ? u8"&bÎÒ...ºÃÄÑÊÜ..." : "&bI... It's so uncomfortable ...",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¡ï¿½" : "&bHelp with chores, earn more respect.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¡ï¿½" : "&bDevelop an art hobby, discover more beauty.",
+    config.UseChinese ? u8"&bï¿½ï¿½Ï·ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½Â¿ï¿½Ê¼ï¿½ï¿½" : "&bGame characters reset, life doesn't restart.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å¶Óºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½Ä¿ï¿½ï¿½Ä¥ï¿½ï¿½ï¿½ï¿½" : "&bReal teamwork sharpens in actual projects.",
+    config.UseChinese ? u8"&bï¿½ï¿½Òª...ï¿½ï¿½Òª...ï¿½ï¿½..." : "&bNo...NO..NOOO...",
+    config.UseChinese ? u8"&bÃ¿ï¿½ï¿½ï¿½10Ò³ï¿½é£¬Ò»ï¿½ï¿½ï¿½ï¿½ï¿½3650Ò³ï¿½ï¿½" : "&bRead 10 pages daily, 3650 pages a year.",
+    config.UseChinese ? u8"&bï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½Ë¢ï¿½Â£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½á²»ï¿½È´ï¿½ï¿½ï¿½" : "&bGame quests refresh, life chances don't wait.",
+    config.UseChinese ? u8"&bÍ¶ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½Ä¼ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½×°ï¿½ï¿½ï¿½ï¿½" : "&bInvest in skills - your best equipment.",
+    config.UseChinese ? u8"&bï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½Êµï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" : "&bReal friendships need real time to grow.",
+    config.UseChinese ? u8"&bï¿½ï¿½...ï¿½ï¿½..ï¿½ï¿½ï¿½Ü¡ï¿½" : "&b...Asdfasd....It's uncomfortable.",
+    config.UseChinese ? u8"&bÑ§ï¿½ï¿½ï¿½ï¿½â¿£ï¿½Îªï¿½Ô¼ï¿½ï¿½ï¿½Ò»ï¿½Ù½ï¿½ï¿½ï¿½ï¿½Ä²Í¡ï¿½" : "&bLearn cooking, make yourself a healthy meal.",
+    config.UseChinese ? u8"&bï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½Ë³É³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½" : "&bGame ranks are data, personal growth is real.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½...ï¿½ï¿½ï¿½ï¿½..." : "&bI really want to ... liberation ..",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½Í¬Ñ§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£¬ï¿½ï¿½ï¿½ï¿½Ã¸ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½" : "&bHelp classmates solve problems, gain more joy.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½...ï¿½ï¿½Ã´ï¿½Ë£ï¿½" : "&bThis world..... What's wrong?",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¡£" : "&bEmpty nothing.",
+    config.UseChinese ? u8"&bÐ´ï¿½Õ¼Ç¼ï¿½Â¼ï¿½É³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½É¾Í¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å¡£" : "&bKeep diary for growth, more meaningful than achievements.",
+    config.UseChinese ? u8"&bï¿½ï¿½×¢ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½Å£ï¿½ï¿½Ë½ï¿½ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½Â¡ï¿½" : "&bFollow tech news, learn real-world innovation.",
+    config.UseChinese ? u8"&bï¿½ï¿½...ï¿½ï¿½Í´ï¿½ï¿½...ï¿½Ü²ï¿½ï¿½ï¿½..." : "&bAh...It's so painful...Can y....",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¢ï¿½Û£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½Ðµï¿½ï¿½ï¿½Ê¿ï¿½ï¿½" : "&bVirtual heroes can't match real warriors.",
+    config.UseChinese ? u8"&bï¿½ï¿½...ï¿½ï¿½Ö²ï¿½×¡ï¿½ï¿½..." : "&bI...I can't hold on anymore",
+    config.UseChinese ? u8"&bï¿½Ò²ï¿½ï¿½Ü¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¡ï¿½" : "&bI can't see the light anymore.",
+    config.UseChinese ? u8"&bï¿½Î¼ï¿½Ö¾Ô¸ï¿½ß»î¶¯ï¿½ï¿½ï¿½ï¿½ï¿½Ü¸ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ö¡ï¿½" : "&bVolunteer to feel the joy of giving.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¼ï¿½ï¿½ï¿½ï¿½Ü¡ï¿½" : "&bDevelop problem-solving - the ultimate skill.",
+    config.UseChinese ? u8"&bï¿½ï¿½È¥ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É£ï¿½Ê±ï¿½ä²»ï¿½ï¿½ï¿½Ë¡ï¿½" : "&bGo out and see the world, time is running out.",
+    config.UseChinese ? u8"&bï¿½ë²»Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¹ï¿½ï¿½Ò°ï¿½ï¿½" : "&bTalk to diverse people, broaden horizons.",
+    config.UseChinese ? u8"&bï¿½Ò²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½Ë£ï¿½ï¿½Ù¼ï¿½ï¿½ï¿½ï¿½ç¡£" : "&bI am no longer myself, goodbye to the world.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÃµÄ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½... ï¿½ï¿½Í´..." : "&bI believe you will be better, unlike me....It hurts so much...",
+    config.UseChinese ? u8"&bï¿½ï¿½Ï°ï¿½ï¿½ï¿½ï¿½ï¿½Ý½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å¡ï¿½" : "&bPractice public speaking, boost confidence.",
+    config.UseChinese ? u8"&bÅ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½à½µÄ¡ï¿½" : "&bTIME ARE CHANGING",
+    config.UseChinese ? u8"&bï¿½ï¿½Ï·ï¿½ï¿½ï¿½Ü»ï¿½ï¿½Ê±ï¿½ï¿½Ñ§Ï°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Öµï¿½ï¿½" : "&bGame skills expire, learning ability lasts.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½" : "&bListen to the elderly more often, it's hard to progress.",
+    config.UseChinese ? u8"&bÊ±ï¿½ï¿½..." : "&bTime...",
+    config.UseChinese ? u8"&bÑ§Ï°ï¿½ï¿½ï¿½ï¿½Ñ§ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¡ï¿½" : "&bStudy psychology, understand yourself and others.",
+    config.UseChinese ? u8"&bï¿½ï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½ï¿½Ñ¡ï¿½" : "&bHello my friends.",
+    config.UseChinese ? u8"&bï¿½ï¿½...ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½..." : "&bI... It's so uncomfortable ...",
     config.UseChinese ? u8"&bNothings" : "&bbNothings"
 };
 
@@ -591,37 +606,37 @@ NOTIFYICONDATA TrayNid = { 0 };
 HANDLE AntiMultiOpenMutex;
 HANDLE ClickRunThread;
 HANDLE ClickSoundThread;
-HANDLE WindowMsgThreadHandle = nullptr;   // ´°¿ÚÏûÏ¢Ïß³Ì¾ä±ú, ÍË³öÊ±µÈ´ýÆä½áÊøÔÙÊÍ·Å ImGui/D3D
+HANDLE WindowMsgThreadHandle = nullptr;   // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ß³Ì¾ï¿½ï¿½, ï¿½Ë³ï¿½Ê±ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½ ImGui/D3D
 
-atomic<bool> IsWindowInitSuccessful  = false;           //´°¿ÚÊÇ·ñ´´½¨³É¹¦
-atomic<bool> IsStopClicker           = false;           //ÊÇ·ñÍ£Ö¹Á¬µã
-atomic<bool> IsGCExit                = false;           //Á¬µãÆ÷ÍË³ö
-atomic<bool> IsShowGui               = true;            //ÊÇ·ñÏÔÊ¾GUI
-atomic<bool> IsFirstRun              = false;           //µÚÒ»´ÎÔËÐÐ£¨ÊÇ·ñÏÔÊ¾Ïòµ¼£©
-LRPair<atomic<bool>> IsClickering    = {};              //ÊÇ·ñÁ¬µã
-atomic<bool> IsMoving                = false;           //Íæ¼ÒÊÇ·ñÒÆ¶¯
-atomic<bool> IsJumping               = false;           //Íæ¼ÒÊÇ·ñÌøÔ¾
-atomic<bool> IsOpenGui               = false;           //ÔÚÓÎÏ·ÖÐÊÇ·ñ´ò¿ªGUI
-atomic<bool> IsDownloading           = false;           //ÊÇ·ñÕýÔÚÏÂÔØ
-atomic<bool> IsReloadClicker         = true;            //ÊÇ·ñÖØÆôÁ¬µãÏß³Ì
-atomic<bool> IsClickerSuccess        = false;           //Á¬µãÏß³ÌÊÇ·ñ×¼±¸³É¹¦
-atomic<bool> IsRestartAL             = false;           //ÊÇ·ñÖØÆôOpenAL
-atomic<bool> IsServerClosed          = false;           //·þÎñÆ÷ÊÇ·ñ¹Ø±Õ
-atomic<bool> AllowUseGameGui         = false;           //ÊÇ·ñÔÊÐíÊ¹ÓÃÊÓ¾õÐ§¹û
-atomic<bool> AllowConnectServer      = false;           //ÊÇ·ñÔÊÐíÁ¬½Ó·þÎñÆ÷
-atomic<bool> IsDragingFile           = false;           //ÊÇ·ñÕýÔÚÍÏÈëÎÄ¼þ
-atomic<bool> IsCPSWaveSettingChanged = false;           //ÊÇ·ñ¸ü¸ÄÁËCPS²¨ÐÎÉèÖÃ
-atomic<bool> IsScriptUseGitee        = false;           //½Å±¾ÉÌ³¡ÊÇ·ñÊ¹ÓÃgitee
+atomic<bool> IsWindowInitSuccessful  = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ñ´´½ï¿½ï¿½É¹ï¿½
+atomic<bool> IsStopClicker           = false;           //ï¿½Ç·ï¿½Í£Ö¹ï¿½ï¿½ï¿½ï¿½
+atomic<bool> IsGCExit                = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½
+atomic<bool> IsShowGui               = true;            //ï¿½Ç·ï¿½ï¿½ï¿½Ê¾GUI
+atomic<bool> IsFirstRun              = false;           //ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Ê¾ï¿½òµ¼£ï¿½
+LRPair<atomic<bool>> IsClickering    = {};              //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½
+atomic<bool> IsMoving                = false;           //ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½Æ¶ï¿½
+atomic<bool> IsJumping               = false;           //ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Ô¾
+atomic<bool> IsOpenGui               = false;           //ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½Ç·ï¿½ï¿½GUI
+atomic<bool> IsDownloading           = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+atomic<bool> IsReloadClicker         = true;            //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½
+atomic<bool> IsClickerSuccess        = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½ï¿½Ç·ï¿½×¼ï¿½ï¿½ï¿½É¹ï¿½
+atomic<bool> IsRestartAL             = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½OpenAL
+atomic<bool> IsServerClosed          = false;           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ø±ï¿½
+atomic<bool> AllowUseGameGui         = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½Ó¾ï¿½Ð§ï¿½ï¿½
+atomic<bool> AllowConnectServer      = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó·ï¿½ï¿½ï¿½ï¿½ï¿½
+atomic<bool> IsDragingFile           = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½
+atomic<bool> IsCPSWaveSettingChanged = false;           //ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CPSï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+atomic<bool> IsScriptUseGitee        = false;           //ï¿½Å±ï¿½ï¿½Ì³ï¿½ï¿½Ç·ï¿½Ê¹ï¿½ï¿½gitee
 
-int ClickTabCount = 11;                                 //Á¬µãÆ÷±êÇ©Ò³µÄ´ÎÊý
-int GameGuiTransparency = 40;                           //µ¥Î»%
-int IsSearchState = 0;                                  //ÄÚ´æËÑË÷×´Ì¬
-int MemSearchCount = 0;                                 //ÄÚ´æËÑË÷´ÎÊý
-int GettingGameState = -1;                              //»ñÈ¡ÓÎÏ·´°¿ÚµÄ×´Ì¬
-float SystemScale = 1.0f;                               //DPIËõ·ÅÂÊ
+int ClickTabCount = 11;                                 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç©Ò³ï¿½Ä´ï¿½ï¿½ï¿½
+int GameGuiTransparency = 40;                           //ï¿½ï¿½Î»%
+int IsSearchState = 0;                                  //ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
+int MemSearchCount = 0;                                 //ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+int GettingGameState = -1;                              //ï¿½ï¿½È¡ï¿½ï¿½Ï·ï¿½ï¿½ï¿½Úµï¿½×´Ì¬
+float SystemScale = 1.0f;                               //DPIï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-vector<string> MouseSoundList;                          //¿ÉÓÃµÄÊó±êÉùÒôÁÐ±í
-vector<string> KeybdSoundList;                          //¿ÉÓÃµÄ¼üÅÌÉùÒôÁÐ±í
+vector<string> MouseSoundList;                          //ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
+vector<string> KeybdSoundList;                          //ï¿½ï¿½ï¿½ÃµÄ¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
 
 UDPSocket NetworkClient;
 string ClientID;
@@ -640,16 +655,28 @@ namespace PresetConfig
 
 namespace OverheatTimer
 {
-    float Heat = 0;                                     //¹ýÈÈ±£»¤¼ÆÊ±Æ÷
-    float Cooldown = 0;                                 //¹ýÈÈ±£»¤ÀäÈ´¼ÆÊ±Æ÷
+    float Heat = 0;                                     //ï¿½ï¿½ï¿½È±ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+    float Cooldown = 0;                                 //ï¿½ï¿½ï¿½È±ï¿½ï¿½ï¿½ï¿½ï¿½È´ï¿½ï¿½Ê±ï¿½ï¿½
 }
-int UseServerOfType = -1;                               //Ê¹ÓÃµÄ·þÎñÆ÷µÄÀàÐÍ
-int ItemBarPos = 1;                                     //ÎïÆ·À¸Î»ÖÃ
+int UseServerOfType = -1;                               //Ê¹ï¿½ÃµÄ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+int ItemBarPos = 1;                                     //ï¿½ï¿½Æ·ï¿½ï¿½Î»ï¿½ï¿½
 
 shared_mutex CurrentCPSMutex;
-LRPair<int> CurrentCPS = {};                            //×ÜÊµ¼ÊCPS
+LRPair<int> CurrentCPS = {};                            //ï¿½ï¿½Êµï¿½ï¿½CPS
 shared_mutex HumanCPSMutex;
-LRPair<int> HumanCPS = {};                              //ÈËÀàCPS
+LRPair<int> HumanCPS = {};                              //ï¿½ï¿½ï¿½ï¿½CPSï¿½ï¿½1ï¿½ë»¬ï¿½ï¿½ï¿½ï¿½ï¿½Ú£ï¿½ï¿½ï¿½ HandleCPSRecord Î¬ï¿½ï¿½ï¿½ï¿½
+
+// ï¿½ï¿½ï¿½ï¿½Ä£Ê½×¨ï¿½Ã£ï¿½ï¿½ï¿½ï¿½à°´ï¿½Âµï¿½"ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½
+// ï¿½ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½Ê¶ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Êµ"ï¿½ï¿½ï¿½ï¿½"ï¿½Â¼ï¿½ï¿½ï¿½++ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îºï¿½ï¿½ï¿½Ñ¯Æµï¿½Ê£ï¿½ï¿½ï¿½
+// ï¿½ï¿½ï¿½ï¿½Ä£Ê½Í¨ï¿½ï¿½ ConsumeHumanPresses Ô­ï¿½Ó¶ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½×½ï¿½ï¿½
+LRPair<atomic<int>> HumanPressCount = {};               //ï¿½ï¿½ï¿½à°´ï¿½ï¿½ï¿½Â¼ï¿½ï¿½ï¿½Downï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+struct FastCPSWindow
+{
+    shared_mutex             Mtx;
+    LRPair<deque<ULONGLONG>> Stamps;    // ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£©ï¿½ï¿½ï¿½ï¿½/ï¿½Ò·Ö¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    LRPair<int>              LastCPS = {}; // ï¿½Ï´Î¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+};
+FastCPSWindow FastHumanCPS;     // ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½GetHumanCPSFast() ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CPS
 
 inline const int ScreenWidth = GetSystemMetrics(SM_CXSCREEN);
 inline const int ScreenHeigth = GetSystemMetrics(SM_CYSCREEN);
@@ -658,15 +685,15 @@ int WindowHeight = 500;
 
 struct AppStaus
 {
-    LRPair<ULONGLONG> ClickerClickCount ;               //Á¬µã´ÎÊý
-    LRPair<ULONGLONG> MouseClickCount;                  //Êó±êµã»÷´ÎÊý
-    unsigned int StartCount = 0;                        //Æô¶¯´ÎÊý
-    long double  UsageDuration = 0;                     //Ê¹ÓÃÁ¬µãÆ÷µÄÊ±³¤(Ð¡Ê±)
+    LRPair<ULONGLONG> ClickerClickCount ;               //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    LRPair<ULONGLONG> MouseClickCount;                  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    unsigned int StartCount = 0;                        //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    long double  UsageDuration = 0;                     //Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½(Ð¡Ê±)
 } app_status;
 
 shared_mutex InitSuccessTimeMutex;
-ULONGLONG StartTime = 0;                                //GCÆô¶¯Ê±µÄÊ±¼ä
-ULONGLONG InitSuccessTime = 0;                          //³õÊ¼»¯³É¹¦µÄÊ±¼ä
+ULONGLONG StartTime = 0;                                //GCï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Ê±ï¿½ï¿½
+ULONGLONG InitSuccessTime = 0;                          //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½É¹ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
 
 namespace MessageBoxMsg
 {

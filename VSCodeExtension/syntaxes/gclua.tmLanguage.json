@@ -1,0 +1,307 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "GC Lua",
+  "scopeName": "source.gclua",
+  "fileTypes": [
+    "lua",
+    "gclua"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#deprecated"
+    },
+    {
+      "include": "#gc-api"
+    },
+    {
+      "include": "#gc-constant"
+    },
+    {
+      "include": "#gc-namespace"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.gclua",
+          "begin": "--\\[=*\\[",
+          "end": "\\]=*\\]",
+          "captures": {
+            "0": {
+              "name": "punctuation.definition.comment.gclua"
+            }
+          }
+        },
+        {
+          "begin": "(^[ \\t]+)?(?=--(?!\\[=*\\[))",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.whitespace.comment.leading.gclua"
+            }
+          },
+          "end": "(?!\\G)",
+          "patterns": [
+            {
+              "name": "comment.line.double-dash.gclua",
+              "begin": "--",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.definition.comment.gclua"
+                }
+              },
+              "end": "\\n"
+            }
+          ]
+        }
+      ]
+    },
+    "gc-api": {
+      "comment": "GC 连点器脚本系统内置函数",
+      "patterns": [
+        {
+          "name": "support.function.gc.gclua",
+          "match": "\\b(SetScriptLoopDelay|RenderMessageBox|RenderPopTip|GetTickCount|RandomInt|RandomBool|GetVersion|SetClickerSettings|GetClickerSettings|PrintLog|GetKeyDown|GetKeyClick|GetKeyUp|SetKeyDown|SetKeyUp|SetKeyClick|GetCursorPos|SetCursorPos|GetCpsRight|GetCpsLeft|GetHumanCpsRight|GetHumanCpsLeft|Sleep|GetItemBarPos|SetItemBarPos|SetIniFile|GetIniFile|SimulatedInputText|ConnectNetwork|SendNetwork|RecvNetwork|CloseNetwork|GetScreenSize|GetClipboardText|SetClipboardText|IsScriptKeyDown|IsScriptKeyClick|IsScriptKeyUp|MessageBeep|PlayEnableSound|PlayDisableSound|PlayToggleSound|IsOpenGui|IsPlayerMoving|GetCurrentWindowPos|GetCurrentWindowRect|GetCurrentWindowSize|GetWindowsCenterPos|MoveCursor|MoveCursorX|MoveCursorY|GetItemBarKey|Button|Checkbox|Toggle|Text|InputText|SliderInt|SliderFloat|RangeSliderInt|RangeSliderFloat|Combo|SameLine|InputKey|MessageBox|AttachTooltip|RadioButton|SetNextItemPos|GetNextItemPos|SetNextItemWidth|BeginChild|EndChild|BeginGroup|EndGroup|SetCurentColor|SetDrawOverAll|DrawSpiltLine|DrawLine|DrawRect|DrawRectFilled|DrawCircle|DrawCircleFilled|DrawText|DrawImage|OpenReader|GetNewMsg)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.gc.gclua",
+          "match": "\\b(SetScriptLoopDelay|RenderMessageBox|RenderPopTip|GetTickCount|RandomInt|RandomBool|GetVersion|SetClickerSettings|GetClickerSettings|PrintLog|GetKeyDown|GetKeyClick|GetKeyUp|SetKeyDown|SetKeyUp|SetKeyClick|GetCursorPos|SetCursorPos|GetCpsRight|GetCpsLeft|GetHumanCpsRight|GetHumanCpsLeft|Sleep|GetItemBarPos|SetItemBarPos|SetIniFile|GetIniFile|SimulatedInputText|ConnectNetwork|SendNetwork|RecvNetwork|CloseNetwork|GetScreenSize|GetClipboardText|SetClipboardText|IsScriptKeyDown|IsScriptKeyClick|IsScriptKeyUp|MessageBeep|PlayEnableSound|PlayDisableSound|PlayToggleSound|IsOpenGui|IsPlayerMoving|GetCurrentWindowPos|GetCurrentWindowRect|GetCurrentWindowSize|GetWindowsCenterPos|MoveCursor|MoveCursorX|MoveCursorY|GetItemBarKey|Button|Checkbox|Toggle|Text|InputText|SliderInt|SliderFloat|RangeSliderInt|RangeSliderFloat|Combo|SameLine|InputKey|MessageBox|AttachTooltip|RadioButton|SetNextItemPos|GetNextItemPos|SetNextItemWidth|BeginChild|EndChild|BeginGroup|EndGroup|SetCurentColor|SetDrawOverAll|DrawSpiltLine|DrawLine|DrawRect|DrawRectFilled|DrawCircle|DrawCircleFilled|DrawText|DrawImage)\\b"
+        }
+      ]
+    },
+    "gc-constant": {
+      "comment": "KEY / SC / GK 常量表",
+      "patterns": [
+        {
+          "name": "constant.other.key.gclua",
+          "match": "\\bKEY\\.(VK_[A-Z0-9_]+|[A-Z0-9])\\b"
+        },
+        {
+          "name": "constant.other.clickmode.gclua",
+          "match": "\\bSC\\.(MOUSE_EVENT|SEND_INPUT|POST_MESSAGE)\\b"
+        },
+        {
+          "name": "constant.other.keymode.gclua",
+          "match": "\\bGK\\.(HOOK|BOTH)\\b"
+        },
+        {
+          "name": "variable.language.gclua",
+          "match": "\\b(KEY|SC|GK|minecraft|minecraft\\.chat)\\b"
+        }
+      ]
+    },
+    "gc-namespace": {
+      "comment": "minecraft.chat 命名空间",
+      "patterns": [
+        {
+          "name": "support.function.gc.gclua",
+          "match": "(?<=\\bminecraft\\.chat\\.)(OpenReader|GetNewMsg)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.gclua",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.gclua"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.gclua"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string-escapes"
+            },
+            {
+              "include": "#string-format"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.gclua",
+          "begin": "'",
+          "end": "'",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.gclua"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.gclua"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string-escapes"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.long.gclua",
+          "begin": "\\[=*\\[",
+          "end": "\\]=*\\]",
+          "captures": {
+            "0": {
+              "name": "punctuation.definition.string.gclua"
+            }
+          }
+        }
+      ]
+    },
+    "string-escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.gclua",
+          "match": "\\\\[abfnrtvz\\\\\"'\\n]|\\\\\\d{1,3}|\\\\x[0-9a-fA-F]{2}"
+        }
+      ]
+    },
+    "string-format": {
+      "comment": "format 占位符，例如 %d / %.2f / %s",
+      "patterns": [
+        {
+          "name": "constant.other.placeholder.gclua",
+          "match": "%[-+ #0]*\\d*(?:\\.\\d+)?[diouxXeEfgGqscp%]"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.gclua",
+          "match": "\\b0[xX][0-9a-fA-F]+(?:\\.[0-9a-fA-F]*)?(?:[pP][-+]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.gclua",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:[eE][-+]?\\d+)?\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.gclua",
+          "match": "\\b(if|then|else|elseif|end|for|while|do|repeat|until|return|break|goto|in)\\b"
+        },
+        {
+          "name": "keyword.other.gclua",
+          "match": "\\b(local|function|self)\\b"
+        },
+        {
+          "name": "constant.language.gclua",
+          "match": "\\b(true|false|nil)\\b"
+        },
+        {
+          "name": "variable.language.gclua",
+          "match": "\\b(_G|_ENV|_VERSION)\\b"
+        },
+        {
+          "name": "keyword.operator.gclua",
+          "match": "\\b(and|or|not)\\b"
+        },
+        {
+          "name": "support.function.library.gclua",
+          "match": "\\b(assert|error|ipairs|pairs|next|pcall|xpcall|select|tonumber|tostring|type|unpack|setmetatable|getmetatable|rawget|rawset|rawequal|rawlen|require|coroutine)\\b"
+        },
+        {
+          "name": "support.function.library.gclua",
+          "match": "\\b(string|table|math|os|coroutine)\\.[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.entry.gclua",
+          "match": "(?<=\\bfunction\\s)(initScript|main|render|saveConfig)\\b"
+        },
+        {
+          "name": "entity.name.function.gclua",
+          "match": "(?<=function\\s)[a-zA-Z_][a-zA-Z0-9_.:]*"
+        },
+        {
+          "name": "entity.name.function.gclua",
+          "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
+        },
+        {
+          "name": "entity.name.function.call.gclua",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "deprecated": {
+      "comment": "已弃用/已移除的 API，标记为无效",
+      "patterns": [
+        {
+          "name": "invalid.deprecated.gclua",
+          "match": "\\b(Helpmarker|PopTip|IsCloseUI|dofile|loadfile|loadstring|load|collectgarbage|rawhook|print|io|package|debug)\\b"
+        },
+        {
+          "name": "invalid.illegal.gclua",
+          "match": "\\bos\\.(execute|remove|rename|exit|tmpname|getenv)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.vararg.gclua",
+          "match": "\\.\\.\\."
+        },
+        {
+          "name": "keyword.operator.concat.gclua",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.gclua",
+          "match": "==|~=|<=|>=|[-+*/%^#<>=]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.accessor.gclua",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.separator.gclua",
+          "match": "[,;]"
+        },
+        {
+          "name": "punctuation.section.gclua",
+          "match": "[()\\[\\]{}]"
+        }
+      ]
+    }
+  }
+}

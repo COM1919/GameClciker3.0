@@ -24,6 +24,10 @@ LRPair<deque<ULONGLONG>> HumanClickTimeList;
 // 另一线程迭代/访问即悬垂 → 0xC0000005。新增互斥锁保护。
 shared_mutex AllClickTimeListMutex;
 shared_mutex HumanClickTimeListMutex;
+// 瞬时CPS：最近一次/上一次的实际点击时间戳（受 AllClickTimeListMutex 保护）。
+// HandleCPSRecord 用"最近两次点击的间隔"推算瞬时CPS，与1秒窗口统计的 RRecordsCPS 形成对比曲线。
+LRPair<ULONGLONG> LastClickStamp = {};
+LRPair<ULONGLONG> PrevClickStamp = {};
 
 inline void HandleMouseState(int nCode, WPARAM wParam, LPARAM lParam); // 鼠标按键状态分发处理器（由统一鼠标钩子 MouseHookProc 调用）
 inline void HandleKeyState(int nCode, WPARAM wParam, LPARAM lParam);   // 键盘按键状态分发处理器（由统一键盘钩子 KeybdHookProc 调用）
@@ -40,26 +44,33 @@ inline void SetKeyClick(int key, int sleep = 20, int mode = SC_POST_MESSAGE);
 void AddLeftClickCPS()
 {
 	{
-		shared_lock<shared_mutex> lock(CurrentCPSMutex);
+		shared_lock lock(CurrentCPSMutex);
 		CurrentCPS.left++;
 	}
 	{
 		// 修复：push_back 与 HandleCPSRecord 的 erase/[0] 并发 → 加写锁
-		lock_guard<shared_mutex> lock(AllClickTimeListMutex);
-		AllClickTimeList.left.push_back(GetNowMs() + 1000);
+		lock_guard lock(AllClickTimeListMutex);
+		const ULONGLONG now = GetNowMs();
+		AllClickTimeList.left.push_back(now + 1000);
+		// 同步维护"最近两次点击时间"，供 HandleCPSRecord 推算瞬时CPS
+		PrevClickStamp.left = LastClickStamp.left;
+		LastClickStamp.left = now;
 	}
 }
 
 void AddRightClickCPS()
 {
 	{
-		shared_lock<shared_mutex> lock(CurrentCPSMutex);
+		shared_lock lock(CurrentCPSMutex);
 		CurrentCPS.right++;
 	}
 	{
 		// 修复：同上
-		lock_guard<shared_mutex> lock(AllClickTimeListMutex);
-		AllClickTimeList.right.push_back(GetNowMs() + 1000);
+		lock_guard lock(AllClickTimeListMutex);
+		const ULONGLONG now = GetNowMs();
+		AllClickTimeList.right.push_back(now + 1000);
+		PrevClickStamp.right = LastClickStamp.right;
+		LastClickStamp.right = now;
 	}
 }
 
@@ -81,7 +92,7 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 			}
 			{
 				// 修复：push_back 与下方 erase/[0] 并发 → 加写锁
-				lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+				lock_guard lock(HumanClickTimeListMutex);
 				HumanClickTimeList.left.push_back(GetNowMs() + 1000);
 			}
 			// 因为综合CPS包括人类CPS，所以需要在人类CPS处理的这里，加上综合CPS处理
@@ -97,7 +108,7 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 			}
 			{
 				// 修复：同上
-				lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+				lock_guard lock(HumanClickTimeListMutex);
 				HumanClickTimeList.right.push_back(GetNowMs() + 1000);
 			}
 			// 上同
@@ -107,7 +118,7 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 		// 连点器CPS 衰减计算
 		{
 			// 修复：erase/[0] 与 AddLeft/RightClickCPS 的 push_back 并发 → 加写锁
-			lock_guard<shared_mutex> lock(AllClickTimeListMutex);
+			lock_guard lock(AllClickTimeListMutex);
 			if (AllClickTimeList.left.size() > 0)
 			{
 				if (GetNowMs() >= AllClickTimeList.left[0])
@@ -134,7 +145,7 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 		// 人类CPS 衰减计算
 		{
 			// 修复：同上，erase/[0] 与 push_back 并发 → 加写锁
-			lock_guard<shared_mutex> lock(HumanClickTimeListMutex);
+			lock_guard lock(HumanClickTimeListMutex);
 			if (HumanClickTimeList.left.size() > 0)
 			{
 				if (GetNowMs() >= HumanClickTimeList.left[0])
@@ -167,16 +178,48 @@ DWORD WINAPI HandleCPSRecord(LPVOID lpParam)
 					RRecordsCPS.erase(RRecordsCPS.begin());
 				if (LRecordsCPS.size() >= MAX_RECORDS)
 					LRecordsCPS.erase(LRecordsCPS.begin());
+				if (RRecordsInstantCPS.size() >= MAX_RECORDS)
+					RRecordsInstantCPS.erase(RRecordsInstantCPS.begin());
+				if (LRecordsInstantCPS.size() >= MAX_RECORDS)
+					LRecordsInstantCPS.erase(LRecordsInstantCPS.begin());
 
 				{
-					shared_lock<shared_mutex> lock(CurrentCPSMutex);
+					shared_lock lock(CurrentCPSMutex);
 					RRecordsCPS.push_back(CurrentCPS.right);
 					LRecordsCPS.push_back(CurrentCPS.left);
+				}
+
+				// 瞬时CPS：用"最近两次实际点击的间隔"推算，与上面的 1 秒窗口统计值同步记录，
+				// 供"信息"页曲线对比（蓝色=正常CPS，橙色=瞬时CPS）。
+				{
+					const ULONGLONG now = GetNowMs();
+					int rInstant = 0, lInstant = 0;
+					lock_guard lock(AllClickTimeListMutex);
+					// 有效前提：已有两次点击、且最近一次点击在 500ms 内（否则视为已停止，记 0）
+					if (LastClickStamp.right > PrevClickStamp.right && (now - LastClickStamp.right) <= 500)
+						rInstant = static_cast<int>(1000ULL / (LastClickStamp.right - PrevClickStamp.right));
+					if (LastClickStamp.left > PrevClickStamp.left && (now - LastClickStamp.left) <= 500)
+						lInstant = static_cast<int>(1000ULL / (LastClickStamp.left - PrevClickStamp.left));
+					RRecordsInstantCPS.push_back(static_cast<float>(rInstant));
+					LRecordsInstantCPS.push_back(static_cast<float>(lInstant));
 				}
 			}
 			RecordsCPSMutex.unlock();
 
 			EndTime = GetNowMs() + 50;
+		}
+
+		// 清理辅助模式短窗的过期项，避免无限增长。
+		// 本线程每 10ms 跑一次，估算窗口（1000ms）外项在此被丢弃。
+		// 该窗口必须 ≥ GetHumanCPSFast 的估算窗口，否则间隔样本不足会导致估值失真。
+		{
+			const ULONGLONG now = GetNowMs();
+			const ULONGLONG minStamp = (now >= 1000) ? (now - 1000) : 0;
+			lock_guard lock(FastHumanCPS.Mtx);
+			while (!FastHumanCPS.Stamps.left.empty() && FastHumanCPS.Stamps.left.front() < minStamp)
+				FastHumanCPS.Stamps.left.pop_front();
+			while (!FastHumanCPS.Stamps.right.empty() && FastHumanCPS.Stamps.right.front() < minStamp)
+				FastHumanCPS.Stamps.right.pop_front();
 		}
 		Sleep(10);
 	}
@@ -276,8 +319,87 @@ inline void HandleMouseState(int nCode, WPARAM wParam, LPARAM lParam)
 		const bool IsInjected = (pMouseStruct->flags & LLMHF_INJECTED) == 0; // 是否是人类按下
 		KeyStateMap[vk].isDown.store(isDown, memory_order_relaxed);
 		if (IsInjected) // 如果不是人类点击的，就不设置isHumanDown。这样可以正确记录人类还没松开鼠标
+		{
 			KeyStateMap[vk].isHumanDown.store(isDown, memory_order_relaxed);
+			// 辅助模式事件计数：钩子是事件驱动的，每次真实"按下"事件都 ++。
+			// 这样辅助模式不再依赖 GetKeyClick 的采样频率（后者仍按电平边沿工作，
+			// 仅用于"按住状态"等其他用途），彻底消除低频采样下的漏检。
+			// 仅在"按下"事件（isDown=true）时计数，抬起不计，避免重复计数。
+			if (isDown)
+			{
+				if (vk == Click::Left)       HumanPressCount.left.fetch_add(1, memory_order_relaxed);
+				else if (vk == Click::Right) HumanPressCount.right.fetch_add(1, memory_order_relaxed);
+
+				// 同时维护短窗时间戳队列（用于 GetHumanCPSFast 的 250ms 滑动窗口估计）
+				const ULONGLONG now = GetNowMs();
+				if (vk == Click::Left)
+				{
+					lock_guard lock(FastHumanCPS.Mtx);
+					FastHumanCPS.Stamps.left.push_back(now);
+				}
+				else if (vk == Click::Right)
+				{
+					lock_guard lock(FastHumanCPS.Mtx);
+					FastHumanCPS.Stamps.right.push_back(now);
+				}
+			}
+		}
 	}
+}
+
+// 辅助模式专用：原子读取并清零"人类按下事件计数"。
+// 调用方（辅助模式循环）每次只消费"自上次消费以来"发生的真实按下次数。
+// 返回值即被消费的事件数。GetKeyClick 的 API 行为不变。
+inline int ConsumeHumanPresses(int click_vk)
+{
+	if (click_vk == Click::Left)  return HumanPressCount.left.exchange(0,  memory_order_acq_rel);
+	if (click_vk == Click::Right) return HumanPressCount.right.exchange(0, memory_order_acq_rel);
+	return 0;
+}
+
+// 辅助模式专用：用最近两次真实"按下"的间隔估算当前人类 CPS。
+// 改为计算瞬时 CPS，判定门槛更贴合真实手速。
+inline int GetHumanCPSFast(int click_vk)
+{
+	const ULONGLONG now = GetNowMs();
+	const ULONGLONG windowMs = 1000;  // 估算窗口（毫秒），与 HandleCPSRecord 的修剪窗口一致
+	const ULONGLONG minStamp = (now >= windowMs) ? (now - windowMs) : 0;
+
+	lock_guard lock(FastHumanCPS.Mtx);
+	const deque<ULONGLONG>& q = (click_vk == Click::Left) ? FastHumanCPS.Stamps.left : FastHumanCPS.Stamps.right;
+	int& lastCPS = (click_vk == Click::Left) ? FastHumanCPS.LastCPS.left : FastHumanCPS.LastCPS.right;
+
+	// q 递增有序，从队尾（最新）往前只需取"最近两次"样本
+	ULONGLONG newest = 0, prev = 0;
+	int n = 0;
+	for (auto it = q.rbegin(); it != q.rend(); ++it)
+	{
+		if (*it < minStamp)
+			break;
+		if (n == 0)
+			newest = *it;   // 最新一次按下
+		else
+			prev = *it;     // 次新一次按下
+		++n;
+		if (n >= 2)
+			break;
+	}
+
+	// 长时间没有新按下就视为已停止，清空估值
+	if (n == 0 || (now - newest) > 500)
+	{
+		lastCPS = 0;
+		return 0;
+	}
+	// 仅 1 个样本：无法得到间隔，返回 0
+	if (n < 2 || newest <= prev)
+	{
+		lastCPS = 0;
+		return 0;
+	}
+	// 用最近两次点击的间隔估算瞬时 CPS
+	lastCPS = static_cast<int>(1000ULL / (newest - prev));
+	return lastCPS;
 }
 
 inline bool GetKeyClick(int key, bool only_human, int mode)

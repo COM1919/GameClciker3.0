@@ -1,0 +1,109 @@
+{
+  "comments": {
+    "lineComment": "--",
+    "blockComment": [
+      "--[[",
+      "]]"
+    ]
+  },
+  "brackets": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "{",
+      "}"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "--[[",
+      "close": "]]",
+      "notIn": [
+        "comment"
+      ]
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ]
+  ],
+  "autoCloseBefore": ";:.,=}])> \n\t",
+  "folding": {
+    "markers": {
+      "start": "^\\s*--\\s*#?region\\b",
+      "end": "^\\s*--\\s*#?endregion\\b"
+    }
+  },
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(function|if|for|while|repeat|else|elseif|do|local\\s+function)\\b.*(then|do|repeat|\\))?\\s*$|\\bthen\\s*$|\\bdo\\s*$|\\brepeat\\s*$|\\belse\\s*$|\\belseif\\b.*\\bthen\\s*$|\\{.*$",
+    "decreaseIndentPattern": "^\\s*(end|until|else|elseif|\\}|\\]|\\))\\b"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*(function\\b.*|if\\b.*then\\s*|for\\b.*do\\s*|while\\b.*do\\s*|repeat\\s*|else\\s*|do\\s*)$",
+      "action": {
+        "indent": "indent"
+      }
+    },
+    {
+      "beforeText": "^\\s*(else|elseif\\b.*then)\\s*$",
+      "afterText": "^\\s*(end|else|elseif)\\b",
+      "action": {
+        "indent": "indentOutdent"
+      }
+    }
+  ],
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\^\\&\\*\\(\\)\\-\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\?\\s]+)"
+}

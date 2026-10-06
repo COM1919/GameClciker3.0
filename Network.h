@@ -313,7 +313,7 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 {
                     string CurClientID;
                     {
-                        lock_guard<mutex> lock(ClientIDMtx);
+                        lock_guard lock(ClientIDMtx);
                         ClientID = str;
                     }
 

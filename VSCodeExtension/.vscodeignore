@@ -1,0 +1,9 @@
+.vscode/**
+test/**
+node_modules/**
+.npm-cache/**
+.npmcache/**
+.tooling/**
+**/*.vsix
+.gitignore
+package-lock.json

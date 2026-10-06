@@ -213,7 +213,7 @@ inline bool VarHasChanged(const T& var, const string& label, bool UseInit)
 	static unordered_map<string, T> lastValues;
 	static mutex mtx;
 
-	lock_guard<mutex> lock(mtx);
+	lock_guard lock(mtx);
 
 	// 尝试插入，如果已存在则获取迭代器
 	auto [it, inserted] = lastValues.try_emplace(label, var);
@@ -373,7 +373,7 @@ void CheckUpdateScriptFromShop(ScriptInfo& script)
 {
 	// 修复：此函数在 detach 线程中执行，与脚本商店刷新线程（GC.cpp 中 clear/重填 ScriptData::ShopList）
 	// 及主线程遍历并发。原代码无锁，vector 扩容导致迭代器失效 -> 0xC0000005。加读锁。
-	shared_lock<shared_mutex> lock(ScriptData::ShopListMtx);
+	shared_lock lock(ScriptData::ShopListMtx);
 	for (const ScriptInfo& NewScript : ScriptData::ShopList)
 	{
 		if (NewScript.name == script.name)
@@ -388,7 +388,7 @@ void CheckUpdateScriptFromShop(ScriptInfo& script)
 bool UpdateScriptFromShop(const ScriptInfo& script)
 {
 	// 依据脚本商店列表判断更新来源：市场源（URL）重新下载，Gitee 源复制缓存
-	shared_lock<shared_mutex> lock(ScriptData::ShopListMtx);
+	shared_lock lock(ScriptData::ShopListMtx);
 	for (const ScriptInfo& NewScript : ScriptData::ShopList)
 	{
 		if (NewScript.name == script.name)
@@ -489,7 +489,7 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 	//（快速切换下载源/翻页）并发访问 → 数据竞争（UB）。整个函数串行化；
 	// 网络请求期间持锁会阻塞其他调用，但商场刷新是用户显式操作，可接受。
 	static mutex ShopListMtx;
-	lock_guard<mutex> lock(ShopListMtx);
+	lock_guard lock(ShopListMtx);
 
 	const int PaperSize = 10;
 	const string baseUrl = "https://scripts.mcgc.top";
@@ -770,7 +770,7 @@ HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParamete
 	else
 	{
 		PrintLog("[Thread] " + name + "线程已启动", PL_INFO);
-		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		lock_guard lock(BackgroundThreadsMtx);
 		BackgroundThreads.push_back(hThread);
 	}
 	return hThread;
@@ -786,7 +786,7 @@ void StopAndWaitBackgroundThreads()
 
 	vector<HANDLE> handles;
 	{
-		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		lock_guard lock(BackgroundThreadsMtx);
 		handles = BackgroundThreads;
 	}
 	if (!handles.empty())
@@ -805,7 +805,7 @@ void StopAndWaitBackgroundThreads()
 		}
 	}
 	{
-		lock_guard<mutex> lock(BackgroundThreadsMtx);
+		lock_guard lock(BackgroundThreadsMtx);
 		for (HANDLE h : handles)
 			if (h && h != INVALID_HANDLE_VALUE) CloseHandle(h);
 		BackgroundThreads.clear();
@@ -820,10 +820,6 @@ void StopAndWaitBackgroundThreads()
 
 void ClearProcessMemory()
 {
-	// 强制 CRT 释放未使用的堆内存回操作系统
-	size_t freed = _heapmin();
-	PrintLog("[Mem] 已强制 CRT 释放 " + to_string(freed) + "kb 未使用的堆内存", PL_INFO);
-
 	// 获取当前进程句柄
 	HANDLE hProcess = GetCurrentProcess();
 	// 使用 -1 和 -1 作为参数，表示将工作集缩减到最小值
@@ -1187,7 +1183,7 @@ void RefushScriptList()
 		}
 		GetScriptsInfo(scripts, ScriptTemp);
 		// 写入锁
-		lock_guard<shared_mutex> lock(ScriptData::AvaiableMtx);
+		lock_guard lock(ScriptData::AvaiableMtx);
 		ScriptData::Avaiable = scripts;
 	}
 	PrintLog("[Script] 刷新脚本列表成功，共 " + to_string(ScriptData::Avaiable.size()) + " 个脚本文件", PL_INFO);
@@ -1834,7 +1830,7 @@ string StringToUTF8(const string& str, bool NoCach)
 	{
 		if (str.size() > 16)
 		{
-			lock_guard<mutex> lock(cache_mutex);
+			lock_guard lock(cache_mutex);
 			auto it = cache.find(str);
 			if (it != cache.end())
 				return it->second;
@@ -1845,7 +1841,7 @@ string StringToUTF8(const string& str, bool NoCach)
 	{
 		if (!NoCach)
 		{
-			lock_guard<mutex> lock(cache_mutex);
+			lock_guard lock(cache_mutex);
 			cache[str] = str;
 		}
 		return str;
@@ -1877,7 +1873,7 @@ string StringToUTF8(const string& str, bool NoCach)
 
 		if (!NoCach)
 		{
-			lock_guard<mutex> lock(cache_mutex);
+			lock_guard lock(cache_mutex);
 			cache[str] = utf8;
 		}
 		return utf8;
@@ -1898,7 +1894,7 @@ string UTF8ToString(const string& utf8_str, bool NoCach)
 	{
 		if (utf8_str.size() > 16)
 		{
-			lock_guard<mutex> lock(cache_mutex);
+			lock_guard lock(cache_mutex);
 			auto it = cache.find(utf8_str);
 			if (it != cache.end())
 				return it->second;
@@ -1931,7 +1927,7 @@ string UTF8ToString(const string& utf8_str, bool NoCach)
 
 		if (!NoCach)
 		{
-			lock_guard<mutex> lock(cache_mutex);
+			lock_guard lock(cache_mutex);
 			cache[utf8_str] = acp;
 		}
 		return acp;
@@ -2040,7 +2036,7 @@ void RenderTip(string msg, float timeout, UINT type)
 	// 修复：原代码无锁 find_if/push_back。RenderTip 被 GetInfo/Network/ClickSound 等
 	// 多个后台线程以及主线程调用，与渲染线程遍历 pt_message 并发时 vector 扩容，
 	// 导致迭代器失效与访问已释放内存 → 0xC0000005。加写锁保护。
-	lock_guard<shared_mutex> lock(PopTipMutex);
+	lock_guard lock(PopTipMutex);
 	auto pos = find_if(pt_message.begin(), pt_message.end(), [&msg](PopTipMsg a)
 		{
 			return a.message == msg;
@@ -2063,7 +2059,7 @@ int RenderMessageBox(string message, const char* title, UINT type, bool wating)
 	int ret = 0;
 	{
 		// 写入锁
-		lock_guard<shared_mutex> lock(MessageBoxMsg::Mtx);
+		lock_guard lock(MessageBoxMsg::Mtx);
 		MessageBoxMsg::IsOpen = true;
 		MessageBoxMsg::Message = message;
 		MessageBoxMsg::TitleName = title;
@@ -2087,7 +2083,7 @@ int RenderMessageBoxEx(string message, const char* title, map<string, UINT> butt
 	int ret = 0;
 	{
 		// 写入锁
-		lock_guard<shared_mutex> lock(MessageBoxMsg::Mtx);
+		lock_guard lock(MessageBoxMsg::Mtx);
 		MessageBoxMsg::IsOpen = true;
 		MessageBoxMsg::Message = message;
 		MessageBoxMsg::TitleName = title;

@@ -110,7 +110,7 @@ void DownloadKeybdSounds()
 	}
 
 	{
-		lock_guard<shared_mutex> lock(ProgressBarMsg::Mtx);
+		lock_guard lock(ProgressBarMsg::Mtx);
 		ProgressBarMsg::IsOpen = true;
 		ProgressBarMsg::TitleName = config.UseChinese ? u8"正在解压声音包..." : "Extracting sound pack...";
 		ProgressBarMsg::MaxSize = 1.0;
@@ -120,7 +120,7 @@ void DownloadKeybdSounds()
 
 	int ret = UnZipFile(Tmp_KeySounds.c_str(), Sound_KeybdPath.c_str());
 	{
-		lock_guard<shared_mutex> lock(ProgressBarMsg::Mtx);
+		lock_guard lock(ProgressBarMsg::Mtx);
 		ProgressBarMsg::IsOpen = false;
 		ProgressBarMsg::IsUnzip = false;
 	}
@@ -646,7 +646,7 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 	// 鼠标点击声不再由 MouseSoundThread 轮询 GetKeyClick，改由统一鼠标钩子（MouseHookProc -> HandleMouseSound）事件驱动
 
 	{
-		lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
+		lock_guard lock(InitSuccessTimeMutex);
 		if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
 			InitSuccessTime = GetNowMs();
 	}

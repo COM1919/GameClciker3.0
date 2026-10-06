@@ -31,7 +31,7 @@ DWORD WINAPI CreateTrayIcon(LPVOID lpParam)
     UpdateWindow(TrayHwnd);
 
     {
-        lock_guard<shared_mutex> lock(InitSuccessTimeMutex);
+        lock_guard lock(InitSuccessTimeMutex);
         if (InitSuccessTime == 0 || InitSuccessTime < GetNowMs())
             InitSuccessTime = GetNowMs();
     }
