@@ -2,10 +2,10 @@
 #include "Log.h"
 #include "HelperCode.h"
 
-//======================= ï¿½Ú´ï¿½ INIï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½Ð´ï¿½ï¿½ ===========================
-// Win32 ï¿½ï¿½ profile API Ã¿ï¿½Îµï¿½ï¿½Ã¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â´ò¿ª²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½SaveConfig/LoadConfig
-// Òªï¿½ï¿½ï¿½ï¿½ï¿½Ù´ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½Ô¤ï¿½è¿¨ï¿½Ùµï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ´¢
-// Ö»ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î¡ï¿½Ð´ï¿½ï¿½Ò»ï¿½Î£ï¿½ï¿½ï¿½ï¿½Úºï¿½Ì¨ï¿½ß³ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½Ð»ï¿½ï¿½Ä±ï¿½ï¿½ï¿½
+//======================= ÄÚ´æ INI£¨¿ìËÙ¶ÁÐ´£© ===========================
+// Win32 µÄ profile API Ã¿´Îµ÷ÓÃ¶¼»áÖØÐÂ´ò¿ª²¢½âÎöÕû¸öÎÄ¼þ£¬SaveConfig/LoadConfig
+// Òª×ö¼¸°Ù´ÎÕâÖÖµ÷ÓÃ£¬ÕâÕýÊÇÇÐ»»Ô¤Éè¿¨¶ÙµÄÔ­Òò¡£Õâ¸öÇáÁ¿´æ´¢
+// Ö»½âÎöÒ»´Î¡¢Ð´ÈëÒ»´Î£¬²¢ÔÚºóÌ¨Ïß³ÌÐ´»ØÐòÁÐ»¯ÎÄ±¾¡£
 struct IniMemData
 {
 	vector<string> SecOrder;
@@ -116,28 +116,28 @@ void ClearFile(const string& fileName)
 	ofstream file(fileName, ios::trunc);
 	file.clear();
 	file.close();
-	PrintLog("[File] ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½" + fileName, PL_INFO);
+	PrintLog("[File] ÒÑÇå¿ÕÎÄ¼þ£º" + fileName, PL_INFO);
 }
 
 int DelFile(const string& file)
 {
-	// ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½
+	// ¼ì²éÎÄ¼þÊÇ·ñ´æÔÚ
 	DWORD attr = GetFileAttributesA(file.c_str());
 	if (attr == INVALID_FILE_ATTRIBUTES)
-		return 0;   // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½É¹ï¿½
+		return 0;   // ²»´æÔÚÊÓÎª³É¹¦
 
-	// ï¿½ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½
+	// Çå³ýÖ»¶Á¡¢ÏµÍ³¡¢Òþ²ØµÈÊôÐÔ
 	SetFileAttributesA(file.c_str(), FILE_ATTRIBUTE_NORMAL);
 
 	if (DeleteFileA(file.c_str()))
 	{
-		PrintLog("[File] ï¿½ï¿½É¾ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½" + file, PL_INFO);
+		PrintLog("[File] ÒÑÉ¾³ýÎÄ¼þ£º" + file, PL_INFO);
 		return 0;
 	}
 	else
 	{
 		int err = GetLastError();
-		PrintLog("[Error] É¾ï¿½ï¿½ï¿½Ä¼ï¿½Ê§ï¿½Ü£ï¿½" + file + "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£º" + to_string(err), PL_ERROR);
+		PrintLog("[Error] É¾³ýÎÄ¼þÊ§°Ü£º" + file + "£¬´íÎóÂë£º" + to_string(err), PL_ERROR);
 		return err;
 	}
 }
@@ -146,19 +146,19 @@ bool DeleteDirectory(const string& path)
 {
 	DWORD attr = GetFileAttributesA(path.c_str());
 
-	// Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½Îªï¿½É¹ï¿½ï¿½ï¿½ï¿½ï¿½ fs::remove_all ï¿½ï¿½ÎªÒ»ï¿½Â£ï¿½
+	// Â·¾¶²»´æÔÚ ¡ú ÊÓÎª³É¹¦£¨Óë fs::remove_all ÐÐÎªÒ»ÖÂ£©
 	if (attr == INVALID_FILE_ATTRIBUTES)
 	{
-		PrintLog("[File] ï¿½ï¿½É¾ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð£ï¿½" + path, PL_INFO);
+		PrintLog("[File] ÒÑÉ¾³ýÎÄ¼þ¼Ð£º" + path, PL_INFO);
 		return true;
 	}
 
-	// ï¿½ï¿½Â·ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ DelFile ï¿½ï¿½ï¿½ï¿½
+	// ÈôÂ·¾¶Ö¸ÏòÎÄ¼þ£¬×ª½»¸ø DelFile ´¦Àí
 	if (!(attr & FILE_ATTRIBUTE_DIRECTORY))
 		return DelFile(path) == 0;
 
-	vector<string> dirs;          // ï¿½ï¿½ï¿½Ð´ï¿½É¾ï¿½ï¿½ï¿½ï¿½Ä¿Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿Â¼ï¿½ï¿½
-	vector<string> stack;         // ï¿½ï¿½ï¿½ï¿½Õ»
+	vector<string> dirs;          // ËùÓÐ´ýÉ¾³ýµÄÄ¿Â¼£¨º¬¸ùÄ¿Â¼£©
+	vector<string> stack;         // ¹¤×÷Õ»
 	stack.push_back(path);
 
 	while (!stack.empty())
@@ -166,10 +166,10 @@ bool DeleteDirectory(const string& path)
 		string cur = stack.back();
 		stack.pop_back();
 
-		// ï¿½ï¿½Â¼ï¿½ï¿½Ç°Ä¿Â¼ï¿½ï¿½ï¿½ï¿½ï¿½Í³Ò»É¾ï¿½ï¿½ï¿½ï¿½
+		// ¼ÇÂ¼µ±Ç°Ä¿Â¼£¨×îºóÍ³Ò»É¾³ý£©
 		dirs.push_back(cur);
 
-		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+		// ¹¹ÔìËÑË÷Ä£Ê½
 		string searchPattern = cur + "\\*";
 		WIN32_FIND_DATAA fd;
 		HANDLE hFind = FindFirstFileA(searchPattern.c_str(), &fd);
@@ -177,18 +177,18 @@ bool DeleteDirectory(const string& path)
 		if (hFind == INVALID_HANDLE_VALUE)
 		{
 			DWORD err = GetLastError();
-			if (err == ERROR_FILE_NOT_FOUND)   // ï¿½ï¿½Ä¿Â¼ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½è´¦ï¿½ï¿½
+			if (err == ERROR_FILE_NOT_FOUND)   // ¿ÕÄ¿Â¼£¬ÎÞÎÄ¼þÐè´¦Àí
 				continue;
 			else
 			{
-				PrintLog("[Error] ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿Â¼ï¿½ï¿½" + cur + "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£º" + to_string(err), PL_ERROR);
+				PrintLog("[Error] ÎÞ·¨·ÃÎÊÄ¿Â¼£º" + cur + "£¬´íÎóÂë£º" + to_string(err), PL_ERROR);
 				return false;
 			}
 		}
 
 		do
 		{
-			// ï¿½ï¿½ï¿½ï¿½ "." ï¿½ï¿½ ".."
+			// Ìø¹ý "." ºÍ ".."
 			if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
 				continue;
 
@@ -196,17 +196,17 @@ bool DeleteDirectory(const string& path)
 
 			if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 			{
-				// ï¿½ï¿½Ä¿Â¼Ñ¹ï¿½ï¿½Õ»ï¿½ï¿½ï¿½Ôºï¿½ï¿½ï¿½ï¿½
+				// ×ÓÄ¿Â¼Ñ¹ÈëÕ»£¬ÉÔºó±éÀú
 				stack.push_back(fullPath);
 			}
 			else
 			{
-				// É¾ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ôºï¿½É¾ï¿½ï¿½
+				// É¾³ýÎÄ¼þ£ºÇå³ýÊôÐÔºóÉ¾³ý
 				SetFileAttributesA(fullPath.c_str(), FILE_ATTRIBUTE_NORMAL);
 				if (!DeleteFileA(fullPath.c_str()))
 				{
 					DWORD err = GetLastError();
-					PrintLog("[Error] É¾ï¿½ï¿½ï¿½Ä¼ï¿½Ê§ï¿½Ü£ï¿½" + fullPath + "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£º" + to_string(err), PL_ERROR);
+					PrintLog("[Error] É¾³ýÎÄ¼þÊ§°Ü£º" + fullPath + "£¬´íÎóÂë£º" + to_string(err), PL_ERROR);
 					FindClose(hFind);
 					return false;
 				}
@@ -228,12 +228,12 @@ bool DeleteDirectory(const string& path)
 		if (!RemoveDirectoryA(d.c_str()))
 		{
 			DWORD err = GetLastError();
-			PrintLog("[Error] É¾ï¿½ï¿½Ä¿Â¼Ê§ï¿½Ü£ï¿½" + d + "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£º" + to_string(err), PL_ERROR);
+			PrintLog("[Error] É¾³ýÄ¿Â¼Ê§°Ü£º" + d + "£¬´íÎóÂë£º" + to_string(err), PL_ERROR);
 			return false;
 		}
 	}
 
-	PrintLog("[File] ï¿½ï¿½É¾ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð£ï¿½" + path, PL_INFO);
+	PrintLog("[File] ÒÑÉ¾³ýÎÄ¼þ¼Ð£º" + path, PL_INFO);
 	return true;
 }
 
@@ -242,16 +242,16 @@ int CreateFile(const string& fileName)
 	HANDLE hFile = CreateFile(fileName.c_str(), GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile != INVALID_HANDLE_VALUE)
 	{
-		PrintLog("[File] ï¿½Ñ´ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½" + fileName, PL_INFO);
+		PrintLog("[File] ÒÑ´´½¨ÎÄ¼þ£º" + fileName, PL_INFO);
 		CloseHandle(hFile);
 		return 0;
 	}
 	CloseHandle(hFile);
-	PrintLog("[File] ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½Ê§ï¿½Ü£ï¿½" + fileName, PL_INFO);
+	PrintLog("[File] ´´½¨ÎÄ¼þÊ§°Ü£º" + fileName, PL_INFO);
 	return -1;
 }
 
-// ï¿½ï¿½ï¿½Ð»ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½Ð´ï¿½ë¶¼ï¿½Úµï¿½ï¿½ï¿½ï¿½ß³ï¿½ï¿½ï¿½É£ï¿½ï¿½Éµï¿½ï¿½Ã·ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½ï¿½ï¿½Ì¨ï¿½ß³Ì£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú³ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ß³Ì¡ï¿½
+// ÐòÁÐ»¯ÓëÎÄ¼þÐ´Èë¶¼ÔÚµ÷ÓÃÏß³ÌÍê³É£¨ÓÉµ÷ÓÃ·½°´Ðè·Åµ½ºóÌ¨Ïß³Ì£©£¬±ÜÃâÔÚ³ÖËøÊ±ÆðÏß³Ì¡£
 inline void IniFlushFile(const string& file, const string& text)
 {
 	ofstream f(file, ios::binary | ios::trunc);
@@ -262,7 +262,7 @@ inline void IniFlushFile(const string& file, const string& text)
 	}
 }
 
-// ï¿½ï¿½ Win32 profile API ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½È«Ò»ï¿½Âµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+// Óë Win32 profile API ²ÎÊýÁÐ±íÍêÈ«Ò»ÖÂµÄÌæ´úº¯Êý¡£
 inline void IniWrite(const char* sec, const char* key, const char* val)
 {
 	if (g_pIniSave)
@@ -294,7 +294,7 @@ void SavePresetConfig(const string& file)
 {
 	IniMemData ini;
 	g_pIniSave = &ini;
-	PrintLog("[Config] Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½" + ConfigFile, PL_INFO);
+	PrintLog("[Config] Ð´ÈëÅäÖÃÎÄ¼þ£º" + ConfigFile, PL_INFO);
 	const char* CIniPos = file.c_str();
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
@@ -482,7 +482,7 @@ void SavePresetConfig(const string& file)
 	IniWrite("RandomSettings", "emptyRateRandomDist", to_string(config.EmptyRate_RandomDist).c_str());
 	IniWrite("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str());
 
-	// Vectorï¿½ï¿½ï¿½ï¿½
+	// Vector±£´æ
 	string rCpsTrendStr, lCpsTrendStr;
 	for (size_t i = 0; i < config.RCPSChangeTrendList.size(); i++)
 	{
@@ -509,11 +509,11 @@ void SaveGlobalConfig()
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
 
-	if (IsNeedReshowAgreement == false) // ï¿½ï¿½Í¬ï¿½ï¿½Í²ï¿½Ð´ï¿½ï¿½
+	if (IsNeedReshowAgreement == false) // ²»Í¬Òâ¾Í²»Ð´Èë
 		IniWrite("Config", "AgreementVersion", to_string(AgreementVersion).c_str());
 	IniWrite("Config", "DisableScriptAutoStart", DisableScriptAutoStart ? "TRUE" : "FALSE");
 
-	//-----------------------Í³ï¿½ï¿½ï¿½ï¿½Ï¢-----------------------
+	//-----------------------Í³¼ÆÐÅÏ¢-----------------------
 	{
 		HKEY hKey;
 		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
@@ -534,7 +534,7 @@ void SaveGlobalConfig()
 			unsigned int uval = app_status.StartCount;
 			RegSetValueEx(hKey, "4", 0, REG_DWORD, (const BYTE*)&uval, sizeof(uval));
 
-			// UsageDuration -> ×ªÎªï¿½Ö·ï¿½ï¿½ï¿½ï¿½æ´¢
+			// UsageDuration -> ×ªÎª×Ö·û´®´æ´¢
 			stringstream ss;
 			ss << fixed << setprecision(18) << (long double)app_status.UsageDuration;
 			string str = ss.str();
@@ -544,31 +544,31 @@ void SaveGlobalConfig()
 		}
 	}
 
-	//--------------------ï¿½ï¿½ï¿½Ô»ï¿½ï¿½ï¿½ï¿½ï¿½------------------------------
+	//--------------------¸öÐÔ»¯ÉèÖÃ------------------------------
 	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) != 0)
 		CreateFile(CIniPos);
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "BgOffsetX", to_string(BgOffsetX).c_str());
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "BgOffsetY", to_string(BgOffsetY).c_str());
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "BgScale", to_string(BgScale).c_str());
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "BgLightness", to_string(BgLightness).c_str());
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "GuiItemAlpha", to_string(GuiItemAlpha).c_str());
-	IniWrite("ï¿½ï¿½ï¿½Ô»ï¿½", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE");
+	IniWrite("¸öÐÔ»¯", "BgOffsetX", to_string(BgOffsetX).c_str());
+	IniWrite("¸öÐÔ»¯", "BgOffsetY", to_string(BgOffsetY).c_str());
+	IniWrite("¸öÐÔ»¯", "BgScale", to_string(BgScale).c_str());
+	IniWrite("¸öÐÔ»¯", "BgLightness", to_string(BgLightness).c_str());
+	IniWrite("¸öÐÔ»¯", "GuiItemAlpha", to_string(GuiItemAlpha).c_str());
+	IniWrite("¸öÐÔ»¯", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE");
 
-	//--------------------ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½ï¿½Ð±ï¿½ï¿½Ö¾Ã»ï¿½ï¿½ï¿½Ô­"ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½æ£©--------------------
+	//--------------------ÒÑ°²×°½Å±¾ÁÐ±í³Ö¾Ã»¯£¨Ô­"½Å±¾×ÔÆô¶¯"£¬ÒÑ·ÏÆú×Ô¶¯ÔËÐÐ£¬½ö±£ÁôÁÐ±í±£´æ£©--------------------
 	if (_access(ScriptInstallList.c_str(), 0) != 0)
 		CreateFile(ScriptInstallList);
-	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	// ´´½¨»òÇå¿Õ
 	fstream ScriptFile(ScriptInstallList, ios::trunc);
 	if (ScriptFile.is_open())
 	{
-		// ï¿½ï¿½È¡ï¿½ï¿½
+		// ¶ÁÈ¡Ëø
 		shared_lock read_lock(ScriptData::InstalledMtx);
 		for (const auto& script : ScriptData::Installed)
 			ScriptFile << script.name << endl;
 		ScriptFile.close();
-		// ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ size()-1 ï¿½Ú¿ï¿½ï¿½Ð±ï¿½Ê±ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½Ö¾ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö£ï¿½"int ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½
-		PrintLog("[Config] ï¿½Ñ±ï¿½ï¿½ï¿½ " + to_string(ScriptData::Installed.size()) + " ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½", PL_INFO);
+		// ÐÞ¸´£ºÔ­´úÂë size()-1 ÔÚ¿ÕÁÐ±íÊ±ÎÞ·ûºÅÏÂÒç ¡ú ÈÕÖ¾ÏÔÊ¾ÌìÎÄÊý×Ö£¨"int ¼«ÏÞ"£©
+		PrintLog("[Config] ÒÑ±£´æ " + to_string(ScriptData::Installed.size()) + " ¸öÒÑ°²×°½Å±¾", PL_INFO);
 	}
 
 	g_pIniSave = nullptr;
@@ -586,12 +586,12 @@ void LoadPresetConfig(const string& file)
 	IniMemData ini;
 	ini.Load(file);
 	g_pIniLoad = &ini;
-	PrintLog("[Config] ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½" + ConfigFile, PL_INFO);
+	PrintLog("[Config] ¶ÁÈ¡ÅäÖÃÎÄ¼þ£º" + ConfigFile, PL_INFO);
 	const char* CIniPos = file.c_str();
 	char* buffer = new char[MAX_BUF];
 	string st;
 
-	//ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½æ±¾ï¿½ï¿½
+	//ÅäÖÃÎÄ¼þ°æ±¾ºÅ
 	IniRead("Config", "Version", "-1", buffer, MAX_BUF);
 	const int ver = stoi(buffer);
 	if (ver != ConfigVersion)
@@ -634,7 +634,7 @@ void LoadPresetConfig(const string& file)
 		config.UseOverheatThrottle      = IniReadInt("BasicSettings", "useOverheatThrottle", config.UseOverheatThrottle) != 0;
 		config.Overheat_MinCPS          = IniReadInt("BasicSettings", "overheatMinCps", config.Overheat_MinCPS);
 		{
-			// ×¢ï¿½â£ºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ overheatReachTimeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½È±ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½Üµï¿½ overheatTime ï¿½ï¿½ï¿½ï¿½Í»
+			// ×¢Òâ£º¼üÃûÓÃ overheatReachTime£¬±ÜÃâÓë¼ÈÓÐ"¹ýÈÈ±£»¤"¹¦ÄÜµÄ overheatTime ¼ü³åÍ»
 			IniRead("BasicSettings", "overheatReachTime", to_string(config.Overheat_Time).c_str(), buffer, MAX_BUF);
 			config.Overheat_Time = stof(buffer);
 			IniRead("BasicSettings", "overheatThrottleTime", to_string(config.Overheat_ThrottleTime).c_str(), buffer, MAX_BUF);
@@ -648,7 +648,7 @@ void LoadPresetConfig(const string& file)
 		config.SetGameWindowKey         = IniReadInt("BasicSettings", "setGameWindowKey", config.SetGameWindowKey);
 		config.HideClickerKey           = IniReadInt("BasicSettings", "hideClickerKey", config.HideClickerKey);
 
-		// ×¢ï¿½â£ºOverheatTime ï¿½ï¿½ OHPTimerTimeLossSpeed ï¿½Ç¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ GetPrivateProfileInt
+		// ×¢Òâ£ºOverheatTime ºÍ OHPTimerTimeLossSpeed ÊÇ¸¡µãÊý£¬²»ÄÜÖ±½ÓÓÃ GetPrivateProfileInt
 		IniRead("BasicSettings", "overheatTime", to_string(config.OverheatTime).c_str(), buffer, MAX_BUF);
 		config.OverheatTime = stof(buffer);
 		IniRead("BasicSettings", "overheatCooldownTime", to_string(config.OverheatCooldownTime).c_str(), buffer, MAX_BUF);
@@ -688,12 +688,12 @@ void LoadPresetConfig(const string& file)
 				}
 				catch (...)
 				{
-					PrintLog("[Config] ï¿½ï¿½ï¿½Ô¶ï¿½È¡CPS WavesÊ±stofÊ§ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½" + to_string(count), PL_ERROR);
+					PrintLog("[Config] ³¢ÊÔ¶ÁÈ¡CPS WavesÊ±stofÊ§°Ü£¬ÒÑÌø¹ý£¬ÐòºÅ£º" + to_string(count), PL_ERROR);
 				}
 				count++;
 				if (count >= 24)
 				{
-					PrintLog("[Config] ï¿½ï¿½È¡CPS WavesÊ±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½24ï¿½ï¿½ï¿½Ñºï¿½ï¿½Ôºï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½", PL_WARNING);
+					PrintLog("[Config] ¶ÁÈ¡CPS WavesÊ±ÊýÁ¿³¬¹ý24£¬ÒÑºöÂÔºóÐø¶ÁÈ¡¡£", PL_WARNING);
 					break;
 				}
 			}
@@ -723,7 +723,7 @@ void LoadPresetConfig(const string& file)
 		config.KeybdSoundVolume = IniReadInt("MouseSoundSettings", "keybdSoundVolume", config.KeybdSoundVolume);
 		config.NoiseVolume = IniReadInt("MouseSoundSettings", "noiseVolume", config.NoiseVolume);
 
-		// MouseSoundType ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ GetPrivateProfileString
+		// MouseSoundType ÊÇ×Ö·û´®£¬ÐèÒª±£Áô GetPrivateProfileString
 		IniRead("MouseSoundSettings", "rightMouseSoundType", config.MouseSoundType.c_str(), buffer, MAX_BUF);
 		config.MouseSoundType = buffer;
 
@@ -998,11 +998,11 @@ void LoadPresetConfig(const string& file)
 		config.EmptyRate_RandomDist = stoi(buffer);
 		IniRead("RandomSettings", "emptyRateRandomMode", to_string(config.EmptyRate_RandomMode).c_str(), buffer, MAX_BUF);
 		config.EmptyRate_RandomMode = stoi(buffer);
-		// ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½Æ³ï¿½ STIFF Ä£Ê½ï¿½ï¿½ï¿½ 0~2 ï¿½ï¿½Ð§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ 1(STIFF)/2(FATIGUE)/3(BIONIC) ï¿½ï¿½Öµï¿½ï¿½Î»ï¿½ï¿½Ô½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
+		// ÐÞ¸´£ºÒÆ³ý STIFF Ä£Ê½ºó½ö 0~2 ÓÐÐ§£»¾ÉÅäÖÃÎÄ¼þÀïµÄ 1(STIFF)/2(FATIGUE)/3(BIONIC) ÊýÖµ´íÎ»£¬Ô½½çÊ±ÖØÖÃ
 		if (config.EmptyRate_RandomMode < 0 || config.EmptyRate_RandomMode >= 3)
 			config.EmptyRate_RandomMode = RandomBoolMode_UNIFORM;
 
-		//==================================================Vectorï¿½ï¿½È¡==================================================
+		//==================================================Vector¶ÁÈ¡==================================================
 		IniRead("RandomSettings", "rightCpsChangeTrendList", "", buffer, MAX_BUF);
 		if (strlen(buffer) > 0)
 		{
@@ -1044,7 +1044,7 @@ void LoadGlobalConfig()
 	IniRead("Config", "DisableScriptAutoStart", "FALSE", buffer, MAX_BUF); st = buffer;
 	DisableScriptAutoStart = st.find("TRUE") != string::npos;
 
-	//==================================================Í³ï¿½ï¿½ï¿½ï¿½Ï¢==================================================
+	//==================================================Í³¼ÆÐÅÏ¢==================================================
 	{
 		HKEY hKey;
 		if (RegCreateKeyEx(HKEY_CURRENT_USER, StatsRegPath.c_str(), 0, NULL,
@@ -1095,21 +1095,21 @@ void LoadGlobalConfig()
 		}
 	}
 
-	//--------------------ï¿½ï¿½ï¿½Ô»ï¿½ï¿½ï¿½ï¿½ï¿½------------------------------
+	//--------------------¸öÐÔ»¯ÉèÖÃ------------------------------
 	CIniPos = CustomConfigFile.c_str();
 	if (_access(CIniPos, 0) == 0)
 	{
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "BgOffsetX", to_string(BgOffsetX).c_str(), buffer, MAX_BUF);
+		IniRead("¸öÐÔ»¯", "BgOffsetX", to_string(BgOffsetX).c_str(), buffer, MAX_BUF);
 		BgOffsetX = stoi(buffer);
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "BgOffsetY", to_string(BgOffsetY).c_str(), buffer, MAX_BUF);
+		IniRead("¸öÐÔ»¯", "BgOffsetY", to_string(BgOffsetY).c_str(), buffer, MAX_BUF);
 		BgOffsetY = stoi(buffer);
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "BgScale", to_string(BgScale).c_str(), buffer, MAX_BUF);
+		IniRead("¸öÐÔ»¯", "BgScale", to_string(BgScale).c_str(), buffer, MAX_BUF);
 		BgScale = stoi(buffer);
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "BgLightness", to_string(BgLightness).c_str(), buffer, MAX_BUF);
+		IniRead("¸öÐÔ»¯", "BgLightness", to_string(BgLightness).c_str(), buffer, MAX_BUF);
 		BgLightness = stoi(buffer);
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), buffer, MAX_BUF);
+		IniRead("¸öÐÔ»¯", "GuiItemAlpha", to_string(GuiItemAlpha).c_str(), buffer, MAX_BUF);
 		GuiItemAlpha = stoi(buffer);
-		IniRead("ï¿½ï¿½ï¿½Ô»ï¿½", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", buffer, MAX_BUF); st = buffer;
+		IniRead("¸öÐÔ»¯", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE", buffer, MAX_BUF); st = buffer;
 		BgAutoResize = st.find("TRUE") != string::npos;
 	}
 
@@ -1124,13 +1124,13 @@ void LoadConfig(const string& file)
 	LoadGlobalConfig();
 }
 
-// ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½ï¿½Ð±ï¿½ï¿½Ä¼ï¿½ï¿½Ö¸ï¿½ ScriptData::Installedï¿½ï¿½
-// ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ß¼ï¿½ï¿½ï¿½ï¿½ï¿½ LoadConfig() ï¿½Ð£ï¿½ï¿½ï¿½ LoadConfig ï¿½ï¿½ï¿½ï¿½Ê± ScriptData::Avaiable ï¿½ï¿½Î´ï¿½ï¿½ï¿½
-//ï¿½ï¿½RefushScriptList ï¿½ï¿½ InitGC ï¿½ß³ï¿½Ö´ï¿½Ð£ï¿½--> ï¿½Ö¸ï¿½ï¿½ï¿½ã±»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Ð±ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½
-// ï¿½ï¿½ï¿½Ú¸ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ InitGC ï¿½ï¿½ RefushScriptList() Ö®ï¿½ï¿½ï¿½ï¿½Ã¡ï¿½
+// ´ÓÒÑ°²×°½Å±¾ÁÐ±íÎÄ¼þ»Ö¸´ ScriptData::Installed¡£
+// ÐÞ¸´£ºÔ­Âß¼­·ÅÔÚ LoadConfig() ÖÐ£¬µ« LoadConfig ÔËÐÐÊ± ScriptData::Avaiable ÉÐÎ´Ìî³ä
+//£¨RefushScriptList ÔÚ InitGC Ïß³ÌÖ´ÐÐ£©--> »Ö¸´¿éºã±»Ìø¹ý£¬ÒÑ°²×°ÁÐ±íÃ¿´ÎÆô¶¯¶ªÊ§¡£
+// ÏÖÔÚ¸ÄÎª¶ÀÁ¢º¯Êý£¬ÓÉ InitGC ÔÚ RefushScriptList() Ö®ºóµ÷ÓÃ¡£
 void RestoreInstalledScripts()
 {
-	PrintLog("[Config] ï¿½Ñ»Ö¸ï¿½ " + to_string(ScriptData::Installed.size()) + " ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½", PL_INFO);
+	PrintLog("[Config] ÒÑ»Ö¸´ " + to_string(ScriptData::Installed.size()) + " ¸öÒÑ°²×°½Å±¾", PL_INFO);
 	if (!ScriptData::Avaiable.empty())
 	{
 		ifstream ScriptFile(ScriptInstallList.c_str());
@@ -1139,11 +1139,11 @@ void RestoreInstalledScripts()
 			string line;
 			while (getline(ScriptFile, line))
 			{
-				// Ð´ï¿½ï¿½ï¿½ï¿½
+				// Ð´ÈëËø
 				lock_guard lock1(ScriptData::AvaiableMtx);
 				lock_guard lock2(ScriptData::InstalledMtx);
-				// ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½Ã¿Ò»ï¿½Ð°Ñ¡ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½Ã½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ IsInstalled ï¿½ï¿½ï¿½Ø¸ï¿½ push Í¬ï¿½ï¿½ï¿½Å±ï¿½
-				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Ð±ï¿½ï¿½ï¿½ï¿½Ò¡ï¿½ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªÖ»ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½Æ¥ï¿½ï¿½Ä½Å±ï¿½ï¿½ï¿½
+				// ÐÞ¸´£ºÔ­´úÂë¶ÔÃ¿Ò»ÐÐ°Ñ¡¾ËùÓÐ¡¿¿ÉÓÃ½Å±¾¶¼±ê¼Ç IsInstalled ÇÒÖØ¸´ push Í¬Ãû½Å±¾
+				//£¨µ¼ÖÂÒÑ°²×°ÁÐ±í´íÂÒ¡¢ÎÞ·¨Õý³£¹¤×÷£©£»¸ÄÎªÖ»»Ö¸´Ãû×ÖÆ¥ÅäµÄ½Å±¾¡£
 				for (auto& asc : ScriptData::Avaiable)
 				{
 					if (asc.name == line)
@@ -1174,7 +1174,7 @@ inline vector<string> ScanPresets()
 	if (h != INVALID_HANDLE_VALUE)
 	{
 		vector<string> custom;
-		constexpr int MaxCount = 32; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ 32 ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½Ô¤ï¿½è£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½
+		constexpr int MaxCount = 32; // ÏÞÖÆ×î¶à¶ÁÈ¡ 32 ¸ö×Ô¶¨ÒåÔ¤Éè£¬±ÜÃâÎÞÏÞÑ­»·
 		int i = 0;
 		do
 		{
@@ -1191,7 +1191,7 @@ inline vector<string> ScanPresets()
 		FindClose(h);
 
 		if (i >= MaxCount)
-			PrintLog("[Preset] É¨ï¿½ï¿½Ô¤ï¿½ï¿½Ê±ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 32 ï¿½ï¿½ï¿½ï¿½ï¿½Ñºï¿½ï¿½Ôºï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½", PL_WARNING);
+			PrintLog("[Preset] É¨ÃèÔ¤ÉèÊ±£¬Ô¤ÉèÊýÁ¿³¬¹ý×î´óÊýÁ¿ÏÞÖÆ 32 ¸ö£¬ÒÑºöÂÔºóÐø¶ÁÈ¡¡£", PL_WARNING);
 
 		sort(custom.begin(), custom.end());
 		for (const string& n : custom)
@@ -1200,8 +1200,8 @@ inline vector<string> ScanPresets()
 	return names;
 }
 
-// from/to ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ë£ºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´È«ï¿½ï¿½ CurrentNameï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì¨ï¿½ß³ï¿½ï¿½ï¿½ UI ï¿½ß³Ì¾ï¿½ï¿½ï¿½ï¿½ï¿½ stringï¿½ï¿½
-// ï¿½ï¿½ UI ï¿½ß³Ì¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ PresetConfig::CurrentNameï¿½ï¿½
+// from/to ÏÔÊ½´«Èë£º²»ÔÚÕâÀï¶ÁÐ´È«¾Ö CurrentName£¬±ÜÃâºóÌ¨Ïß³ÌÓë UI Ïß³Ì¾ºÕù¸Ã string¡£
+// ÓÉ UI Ïß³Ì¸ºÔð¸üÐÂ PresetConfig::CurrentName¡£
 inline void SwitchPreset(const string& from, const string& to)
 {
 	if (from == to)
@@ -1214,7 +1214,7 @@ inline void SwitchPreset(const string& from, const string& to)
 		SavePresetConfig(target);
 	}
 	LoadPresetConfig(target);
-	PrintLog("[Preset] ï¿½Ð»ï¿½Ô¤ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½: " + to, PL_INFO);
+	PrintLog("[Preset] ÇÐ»»Ô¤ÉèÅäÖÃµ½: " + to, PL_INFO);
 }
 
 inline bool AddPreset(const string& name)
@@ -1229,9 +1229,9 @@ inline bool AddPreset(const string& name)
 	CreateDirectory(PresetDir.c_str(), NULL);
 	CreateFile(file);
 	SavePresetConfig(file);
-	// ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
+	// ¸üÐÂÔ¤ÉèÅäÖÃÁÐ±í
 	PresetConfig::Presets.push_back(name);
-	PrintLog("[Preset] ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½: " + name, PL_INFO);
+	PrintLog("[Preset] ´´½¨Ô¤Éè: " + name, PL_INFO);
 	return true;
 }
 
@@ -1242,7 +1242,7 @@ inline bool DeletePreset(const string& name)
 	string file = GetPresetFile(name);
 	if (DelFile(file) != 0)
 		return false;
-	// ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½
+	// ¸üÐÂÔ¤ÉèÅäÖÃÁÐ±í
 	for (auto it = PresetConfig::Presets.begin(); it != PresetConfig::Presets.end(); ++it)
 	{
 		if (*it == name)
@@ -1251,6 +1251,6 @@ inline bool DeletePreset(const string& name)
 			break;
 		}
 	}
-	PrintLog("[Preset] É¾ï¿½ï¿½Ô¤ï¿½ï¿½: " + name, PL_INFO);
+	PrintLog("[Preset] É¾³ýÔ¤Éè: " + name, PL_INFO);
 	return true;
 }

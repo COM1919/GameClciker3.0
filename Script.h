@@ -1,7 +1,7 @@
 #pragma once
 #include "Definitons.h"
 #include "ScriptAPI.h"
-#include <memory> // make_shared/shared_ptrï¿½ï¿½StartScript ï¿½ß³Ì¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú£ï¿½
+#include <memory> // make_shared/shared_ptr£¨StartScript Ïß³Ì¾ä±úÉúÃüÖÜÆÚ£©
 
 lua_State* LuaInit();
 HANDLE StartScript(const string& file);
@@ -21,34 +21,34 @@ public:
     unordered_map<string, int> KeyMap;
     SpaceKeyCodeDefine()
     {
-        // ï¿½ï¿½ï¿½Æ¼ï¿½
+        // ¿ØÖÆ¼ü
         KeyMap["VK_RETURN"] = 0x0D;      // Enter
         KeyMap["VK_ESCAPE"] = 0x1B;      // Esc
-        KeyMap["VK_SPACE"] = 0x20;       // ï¿½Õ¸ï¿½
+        KeyMap["VK_SPACE"] = 0x20;       // ¿Õ¸ñ
         KeyMap["VK_BACK"] = 0x08;        // Backspace
         KeyMap["VK_TAB"] = 0x09;         // Tab
         KeyMap["VK_CAPITAL"] = 0x14;     // Caps Lock
 
-        // ï¿½ï¿½ï¿½Î¼ï¿½
+        // ÐÞÊÎ¼ü
         KeyMap["VK_SHIFT"] = 0x10;
         KeyMap["VK_CONTROL"] = 0x11;     // Ctrl
         KeyMap["VK_MENU"] = 0x12;        // Alt
-        KeyMap["VK_LSHIFT"] = 0xA0;      // ï¿½ï¿½Shift
-        KeyMap["VK_RSHIFT"] = 0xA1;      // ï¿½ï¿½Shift
-        KeyMap["VK_LCONTROL"] = 0xA2;    // ï¿½ï¿½Ctrl
-        KeyMap["VK_RCONTROL"] = 0xA3;    // ï¿½ï¿½Ctrl
-        KeyMap["VK_LMENU"] = 0xA4;       // ï¿½ï¿½Alt
-        KeyMap["VK_RMENU"] = 0xA5;       // ï¿½ï¿½Alt
-        KeyMap["VK_LWIN"] = 0x5B;        // ï¿½ï¿½Windows
-        KeyMap["VK_RWIN"] = 0x5C;        // ï¿½ï¿½Windows
+        KeyMap["VK_LSHIFT"] = 0xA0;      // ×óShift
+        KeyMap["VK_RSHIFT"] = 0xA1;      // ÓÒShift
+        KeyMap["VK_LCONTROL"] = 0xA2;    // ×óCtrl
+        KeyMap["VK_RCONTROL"] = 0xA3;    // ÓÒCtrl
+        KeyMap["VK_LMENU"] = 0xA4;       // ×óAlt
+        KeyMap["VK_RMENU"] = 0xA5;       // ÓÒAlt
+        KeyMap["VK_LWIN"] = 0x5B;        // ×óWindows
+        KeyMap["VK_RWIN"] = 0x5C;        // ÓÒWindows
 
-        // ï¿½ï¿½ï¿½ï¿½ï¿½
-        KeyMap["VK_LEFT"] = 0x25;        // ï¿½ï¿½
-        KeyMap["VK_UP"] = 0x26;          // ï¿½ï¿½
-        KeyMap["VK_RIGHT"] = 0x27;       // ï¿½ï¿½
-        KeyMap["VK_DOWN"] = 0x28;        // ï¿½ï¿½
+        // ·½Ïò¼ü
+        KeyMap["VK_LEFT"] = 0x25;        // ¡û
+        KeyMap["VK_UP"] = 0x26;          // ¡ü
+        KeyMap["VK_RIGHT"] = 0x27;       // ¡ú
+        KeyMap["VK_DOWN"] = 0x28;        // ¡ý
 
-        // ï¿½à¼­ï¿½ï¿½
+        // ±à¼­¼ü
         KeyMap["VK_INSERT"] = 0x2D;      // Insert
         KeyMap["VK_DELETE"] = 0x2E;      // Delete
         KeyMap["VK_HOME"] = 0x24;        // Home
@@ -56,7 +56,7 @@ public:
         KeyMap["VK_PRIOR"] = 0x21;       // Page Up
         KeyMap["VK_NEXT"] = 0x22;        // Page Down
 
-        // ï¿½ï¿½ï¿½Å¼ï¿½
+        // ·ûºÅ¼ü
         KeyMap["VK_OEM_PLUS"] = 0xBB;    // =+
         KeyMap["VK_OEM_MINUS"] = 0xBD;   // -_
         KeyMap["VK_OEM_PERIOD"] = 0xBE;  // .>
@@ -77,12 +77,12 @@ lua_State* LuaInit()
 
     if (L == NULL)
     {
-        PrintLog("Luaï¿½ï¿½Ê¼ï¿½ï¿½Ê§ï¿½ï¿½", PL_ERROR);
+        PrintLog("Lua³õÊ¼»¯Ê§°Ü", PL_ERROR);
         IsGCExit = true;
         return L;
     }
 
-    // ï¿½ï¿½ï¿½ï¿½Luaï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    // ÉèÖÃLuaµÄ´íÎó´¦Àíº¯Êý
     lua_atpanic(L, panic_handler);
 
     {
@@ -148,7 +148,7 @@ lua_State* LuaInit()
         lua_setfield(L, -2, "chat");
         lua_setglobal(L, "minecraft");
         
-        //=================================================GUIï¿½ï¿½API=================================================
+        //=================================================GUIµÄAPI=================================================
         lua_pushcfunction(L, ScriptAPI::IsCloseUI);          lua_setglobal(L, "IsCloseUI");
         lua_pushcfunction(L, ScriptAPI::Button);             lua_setglobal(L, "Button");
         lua_pushcfunction(L, ScriptAPI::Checkbox);           lua_setglobal(L, "Checkbox");
@@ -186,15 +186,15 @@ lua_State* LuaInit()
     }
     {
         lua_newtable(L);
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¸
+        // Ìí¼Ó×ÖÄ¸
         for (char c = 'A'; c <= 'Z'; c++)
         {
             lua_pushinteger(L, c);
-            char str[2] = { c, '\0' }; // ï¿½ï¿½Ä¸×ªï¿½ï¿½Îªï¿½Ö·ï¿½ï¿½ï¿½
+            char str[2] = { c, '\0' }; // ×ÖÄ¸×ª»¯Îª×Ö·û´®
             lua_setfield(L, -2, str);
         }
 
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        // Ìí¼ÓÊý×Ö
         for (int i = 0; i <= 9; i++)
         {
             lua_pushinteger(L, i);
@@ -204,14 +204,14 @@ lua_State* LuaInit()
             lua_setfield(L, -2, str);
         }
 
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â°´ï¿½ï¿½
+        // Ìí¼ÓÌØÊâ°´¼ü
         SpaceKeyCodeDefine SpaceKeyMap;
         for (const auto& it : SpaceKeyMap.KeyMap)
         {
             lua_pushinteger(L, it.second);
             lua_setfield(L, -2, it.first.c_str());
         }
-        lua_setglobal(L, "KEY"); // ï¿½ï¿½ï¿½Óµï¿½KEYï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½KEY.AÊ¹ï¿½ï¿½
+        lua_setglobal(L, "KEY"); // Ìí¼Óµ½KEYÖÐ£¬ÕâÑù¿ÉÒÔÍ¨¹ýKEY.AÊ¹ÓÃ
 
         lua_newtable(L);
         lua_pushinteger(L, SC_MOUSE_EVENT);
@@ -230,18 +230,18 @@ lua_State* LuaInit()
         lua_setglobal(L, "GK");
     }
     {
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¿ï¿½
+        // ¼ÓÔØËùÓÐ¿â
         luaL_openlibs(L);
 
-        // ï¿½ï¿½È«ï¿½Æ³ï¿½ioï¿½ï¿½
+        // ÍêÈ«ÒÆ³ýio¿â
         lua_pushnil(L);
         lua_setglobal(L, "io");
 
-        // ï¿½ï¿½È«ï¿½Æ³ï¿½packageï¿½ï¿½
+        // ÍêÈ«ÒÆ³ýpackage¿â
         lua_pushnil(L);
         lua_setglobal(L, "package");
 
-        // ï¿½Æ³ï¿½osï¿½ï¿½ï¿½Î£ï¿½Õºï¿½ï¿½ï¿½
+        // ÒÆ³ýos¿âµÄÎ£ÏÕº¯Êý
         lua_getglobal(L, "os");
         if (!lua_isnil(L, -1))
         {
@@ -254,7 +254,7 @@ lua_State* LuaInit()
         }
         lua_pop(L, 1);
 
-        // ï¿½Æ³ï¿½Î£ï¿½Õµï¿½È«ï¿½Öºï¿½ï¿½ï¿½
+        // ÒÆ³ýÎ£ÏÕµÄÈ«¾Öº¯Êý
         lua_pushnil(L); lua_setglobal(L, "dofile");
         lua_pushnil(L); lua_setglobal(L, "loadfile");
         lua_pushnil(L); lua_setglobal(L, "loadstring");
@@ -263,7 +263,7 @@ lua_State* LuaInit()
         lua_pushnil(L); lua_setglobal(L, "print");
         lua_pushnil(L); lua_setglobal(L, "rawhook");
 
-        // ï¿½Æ³ï¿½debugï¿½â£¨È«ï¿½ï¿½ï¿½Æ³ï¿½ï¿½ï¿½
+        // ÒÆ³ýdebug¿â£¨È«²¿ÒÆ³ý£©
         lua_pushnil(L);
         lua_setglobal(L, "debug");
     }
@@ -271,14 +271,14 @@ lua_State* LuaInit()
     return L;
 }
 
-// Lua ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª lua_pcall ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½msghï¿½ï¿½ï¿½ï¿½ï¿½ë£¬
-// ï¿½ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½Õ»Õ¹ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ luaL_tracebackï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½Ã¶ï¿½Õ»ï¿½ï¿½
+// Lua ´íÎó´¦Àíº¯Êý£º±ØÐë×÷Îª lua_pcall µÄ´íÎó´¦Àíº¯Êý£¨msgh£©´«Èë£¬
+// ÕâÑùÔÚ´íÎóÕ»Õ¹¿ªÇ°µ÷ÓÃ luaL_traceback£¬²ÅÄÜÈ¡µ½ÍêÕûµÄµ÷ÓÃ¶ÑÕ»¡£
 static int LuaErrorHandler(lua_State* L)
 {
     const char* msg = lua_tostring(L, 1);
     if (msg == NULL)
     {
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ tableï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½Îªï¿½É¶ï¿½ï¿½Ä±ï¿½
+        // ´íÎó¶ÔÏó²»ÊÇ×Ö·û´®£¨ÀýÈç table£©£¬³¢ÊÔ×ª»»Îª¿É¶ÁÎÄ±¾
         if (luaL_callmeta(L, 1, "__tostring") && lua_type(L, -1) == LUA_TSTRING)
             return 1;
         msg = lua_pushfstring(L, "(error object is a %s value)", luaL_typename(L, 1));
@@ -287,7 +287,7 @@ static int LuaErrorHandler(lua_State* L)
     return 1;
 }
 
-// ï¿½ï¿½Â¼Ò»ï¿½ï¿½ Lua ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ë±¨ï¿½ï¿½ï¿½ï¿½Ê·ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼"Ò³ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½
+// ¼ÇÂ¼Ò»´Î Lua ½Å±¾±¨´í£¨Ð´Èë±¨´íÀúÊ·£¬¹©"±¨´í¼ÇÂ¼"Ò³ÃæÏÔÊ¾£©
 void ReportScriptError(const string& file, const string& message)
 {
     lock_guard lock(ScriptData::ErrorRecordsMtx);
@@ -300,16 +300,16 @@ void ReportScriptError(const string& file, const string& message)
         ScriptData::ErrorRecords.erase(ScriptData::ErrorRecords.begin());
 }
 
-// ï¿½ï¿½ï¿½Ø´ï¿½ï¿½ï¿½ï¿½ï¿½
+// ÑÏÖØ´íÎó´¦Àí
 static int panic_handler(lua_State* L)
 {
     string msg = lua_tostring(L, -1);
     if (msg.empty())
         msg = "(no error message)";
-    ::PrintLog("Luaï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½: " + msg, PL_ERROR);
+    ::PrintLog("Lua½Å±¾´íÎó: " + msg, PL_ERROR);
     //IsEnableScript = false;
     msg = StringToUTF8(msg);
-    RenderMessageBox(msg.c_str(), config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" : "Fatal error occurred", MB_OK);
+    RenderMessageBox(msg.c_str(), config.UseChinese ? u8"³öÏÖÖÂÃü´íÎó" : "Fatal error occurred", MB_OK);
     IsGCExit = true;
     return 0;
 }
@@ -320,8 +320,8 @@ int LoadScript(lua_State* L, const string& file)
     string errmsg;
     try
     {
-        PrintLog("ï¿½ï¿½ï¿½ï¿½Luaï¿½Å±ï¿½ï¿½ï¿½" + file, PL_INFO);
-        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½Ú´ï¿½ï¿½ï¿½Õ»Õ¹ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¶ï¿½Õ»
+        PrintLog("¼ÓÔØLua½Å±¾£º" + file, PL_INFO);
+        // ´«Èë´íÎó´¦Àíº¯Êý£¬±£Ö¤ÔÚ´íÎóÕ»Õ¹¿ªÇ°²¶»ñµ÷ÓÃ¶ÑÕ»
         lua_pushcfunction(L, LuaErrorHandler);
         const int errfunc = lua_gettop(L);
         int status = luaL_loadfile(L, file.c_str());
@@ -331,14 +331,14 @@ int LoadScript(lua_State* L, const string& file)
         {
             const char* err = lua_tostring(L, -1);
             const string errText = err ? err : "(error object is not a string)";
-            lua_settop(L, errfunc - 1);   // Í¬Ê±ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-            PrintLog("Luaï¿½Å±ï¿½ï¿½ï¿½ï¿½Ø´ï¿½ï¿½ï¿½" + errText, PL_ERROR);
-            RenderTip((config.UseChinese ? u8"ï¿½Å±ï¿½Ö´ï¿½Ð´ï¿½ï¿½ï¿½"s : "Script execution error"s) + StringToUTF8(errText), 10.0f, PT_ERROR);
+            lua_settop(L, errfunc - 1);   // Í¬Ê±ÒÆ³ý´íÎó¶ÔÏóÓë´íÎó´¦Àíº¯Êý
+            PrintLog("Lua½Å±¾¼ÓÔØ´íÎó£º" + errText, PL_ERROR);
+            RenderTip((config.UseChinese ? u8"½Å±¾Ö´ÐÐ´íÎó"s : "Script execution error"s) + StringToUTF8(errText), 10.0f, PT_ERROR);
             MessageBeep(MB_ICONERROR);
             ReportScriptError(file, errText);
             return 3;
         }
-        lua_settop(L, errfunc - 1);   // ï¿½É¹ï¿½Ê±ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        lua_settop(L, errfunc - 1);   // ³É¹¦Ê±ÒÆ³ý´íÎó´¦Àíº¯Êý
     }
     catch (const exception& e)
     {
@@ -353,8 +353,8 @@ int LoadScript(lua_State* L, const string& file)
 
     if (IsError)
     {
-        PrintLog("ï¿½ï¿½ï¿½ï¿½Luaï¿½Å±ï¿½Ê§ï¿½Ü£ï¿½" + errmsg, PL_ERROR);
-        RenderTip((config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½Luaï¿½Å±ï¿½Ê§ï¿½Ü£ï¿½"s + errmsg : "Failed to load Lua script: "s + errmsg), 10.0f, PT_ERROR);
+        PrintLog("¼ÓÔØLua½Å±¾Ê§°Ü£º" + errmsg, PL_ERROR);
+        RenderTip((config.UseChinese ? u8"¼ÓÔØLua½Å±¾Ê§°Ü£º"s + errmsg : "Failed to load Lua script: "s + errmsg), 10.0f, PT_ERROR);
         MessageBeep(MB_ICONERROR);
         return 1;
     }
@@ -367,32 +367,32 @@ int CalledScriptFunction(lua_State* L, const string& func)
     string errmsg;
     try
     {
-        // ï¿½ï¿½Ñ¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª lua_pcall ï¿½ï¿½ msghï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½Ú±ï¿½ï¿½ï¿½ï¿½Ãºï¿½ï¿½ï¿½Ö®ï¿½Â£ï¿½
+        // ÏÈÑ¹Èë´íÎó´¦Àíº¯Êý£¬×÷Îª lua_pcall µÄ msgh£¨±ØÐëÎ»ÓÚ±»µ÷ÓÃº¯ÊýÖ®ÏÂ£©
         lua_pushcfunction(L, LuaErrorHandler);
         const int errfunc = lua_gettop(L);
 
         lua_getglobal(L, func.c_str());
         if (!lua_isfunction(L, -1))
         {
-            PrintLog("ï¿½Þ·ï¿½ï¿½Òµï¿½Luaï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" + func, PL_ERROR);
+            PrintLog("ÎÞ·¨ÕÒµ½Lua½Å±¾º¯Êý£º" + func, PL_ERROR);
             MessageBeep(MB_ICONERROR);
-            lua_settop(L, errfunc - 1);   // ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            lua_settop(L, errfunc - 1);   // ÒÆ³ý´íÎó´¦Àíº¯Êý
             return 1;
         }
         if (lua_pcall(L, 0, 0, errfunc) != LUA_OK)
         {
             const char* err = lua_tostring(L, -1);
             const string errText = err ? err : "(error object is not a string)";
-            lua_settop(L, errfunc - 1);   // Í¬Ê±ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-            PrintLog("Luaï¿½Å±ï¿½Ö´ï¿½Ð´ï¿½ï¿½ï¿½" + errText, PL_ERROR);
+            lua_settop(L, errfunc - 1);   // Í¬Ê±ÒÆ³ý´íÎó¶ÔÏóÓë´íÎó´¦Àíº¯Êý
+            PrintLog("Lua½Å±¾Ö´ÐÐ´íÎó£º" + errText, PL_ERROR);
 
-            const string errUtf8 = StringToUTF8(errText);   // ï¿½ï¿½ï¿½Ðµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-            RenderTip((config.UseChinese ? u8"ï¿½Å±ï¿½Ö´ï¿½Ð´ï¿½ï¿½ï¿½"s : "Script execution error"s) + errUtf8, 10.0f, PT_ERROR);
+            const string errUtf8 = StringToUTF8(errText);   // ³ÖÓÐµ½º¯Êý×÷ÓÃÓò½áÊø
+            RenderTip((config.UseChinese ? u8"½Å±¾Ö´ÐÐ´íÎó"s : "Script execution error"s) + errUtf8, 10.0f, PT_ERROR);
             MessageBeep(MB_ICONERROR);
             ReportScriptError(CurrentScriptFile, errText);
             return 2;
         }
-        lua_settop(L, errfunc - 1);   // ï¿½É¹ï¿½Ê±ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        lua_settop(L, errfunc - 1);   // ³É¹¦Ê±ÒÆ³ý´íÎó´¦Àíº¯Êý
     }
     catch (const exception& e)
     {
@@ -407,21 +407,21 @@ int CalledScriptFunction(lua_State* L, const string& func)
 
     if (IsError)
     {
-        PrintLog("ï¿½ï¿½ï¿½ï¿½Luaï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½" + errmsg, PL_ERROR);
-        RenderTip((config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½Luaï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½"s + errmsg : "Failed to call Lua script function: "s + errmsg), 10.0f, PT_ERROR);
+        PrintLog("µ÷ÓÃLua½Å±¾º¯ÊýÊ§°Ü£º" + errmsg, PL_ERROR);
+        RenderTip((config.UseChinese ? u8"µ÷ÓÃLua½Å±¾º¯ÊýÊ§°Ü£º"s + errmsg : "Failed to call Lua script function: "s + errmsg), 10.0f, PT_ERROR);
         MessageBeep(MB_ICONERROR);
         return 1;
     }
     return 0;
 }
 
-// ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ã»ï¿½Ð¾ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½
+// ¼ì²âÊÇ·ñ³õÊ¼»¯£¬Ã»ÓÐ¾Í×Ô¶¯³õÊ¼»¯
 inline bool InitLuaState(const string& file, LuaState& LuaInfo)
 {
     bool IsError = false;
     string errmsg;
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock(LuaInfo.Mtx);
         try
         {
@@ -448,8 +448,8 @@ inline bool InitLuaState(const string& file, LuaState& LuaInfo)
 
     if (IsError)
     {
-        PrintLog("ï¿½ï¿½Ê¼ï¿½ï¿½Luaï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½" + errmsg, PL_ERROR);
-        RenderTip((config.UseChinese ? u8"ï¿½ï¿½Ê¼ï¿½ï¿½Luaï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½"s + errmsg : "Failed to initialize Lua environment: "s + errmsg), 10.0f, PT_ERROR);
+        PrintLog("³õÊ¼»¯Lua»·¾³Ê§°Ü£º" + errmsg, PL_ERROR);
+        RenderTip((config.UseChinese ? u8"³õÊ¼»¯Lua»·¾³Ê§°Ü£º"s + errmsg : "Failed to initialize Lua environment: "s + errmsg), 10.0f, PT_ERROR);
         MessageBeep(MB_ICONERROR);
         return false;
     }
@@ -463,12 +463,12 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
 #define SKC_KEY_CLICK 3
     while (!IsGCExit)
     {
-        // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½Ú¶ï¿½ï¿½ï¿½ï¿½Ú±ï¿½ï¿½ï¿½ map ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ modificationsï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·Åºï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-        // ï¿½Ú¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì£ï¿½ï¿½ï¿½ CloseScriptThreadï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ erase Ôªï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§Ð§ ï¿½ï¿½ 0xC0000005ï¿½ï¿½
-        // ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ keyï¿½ï¿½stringï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ find ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¡ï¿½
+        // ÐÞ¸´£ºÔ­´úÂëÔÚ¶ÁËøÄÚ±£´æ map µü´úÆ÷µ½ modifications£¬¶ÁËøÊÍ·ÅºóÔÙÓÃÐ´Ëø½âÒýÓÃÕâÐ©µü´úÆ÷¡£
+        // ÆÚ¼äÆäËûÏß³Ì£¨Èç CloseScriptThread£©¿ÉÄÜ erase ÔªËØ ¡ú µü´úÆ÷Ê§Ð§ ¡ú 0xC0000005¡£
+        // ¸ÄÎª±£´æ key£¨string£©£¬Ð´ËøÄÚÖØÐÂ find ²¢¼ì²é´æÔÚÐÔ¡£
         vector<pair<string, int>> modifications;
         {
-            // ï¿½ï¿½È¡ï¿½ï¿½
+            // ¶ÁÈ¡Ëø
             shared_lock lock(ScriptData::StatesMtx);
             for (const auto& entry : ScriptData::States)
             {
@@ -481,7 +481,7 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
                 if (GetKeyUp(key))
                     modifications.emplace_back(file, SKC_KEY_UP);
             }
-        } // read_lock ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Í·ï¿½
+        } // read_lock ÔÚÕâÀï×Ô¶¯ÊÍ·Å
 
         if (!modifications.empty())
         {
@@ -490,8 +490,8 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
             {
                 auto it = ScriptData::States.find(mod.first);
                 if (it == ScriptData::States.end())
-                    continue; // ï¿½Å±ï¿½ï¿½Ñ±ï¿½ï¿½Ø±ï¿½/É¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-                // mod.second ï¿½ï¿½Òªï¿½ï¿½ï¿½Ãµï¿½Öµ
+                    continue; // ½Å±¾ÒÑ±»¹Ø±Õ/É¾³ý£¬Ìø¹ý
+                // mod.second ÊÇÒªÉèÖÃµÄÖµ
                 switch (mod.second)
                 {
                 case SKC_KEY_CLICK:
@@ -518,13 +518,13 @@ DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam)
 
 HANDLE StartScript(const string& file)
 {
-    PrintLog("[Script] ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ß³Ì£ï¿½" + file, PL_INFO);
+    PrintLog("[Script] Æô¶¯½Å±¾Ïß³Ì£º" + file, PL_INFO);
     
     auto thread_func = [](std::atomic<HANDLE>* hThread, const string& file)
     {
-        // ï¿½ï¿½Çµï¿½Ç°ï¿½Å±ï¿½ï¿½ß³Ìµï¿½ fileï¿½ï¿½ï¿½ï¿½ ScriptAPI ï¿½ï¿½Î»ï¿½Ô¼ï¿½ï¿½ï¿½ ScriptStateï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LuaStatesï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        // ±ê¼Çµ±Ç°½Å±¾Ïß³ÌµÄ file£¬¹© ScriptAPI ¶¨Î»×Ô¼ºµÄ ScriptState£¨ÎÞÐè±éÀú LuaStates£¬±ÜÃâËÀËø»·£©
         CurrentScriptFile = file;
-        // ï¿½Å±ï¿½ï¿½ß³ï¿½ï¿½ï¿½ï¿½Ð±ï¿½Ç£ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½Â·ï¿½ï¿½ï¿½ï¿½Ê§ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½Î»
+        // ½Å±¾Ïß³ÌÔËÐÐ±ê¼Ç£¨¹©"ÆôÓÃ"¿ª¹ØÅÐ¶Ï£©£ºËùÓÐÍË³öÂ·¾¶£¨Ê§°Ü/±ÀÀ£/Õý³££©¶¼Òª¸´Î»
         auto MarkNotRunning = [&file]()
         {
             lock_guard lock(ScriptData::StatesMtx);
@@ -532,8 +532,8 @@ HANDLE StartScript(const string& file)
             if (it != ScriptData::States.end())
                 it->second.IsRunning = false;
         };
-        // È·ï¿½ï¿½ ScriptData::States ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ú£ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½Í· ScriptData::States[file]ï¿½ï¿½operator[]ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-        // ï¿½Ä³ï¿½ find ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â°ï¿½×°ï¿½Ä½Å±ï¿½ï¿½×´ï¿½ï¿½ï¿½ï¿½Ð»ï¿½ï¿½ï¿½ find Ê§ï¿½Ü¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½
+        // È·±£ ScriptData::States ÌõÄ¿´æÔÚ£ºÔ­´úÂëÔÚÑ­»·Í· ScriptData::States[file]£¨operator[]£©ÒþÊ½´´½¨£¬
+        // ¸Ä³É find ºó±ØÐëÏÔÊ½´´½¨£¬·ñÔòÐÂ°²×°µÄ½Å±¾Ê×´ÎÔËÐÐ»áÒò find Ê§°Ü¶øÁ¢¼´ÍË³ö¡£
         {
             lock_guard lock(ScriptData::StatesMtx);
             ScriptData::States[file].IsRunning = true;
@@ -542,15 +542,15 @@ HANDLE StartScript(const string& file)
         string errmsg;
         LuaState* lua = nullptr;
         {
-            // Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ß³Ìµï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ operator[] ï¿½É°ï¿½È«ï¿½ï¿½ï¿½ë£¨CloseScriptThread ï¿½ï¿½È±ï¿½ï¿½ß³ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ eraseï¿½ï¿½
+            // Ð´ÈëËø£º½Å±¾Ïß³ÌµÄ"ËùÓÐÕß"½ÇÉ«£¬ËøÄÚ operator[] ¿É°²È«²åÈë£¨CloseScriptThread »áµÈ±¾Ïß³ÌÍË³ö²Å erase£©
             lock_guard lock(LuaStatesMtx);
             lua = &LuaStates[file];
             if (!lua->lua)
             {
-                // ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½Ò²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ RunningMtx ï¿½Ú¡ï¿½ï¿½ï¿½RenderScriptGui/SaveScriptConfig ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½
-                // ï¿½ï¿½ RunningMtx ï¿½ï¿½ï¿½ï¿½ render/saveConfigï¿½ï¿½ï¿½ï¿½ï¿½Ë´ï¿½ï¿½ï¿½ï¿½ï¿½ RunningMtxï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì»ï¿½ï¿½Í¬Ò» lua_State
-                // Í¬Ê±ï¿½ï¿½ï¿½ï¿½ Lua APIï¿½ï¿½Lua ï¿½ï¿½ï¿½ß³Ì°ï¿½È«ï¿½ï¿½ï¿½ï¿½ ×´Ì¬ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-                // ï¿½ï¿½Ë³ï¿½ï¿½È«ï¿½ï¿½Í³Ò»ï¿½ï¿½LuaStatesMtx ï¿½ï¿½ RunningMtx ï¿½ï¿½ Mtxï¿½ï¿½
+                // ÐÞ¸´£º³õÊ¼»¯Ò²±ØÐëÔÚ RunningMtx ÄÚ¡ª¡ªRenderScriptGui/SaveScriptConfig ¿ÉÄÜÔÚÆäËûÏß³Ì
+                // ³Ö RunningMtx µ÷ÓÃ render/saveConfig£¬Èô´Ë´¦²»¼Ó RunningMtx£¬Á½¸öÏß³Ì»á¶ÔÍ¬Ò» lua_State
+                // Í¬Ê±µ÷ÓÃ Lua API£¨Lua ·ÇÏß³Ì°²È«£©¡ú ×´Ì¬Ëð»µ/±ÀÀ£¡£
+                // ËøË³ÐòÈ«¾ÖÍ³Ò»£ºLuaStatesMtx ¡ú RunningMtx ¡ú Mtx¡£
                 lock_guard run_lock(lua->RunningMtx);
                 if (!InitLuaState(file, *lua))
                 {
@@ -560,13 +560,13 @@ HANDLE StartScript(const string& file)
                 }
             }
         }
-        // ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì¾ï¿½ï¿½
+        // ÎÞÂÛÊÇ·ñµÚÒ»´ÎÔËÐÐ£¬¶¼ÐèÒª¸´ÖÆÏß³Ì¾ä±ú
         {
             HANDLE hRealHandle = NULL;
             HANDLE hPseudoHandle = GetCurrentThread();
             if (!DuplicateHandle(GetCurrentProcess(), hPseudoHandle, GetCurrentProcess(), &hRealHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
             {
-                PrintLog("[Script] ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì¾ï¿½ï¿½Ê§ï¿½ï¿½(Error ID:1)", PL_ERROR);
+                PrintLog("[Script] ¸´ÖÆÏß³Ì¾ä±úÊ§°Ü(Error ID:1)", PL_ERROR);
                 hThread->store(nullptr);
                 MarkNotRunning();
                 return;
@@ -578,48 +578,48 @@ HANDLE StartScript(const string& file)
             lock_guard run_lock(lua->RunningMtx);
             CalledScriptFunction(lua->lua, "initScript");
         }
-        // ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½Å±ï¿½Ñ­ï¿½ï¿½
+        // Æô¶¯½Å±¾£¡£¡£¡¿ªÊ¼½Å±¾Ñ­»·
         bool IsSuspend = false;
         bool IsExit = false;
         int LoopDelay = 0;
         while (!IsGCExit)
         {
             {
-                // ï¿½ï¿½È¡ï¿½ï¿½
+                // ¶ÁÈ¡Ëø
                 shared_lock lock(ScriptData::StatesMtx);
-                // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ shared_lockï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Âµï¿½ï¿½ï¿½ ScriptData::States[file]ï¿½ï¿½operator[]ï¿½ï¿½ï¿½ï¿½
-                // key ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ôªï¿½Ø£ï¿½Ð´ï¿½ï¿½ï¿½ï¿½È´ï¿½Ö¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ý¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª findï¿½ï¿½
+                // ÐÞ¸´£ºÔ­´úÂëÔÚ shared_lock£¨¶ÁËø£©ÏÂµ÷ÓÃ ScriptData::States[file]£¨operator[]£©£¬
+                // key ²»´æÔÚÊ±»á²åÈëÔªËØ£¨Ð´²Ù×÷È´³Ö¶ÁËø£©¡ú Êý¾Ý¾ºÕù¡£¸ÄÎª find¡£
                 auto it = ScriptData::States.find(file);
                 if (it == ScriptData::States.end())
-                    break; // ×´Ì¬ï¿½Ñ±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½ï¿½Ø±Õ£ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Å±ï¿½
+                    break; // ×´Ì¬ÒÑ±»Çå³ý£¨½Å±¾±»¹Ø±Õ£©£¬ÍË³ö½Å±¾
                 const ScriptState& state = it->second;
                 if (state.IsExit)
-                    break; // ï¿½Ë³ï¿½ï¿½Å±ï¿½
+                    break; // ÍË³ö½Å±¾
                 IsSuspend = state.IsSuspend;
                 LoopDelay = state.LoopDelay;
             }
 
             if (IsSuspend)
             {
-                // ï¿½ï¿½Ê±Î´ï¿½ï¿½ï¿½ï¿½ï¿½Îºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«Ë¯ï¿½ï¿½
+                // ´ËÊ±Î´³ÖÓÐÈÎºÎËø£¬°²È«Ë¯Ãß
                 Sleep(10);
                 continue;
             }
 
             int ret = 0;
             {
-                // Ð´ï¿½ï¿½ï¿½ï¿½
+                // Ð´ÈëËø
                 lock_guard run_lock(lua->RunningMtx);
                 ret = CalledScriptFunction(lua->lua, "main");
             }
             if (ret != 0)
             {
-                if (file != ScriptTestFile) // ï¿½ï¿½ï¿½Ô½Å±ï¿½ï¿½Í²ï¿½ï¿½ï¿½
+                if (file != ScriptTestFile) // ²âÊÔ½Å±¾¾Í²»¹Ü
                 {
-                    // ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½ ï¿½Ñ°ï¿½×° ï¿½Ð£ï¿½É¾ï¿½ï¿½ï¿½ï¿½Ç°ï¿½Å±ï¿½
-                    // Ð´ï¿½ï¿½ï¿½ï¿½
+                    // ½Å±¾±ÀÀ£ÁË£¬ÔÚ ÒÑ°²×° ÖÐ£¬É¾³ýµ±Ç°½Å±¾
+                    // Ð´ÈëËø
                     lock_guard lock(ScriptData::InstalledMtx);
-                    // ï¿½Þ¸ï¿½ï¿½ï¿½range-for ï¿½ï¿½ erase ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½ï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½É¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+                    // ÐÞ¸´£ºrange-for ÄÚ erase µü´úÆ÷´àÈõ£¬¸ÄÎªË÷ÒýÑ­»·£¨ÕÒµ½¼´É¾³ý²¢Ìø³ö£©
                     for (int i = 0; i < (int)ScriptData::Installed.size(); i++)
                     {
                         if (ScriptData::Installed[i].file == file)
@@ -629,28 +629,28 @@ HANDLE StartScript(const string& file)
                         }
                     }
                 }
-                break; // ï¿½Ë³ï¿½ï¿½ï¿½
+                break; // ÍË³ö£¡
             }
             Sleep(LoopDelay);
         }
         {
-            // ï¿½Þ¸ï¿½ï¿½ï¿½lua_close ï¿½ï¿½ render/saveConfig/main ï¿½ï¿½ Lua ï¿½ï¿½ï¿½Ã²ï¿½ï¿½ï¿½ ï¿½ï¿½ Í¬Ò» lua_State Ë«ï¿½ß³Ì·ï¿½ï¿½Ê¡ï¿½
-            // release() Ò²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ RunningMtx ï¿½Ú´ï¿½ï¿½Ð»ï¿½ï¿½ï¿½
+            // ÐÞ¸´£ºlua_close Óë render/saveConfig/main µÄ Lua µ÷ÓÃ²¢·¢ ¡ú Í¬Ò» lua_State Ë«Ïß³Ì·ÃÎÊ¡£
+            // release() Ò²±ØÐëÔÚ RunningMtx ÄÚ´®ÐÐ»¯¡£
             lock_guard run_lock(lua->RunningMtx);
             lua->release();
         }
         Minecraft::chat::ChatManager::instance().CloseReader(file);
-        MarkNotRunning();   // ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½Ð±ï¿½Ç£ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½Â´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-        PrintLog("[Script] ï¿½Å±ï¿½ï¿½ß³ï¿½ï¿½Ë³ï¿½ï¿½ï¿½" + file, PL_INFO);
+        MarkNotRunning();   // Õý³£ÍË³ö£º¸´Î»ÔËÐÐ±ê¼Ç£¨¹©"ÆôÓÃ"¿ª¹ØÏÂ´ÎÆô¶¯£©
+        PrintLog("[Script] ½Å±¾Ïß³ÌÍË³ö£º" + file, PL_INFO);
     };
-    // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½Ñ¾Ö²ï¿½ï¿½ï¿½ï¿½ï¿½ hThread ï¿½Äµï¿½Ö·ï¿½ï¿½ï¿½ï¿½ detach ï¿½ß³Ì£ï¿½thread_func ï¿½ï¿½Ð´ï¿½ï¿½ *hThreadï¿½ï¿½ï¿½ï¿½
-    // ï¿½ï¿½ StartScript ï¿½È´ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Øºï¿½ï¿½ß³Ì²ï¿½Ð´ï¿½ï¿½ ï¿½ï¿½ Ð´ï¿½ï¿½ï¿½ï¿½ï¿½Ùµï¿½Õ»ï¿½Ú´æ£¨ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½
-    // ï¿½ï¿½Îª shared_ptr ï¿½Ñ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì³ï¿½ï¿½Ð¸ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú¡ï¿½
+    // ÐÞ¸´£ºÔ­´úÂë°Ñ¾Ö²¿±äÁ¿ hThread µÄµØÖ·´«¸ø detach Ïß³Ì£¨thread_func »áÐ´Èë *hThread£©£¬
+    // Èô StartScript µÈ´ý³¬Ê±·µ»ØºóÏß³Ì²ÅÐ´Èë ¡ú Ð´ÒÑÏú»ÙµÄÕ»ÄÚ´æ£¨Ðü´¹Ð´£©¡£
+    // ¸ÄÎª shared_ptr ¶Ñ·ÖÅä¾ä±ú£¬ÓÉÏß³Ì³ÖÓÐ¸±±¾±£Ö¤ÉúÃüÖÜÆÚ¡£
     auto hThread = make_shared<std::atomic<HANDLE>>(nullptr);
     thread t([hThread, file, thread_func]() { thread_func(hThread.get(), file); });
     t.detach();
 
-    // ï¿½È´ï¿½ï¿½ß³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Ãµï¿½ï¿½ß³Ì¾ï¿½ï¿½
+    // µÈ´ýÏß³ÌÆô¶¯²¢ÇÒ»ñµÃµ½Ïß³Ì¾ä±ú
     int try_count = 20; // 50 * 20 = 1000 = 1s
     while (hThread->load() == nullptr && try_count > 0)
     {
@@ -660,7 +660,7 @@ HANDLE StartScript(const string& file)
     return hThread->load();
 }
 
-// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Ä½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½"ï¿½Å±ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½
+// Æô¶¯ËùÓÐÒÑ°²×°µÄ½Å±¾£¨ÓÃÓÚ³ÌÐòÆô¶¯Ê±µÄ"½Å±¾×Ô¶¯Æô¶¯"£©
 void StartInstalledScriptsOnBoot()
 {
     vector<ScriptInfo> scripts;
@@ -670,14 +670,14 @@ void StartInstalledScriptsOnBoot()
     }
     if (scripts.empty())
         return;
-    PrintLog("[Script] ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ°ï¿½×°ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½ " + to_string(scripts.size()) + " ï¿½ï¿½", PL_INFO);
+    PrintLog("[Script] ×Ô¶¯Æô¶¯ÒÑ°²×°½Å±¾£¬¹² " + to_string(scripts.size()) + " ¸ö", PL_INFO);
     for (const ScriptInfo& script : scripts)
     {
         {
             lock_guard lock(ScriptData::StatesMtx);
             ScriptState& state = ScriptData::States[script.file];
             if (state.IsRunning)
-                continue;   // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÐµÄ½Å±ï¿½ï¿½ï¿½ï¿½Ø¸ï¿½ï¿½ï¿½ï¿½ï¿½
+                continue;   // ÒÑÔÚÔËÐÐµÄ½Å±¾²»ÖØ¸´Æô¶¯
             state.IsRunning = true;
         }
         const HANDLE hThread = StartScript(script.file);
@@ -695,8 +695,8 @@ void StartInstalledScriptsOnBoot()
         }
         else
         {
-            // StartScript Ê§ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ NULLï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½ï¿½ï¿½ï¿½Ñµï¿½ï¿½ï¿½ MarkNotRunning ï¿½ï¿½ï¿½ï¿½ IsRunningï¿½ï¿½
-            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ NULL ï¿½ï¿½ï¿½ß³ï¿½ï¿½Ô¿ï¿½ï¿½Ú³ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½è¶µï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È´ï¿½Þ¾ï¿½ï¿½"
+            // StartScript Ê§°Ü£¨·µ»Ø NULL£©£ºÏß³ÌÄÚÒÑµ÷ÓÃ MarkNotRunning ÖØÖÃ IsRunning£¬
+            // µ«ÈôÒò³¬Ê±·µ»Ø NULL ¶øÏß³ÌÈÔ¿¨ÔÚ³õÊ¼»¯£¬Ðè¶µµ×ÖØÖÃ£¬±ÜÃâ"ÏÔÊ¾ÔËÐÐÖÐÈ´ÎÞ¾ä±ú"
             lock_guard lock(ScriptData::StatesMtx);
             auto it = ScriptData::States.find(script.file);
             if (it != ScriptData::States.end())
@@ -707,25 +707,25 @@ void StartInstalledScriptsOnBoot()
 
 bool RenderScriptGui(const string& file)
 {
-    // ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LuaStatesMtx ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ RunningMtx ï¿½ï¿½È¡ï¿½ï¿½È«ï¿½ï¿½ Lua ï¿½ï¿½ï¿½Ã¡ï¿½ï¿½ï¿½
-    // ï¿½ï¿½ï¿½ï¿½È¡Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ï¿½ï¿½CloseScriptThread ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½ release()+erase ï¿½ï¿½ LuaState ï¿½ï¿½ï¿½ï¿½ UAFï¿½ï¿½
-    // ï¿½ï¿½Ë³ï¿½ï¿½È«ï¿½ï¿½Í³Ò»ï¿½ï¿½LuaStatesMtx ï¿½ï¿½ RunningMtx ï¿½ï¿½ Mtxï¿½ï¿½ï¿½ï¿½ thread_func ï¿½ï¿½Ê¼ï¿½ï¿½/CloseScriptThread Ò»ï¿½Â£ï¿½ï¿½ï¿½
+    // ÐÞ¸´£º±ØÐëÔÚ LuaStatesMtx ËøÄÚÍê³É RunningMtx »ñÈ¡ÓëÈ«²¿ Lua µ÷ÓÃ¡ª¡ª
+    // ÈôÏÈÈ¡Ö¸ÕëÔÙÊÍ·ÅËø£¬CloseScriptThread ¿ÉÔÚ´°¿ÚÆÚ release()+erase ¡ú LuaState Ðü´¹ UAF¡£
+    // ËøË³ÐòÈ«¾ÖÍ³Ò»£ºLuaStatesMtx ¡ú RunningMtx ¡ú Mtx£¨Óë thread_func ³õÊ¼»¯/CloseScriptThread Ò»ÖÂ£©¡£
     lock_guard lock(LuaStatesMtx);
     auto it = LuaStates.find(file);
     if (it == LuaStates.end())
     {
-        // ï¿½Þ¸ï¿½ï¿½ï¿½É¾ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ß³Ì¿ï¿½ï¿½ï¿½Î´ï¿½ï¿½ï¿½Ð£ï¿½LuaStates ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½
-        // ï¿½ï¿½ï¿½ï¿½ï¿½Ã½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LuaState ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ render ï¿½ï¿½ï¿½Æ¡ï¿½
-        // ×¢ï¿½â£ºLuaState ï¿½ï¿½ mutex ï¿½ï¿½Ô±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ emplace ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ operator[] ï¿½Íµï¿½Ä¬ï¿½Ï¹ï¿½ï¿½ì¡£
+        // ÐÞ¸´£ºÉ¾³ý×Ô¶¯Æô¶¯ºó½Å±¾Ïß³Ì¿ÉÄÜÎ´ÔËÐÐ£¨LuaStates ÎÞÌõÄ¿£©£¬
+        // µ«ÉèÖÃ½çÃæÈÔÐèäÖÈ¾¡ª¡ªÖ÷¶¯´´½¨ LuaState ÌõÄ¿²¢³õÊ¼»¯£¬¹© render »æÖÆ¡£
+        // ×¢Òâ£ºLuaState º¬ mutex ³ÉÔ±£¨²»¿ÉÒÆ¶¯/¿½±´£©£¬²»ÄÜÓÃ emplace ´«Öµ£¬Ðè operator[] ¾ÍµØÄ¬ÈÏ¹¹Ôì¡£
         LuaStates[file];
         it = LuaStates.find(file);
     }
-    // ï¿½Þ¸ï¿½ï¿½ï¿½RunningMtx ï¿½ï¿½ try_lockï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ main ï¿½ï¿½ï¿½ï¿½Ö´ï¿½Ð£ï¿½ï¿½ï¿½ Sleep/ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
-    // ï¿½ï¿½ï¿½ß³ï¿½ï¿½ï¿½È¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¾Ñ­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ = ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ãºï¿½ UI ï¿½ï¿½×¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ renderï¿½ï¿½ï¿½ï¿½Ò»Ö¡ï¿½ï¿½ï¿½Ô¡ï¿½
+    // ÐÞ¸´£ºRunningMtx ÓÃ try_lock¡ª¡ª½Å±¾ main ÕýÔÚÖ´ÐÐ£¨³¤ Sleep/ºÄÊ±µü´ú£©Ê±£¬
+    // Ö÷Ïß³ÌäÖÈ¾²»×èÈûµÈ´ý£¨·ñÔòäÖÈ¾Ñ­»·¿¨ËÀ = µã»÷ÉèÖÃºó UI ¿¨×¡£©£¬±¾Ö¡Ìø¹ý render£¬ÏÂÒ»Ö¡ÔÙÊÔ¡£
     unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
     if (!run_lock.owns_lock())
-        return true;   // ï¿½Å±ï¿½ main Ã¦ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ renderï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½
-    // ï¿½ï¿½ï¿½ï¿½ CurrentScriptFileï¿½ï¿½ï¿½Ã½Å±ï¿½ render ï¿½Úµï¿½ IsScriptKeyDown/SetScriptLoopDelay ï¿½ï¿½ï¿½Ü¶ï¿½Î»ï¿½Ô¼ï¿½ï¿½ï¿½×´Ì¬
+        return true;   // ½Å±¾ main Ã¦£º±¾Ö¡Ìø¹ý render£¨²»Îó¹ØÉèÖÃµ¯´°£©
+    // ÉèÖÃ CurrentScriptFile£¬ÈÃ½Å±¾ render ÄÚµÄ IsScriptKeyDown/SetScriptLoopDelay µÈÄÜ¶¨Î»×Ô¼ºµÄ×´Ì¬
     const string PrevScript = CurrentScriptFile;
     CurrentScriptFile = file;
     if (!InitLuaState(file, it->second))
@@ -740,22 +740,22 @@ bool RenderScriptGui(const string& file)
 
 int SaveScriptConfig(const string& file)
 {
-    // ï¿½Þ¸ï¿½ï¿½ï¿½SaveScriptConfig ï¿½ï¿½ detach ï¿½ß³ï¿½ï¿½ï¿½ï¿½Ð£ï¿½Ó¦ï¿½ï¿½ï¿½Ë³ï¿½Ê±ï¿½ï¿½GCExitï¿½ï¿½CloseAllLua ï¿½ï¿½ï¿½ï¿½ï¿½ LuaStatesï¿½ï¿½
-    // ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì·ï¿½ï¿½Ê»ï¿½ UAF ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú¼ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½
+    // ÐÞ¸´£ºSaveScriptConfig ÔÚ detach Ïß³ÌÔËÐÐ£¬Ó¦ÓÃÍË³öÊ±£¨GCExit£©CloseAllLua ÒÑÇå¿Õ LuaStates£¬
+    // ²ÐÁôÏß³Ì·ÃÎÊ»á UAF ¡ú ±ÀÀ£¡£Èë¿Ú¼ì²éÍË³ö±êÖ¾¡£
     if (IsGCExit)
         return 0;
-    // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LuaStates[file]ï¿½ï¿½operator[]ï¿½ï¿½ï¿½ï¿½ map ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡Ö¸ï¿½ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ ï¿½ï¿½ UAFï¿½ï¿½
-    // ï¿½ï¿½ RenderScriptGui Í¬ï¿½ï¿½ï¿½ï¿½ LuaStatesMtx ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½ï¿½ï¿½ï¿½Ê¡ï¿½
+    // ÐÞ¸´£ºÔ­´úÂëÎÞËø LuaStates[file]£¨operator[]£©¡ú map ¾ºÕù£»ÇÒÈ¡Ö¸ÕëºóÊÍ·ÅËø ¡ú UAF¡£
+    // Óë RenderScriptGui Í¬ÑùÔÚ LuaStatesMtx ËøÄÚÍê³ÉÈ«²¿·ÃÎÊ¡£
     lock_guard lock(LuaStatesMtx);
     auto it = LuaStates.find(file);
     if (it == LuaStates.end())
     {
-        // ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ß³ï¿½Î´ï¿½ï¿½ï¿½ï¿½Ê±Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LuaState ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½Ö¤ saveConfig ï¿½É±ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½
-        // LuaState ï¿½ï¿½ mutexï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ operator[] ï¿½Íµï¿½Ä¬ï¿½Ï¹ï¿½ï¿½ì¡£
+        // ÐÞ¸´£º½Å±¾Ïß³ÌÎ´ÔËÐÐÊ±Í¬Ñù´´½¨ LuaState ÌõÄ¿£¬±£Ö¤ saveConfig ¿É±»µ÷ÓÃ£¨±£´æÄ¬ÈÏÅäÖÃ£©¡£
+        // LuaState º¬ mutex£¨²»¿ÉÒÆ¶¯£©£¬ÓÃ operator[] ¾ÍµØÄ¬ÈÏ¹¹Ôì¡£
         LuaStates[file];
         it = LuaStates.find(file);
     }
-    // ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½ï¿½ RenderScriptGui Ò»ï¿½Â£ï¿½RunningMtx ï¿½ï¿½ try_lockï¿½ï¿½ï¿½Å±ï¿½Ã¦Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ£¨ï¿½ï¿½ï¿½ï¿½ï¿½Ì¨ï¿½ß³Ì¶Ñ»ï¿½ï¿½ï¿½
+    // ÐÞ¸´£ºÓë RenderScriptGui Ò»ÖÂ£¬RunningMtx ÓÃ try_lock£¬½Å±¾Ã¦Ê±Ìø¹ý±£´æ£¨±ÜÃâºóÌ¨Ïß³Ì¶Ñ»ý£©
     unique_lock<mutex> run_lock(it->second.RunningMtx, try_to_lock);
     if (!run_lock.owns_lock())
         return 0;
@@ -774,7 +774,7 @@ int SaveScriptConfig(const string& file)
 void CloseScriptThread(const string& filename, ScriptInfo& info)
 {
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock(ScriptData::StatesMtx);
         ScriptData::States[filename].IsExit = true;
     }
@@ -782,14 +782,14 @@ void CloseScriptThread(const string& filename, ScriptInfo& info)
     bool IsExit = false;
     DWORD ret = WaitForSingleObject(info.hThread, 2000);
     if (ret == WAIT_FAILED)
-        PrintLog("[Script] ï¿½Å±ï¿½ï¿½ß³Ì¾ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½" + info.file, PL_ERROR);
+        PrintLog("[Script] ½Å±¾Ïß³Ì¾ä±úÎÞÐ§£º" + info.file, PL_ERROR);
     else if (ret == WAIT_TIMEOUT)
     {
-        PrintLog("[Script] ï¿½Å±ï¿½ï¿½ß³Ì³ï¿½Ê±ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½Ç¿ï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½" + info.file, PL_WARNING);
+        PrintLog("[Script] ½Å±¾Ïß³Ì³¬Ê±ÍË³ö£¬½«Ç¿ÖÆ½áÊø£º" + info.file, PL_WARNING);
         if (info.hThread)
             TerminateThread(info.hThread, -1);
         else
-            PrintLog("[Script] ï¿½ß³Ì¾ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½" + info.file, PL_ERROR);
+            PrintLog("[Script] Ïß³Ì¾ä±úÎÞÐ§£º" + info.file, PL_ERROR);
     }
 
     if (info.hThread != NULL)
@@ -798,20 +798,20 @@ void CloseScriptThread(const string& filename, ScriptInfo& info)
         info.hThread = NULL;
     }
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock(ScriptData::StatesMtx);
         ScriptData::States.erase(filename);
     }
-    // ï¿½ï¿½ï¿½ï¿½ LuaStatesï¿½ï¿½ï¿½Ô±ï¿½ï¿½Â´ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Ø½Å±ï¿½
+    // ÇåÀí LuaStates£¬ÒÔ±ãÏÂ´ÎÔËÐÐÊ±ÖØÐÂ¼ÓÔØ½Å±¾
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock(LuaStatesMtx);
         auto it = LuaStates.find(filename);
         if (it != LuaStates.end())
         {
-            // ï¿½Þ¸ï¿½ï¿½ï¿½lua_close ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ render/saveConfig/main ï¿½ï¿½ Lua ï¿½ï¿½ï¿½Ã´ï¿½ï¿½Ð»ï¿½ï¿½ï¿½Lua ï¿½ï¿½ï¿½ß³Ì°ï¿½È«ï¿½ï¿½ï¿½ï¿½
-            // ï¿½ï¿½ï¿½ï¿½ï¿½ß³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½WAIT_OBJECT_0ï¿½ï¿½Ê±ï¿½È´ï¿½ RunningMtxï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ TerminateThread Ç¿É±ï¿½ï¿½
-            // ï¿½ß³Ì¿ï¿½ï¿½Ü³ï¿½ï¿½ï¿½ RunningMtxï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì¡ï¿½
+            // ÐÞ¸´£ºlua_close ±ØÐëÓë render/saveConfig/main µÄ Lua µ÷ÓÃ´®ÐÐ»¯£¨Lua ·ÇÏß³Ì°²È«£©¡£
+            // ½öÔÚÏß³ÌÕý³£ÍË³ö£¨WAIT_OBJECT_0£©Ê±µÈ´ý RunningMtx¡ª¡ªÈô×ß TerminateThread Ç¿É±£¬
+            // Ïß³Ì¿ÉÄÜ³ÖÓÐ RunningMtx£¬´ËÊ±»ñÈ¡¸ÃËø»áÓÀ¾Ã¿¨ËÀ±¾Ïß³Ì¡£
             if (ret == WAIT_OBJECT_0)
             {
                 lock_guard run_lock(it->second.RunningMtx);
@@ -834,7 +834,7 @@ void ClearScriptCache()
     try
     {
         {
-            // Ð´ï¿½ï¿½ï¿½ï¿½
+            // Ð´ÈëËø
             lock_guard lock1(ScriptData::InstalledMtx);
             for (ScriptInfo& script : ScriptData::Installed)
                 CloseScriptThread(script.file, script);
@@ -858,16 +858,16 @@ void ClearScriptCache()
                     lua.second.IsLoaded = false;
                 }
             }
-            // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ LuaStates.clear() ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö´ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ find/operator[] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ map ï¿½ï¿½ï¿½ï¿½
+            // ÐÞ¸´£ºÔ­´úÂë LuaStates.clear() ÔÚËøÍâÖ´ÐÐ£¬ÓëËøÄÚ find/operator[] ²¢·¢ ¡ú map ¾ºÕù
             LuaStates.clear();
         }
         {
-            // Ð´ï¿½ï¿½ï¿½ï¿½
+            // Ð´ÈëËø
             lock_guard lock(ScriptData::AvaiableMtx);
             ScriptData::Avaiable.clear();
         }
 
-        // ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
+        // Çå¿ÕÎÄ¼þ¼Ð
         DeleteDirectory(ScriptPath);
         CreateDirectory(ScriptPath.c_str(), NULL);
     }
@@ -884,18 +884,18 @@ void ClearScriptCache()
 
     if (IsError)
     {
-        PrintLog("ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½" + errmsg, PL_ERROR);
-        RenderTip((config.UseChinese ? u8"ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü£ï¿½"s + errmsg : "Failed to clear script cache: "s + errmsg), 10.0f, PT_ERROR);
+        PrintLog("Çå³ý½Å±¾»º´æÊ§°Ü£º" + errmsg, PL_ERROR);
+        RenderTip((config.UseChinese ? u8"Çå³ý½Å±¾»º´æÊ§°Ü£º"s + errmsg : "Failed to clear script cache: "s + errmsg), 10.0f, PT_ERROR);
         MessageBeep(MB_ICONERROR);
     }
     else
-        PrintLog("ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½É¹ï¿½", PL_INFO);
+        PrintLog("Çå³ý½Å±¾»º´æ³É¹¦", PL_INFO);
 }
 
 void CloseAllLua()
 {
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock1(ScriptData::InstalledMtx);
         for (ScriptInfo script : ScriptData::Installed)
             CloseScriptThread(script.file, script);
@@ -903,7 +903,7 @@ void CloseAllLua()
         ScriptData::States.clear();
     }
     {
-        // Ð´ï¿½ï¿½ï¿½ï¿½
+        // Ð´ÈëËø
         lock_guard lock(LuaStatesMtx);
         for (auto& lua : LuaStates)
         {
@@ -917,7 +917,7 @@ void CloseAllLua()
                 lua.second.IsLoaded = false;
             }
         }
-        // ï¿½Þ¸ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ LuaStates.clear() ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö´ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ find/operator[] ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ map ï¿½ï¿½ï¿½ï¿½
+        // ÐÞ¸´£ºÔ­´úÂë LuaStates.clear() ÔÚËøÍâÖ´ÐÐ£¬ÓëËøÄÚ find/operator[] ²¢·¢ ¡ú map ¾ºÕù
         LuaStates.clear();
     }
 }

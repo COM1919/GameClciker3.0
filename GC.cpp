@@ -4,17 +4,17 @@
 #include "Tray.h"
 #include "GetInfo.h"
 #include "ScriptEditor.h"
-#include "HookCentral.h"   // ä¸­å¤®åˆ†å‘é’©å­ï¼ˆ4 ä¸ªä½çº§é’©å­åˆå¹¶ä¸ºé”®ç›˜/é¼ æ ‡å„ 1 ä¸ªï¼‰
+#include "HookCentral.h"   // ÖĞÑë·Ö·¢¹³×Ó£¨4 ¸öµÍ¼¶¹³×ÓºÏ²¢Îª¼üÅÌ/Êó±ê¸÷ 1 ¸ö£©
 
-#include <cstring>   // strstrï¼ˆå‘½ä»¤è¡Œ debug å‚æ•°æ£€æµ‹ï¼‰
+#include <cstring>   // strstr£¨ÃüÁîĞĞ debug ²ÎÊı¼ì²â£©
 
 typedef HRESULT(WINAPI* PFNSETPROCESSDESCRIPTION)(HANDLE, PCSTR);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
-    // è°ƒè¯•æ¨¡å¼ï¼šå‘½ä»¤è¡Œå¸¦ "debug" å‚æ•°ï¼ˆå¦‚ "GC.exe debug"ï¼‰â†’ åŒæ­¥ cout æ—¥å¿—ã€‚
-    // GUI ç¨‹åºé»˜è®¤æ— æ§åˆ¶å°ï¼šå…ˆä»çˆ¶è¿›ç¨‹ï¼ˆcmdï¼‰é™„åŠ æ§åˆ¶å°ï¼Œå¤±è´¥åˆ™åˆ›å»ºç‹¬ç«‹æ§åˆ¶å°ï¼Œ
-    // å¹¶é‡å®šå‘ stdoutï¼Œä½¿ PrintLog é‡Œçš„ cout èƒ½æ˜¾ç¤ºåœ¨ç»ˆç«¯é‡Œï¼ˆå´©æºƒå‰å¯ç«‹å³çœ‹åˆ°æ—¥å¿—ï¼‰ã€‚
+    // µ÷ÊÔÄ£Ê½£ºÃüÁîĞĞ´ø "debug" ²ÎÊı£¨Èç "GC.exe debug"£©¡ú Í¬²½ cout ÈÕÖ¾¡£
+    // GUI ³ÌĞòÄ¬ÈÏÎŞ¿ØÖÆÌ¨£ºÏÈ´Ó¸¸½ø³Ì£¨cmd£©¸½¼Ó¿ØÖÆÌ¨£¬Ê§°ÜÔò´´½¨¶ÀÁ¢¿ØÖÆÌ¨£¬
+    // ²¢ÖØ¶¨Ïò stdout£¬Ê¹ PrintLog ÀïµÄ cout ÄÜÏÔÊ¾ÔÚÖÕ¶ËÀï£¨±ÀÀ£Ç°¿ÉÁ¢¼´¿´µ½ÈÕÖ¾£©¡£
     if (lpCmdLine && strstr(lpCmdLine, "debug"))
     {
         if (!AttachConsole(ATTACH_PARENT_PROCESS))
@@ -27,41 +27,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
         cout << ASCIITitle << endl;
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-        cout << "===========================Debugæ¨¡å¼å·²å¼€å¯===========================\n\n" << endl;
+        cout << "===========================DebugÄ£Ê½ÒÑ¿ªÆô===========================\n\n" << endl;
         SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
     }
     int ret = StartUpGC(hInstance);
-    cout << "ç¨‹åºé€€å‡ºï¼Œè¿”å›å€¼ï¼š" << ret << endl;
+    cout << "³ÌĞòÍË³ö£¬·µ»ØÖµ£º" << ret << endl;
 }
 
 int StartUpGC(HINSTANCE hInstance)
 {
     StartTime = GetNowMs();
 
-    // è·å–ç³»ç»Ÿé»˜è®¤è¯­è¨€ä¿¡æ¯
+    // »ñÈ¡ÏµÍ³Ä¬ÈÏÓïÑÔĞÅÏ¢
     if (PRIMARYLANGID(LANGIDFROMLCID(GetSystemDefaultLCID())) == LANG_CHINESE)
         config.UseChinese = true;
     else
         config.UseChinese = false;
 
     GCInstance = hInstance;
-    //æœäº†ï¼Œè¿œå¤ä»£ç æ¥çš„ï¼Œåƒä¸‡ä¸èƒ½æ”¹ï¼Œå¦åˆ™ä¼šå‡ºç°åŒå¼€
+    //·şÁË£¬Ô¶¹Å´úÂëÀ´µÄ£¬Ç§Íò²»ÄÜ¸Ä£¬·ñÔò»á³öÏÖË«¿ª
     AntiMultiOpenMutex = CreateMutex(NULL, FALSE, _T("GameClick_MC1919"));
     if (GetLastError() == ERROR_ALREADY_EXISTS)
     {
         if (AntiMultiOpenMutex)
             CloseHandle(AntiMultiOpenMutex);
-        MessageBox(NULL, config.UseChinese ? "ä½ å·²ç»æ‰“å¼€äº†ä¸€ä¸ªGCè¿ç‚¹å™¨äº†!" : "You can only run one instance of GC at a time.", config.UseChinese ? "æç¤º" : "Warning", MB_OK | MB_ICONQUESTION);
+        MessageBox(NULL, config.UseChinese ? "ÄãÒÑ¾­´ò¿ªÁËÒ»¸öGCÁ¬µãÆ÷ÁË!" : "You can only run one instance of GC at a time.", config.UseChinese ? "ÌáÊ¾" : "Warning", MB_OK | MB_ICONQUESTION);
         return 30;
     }
 
 #ifdef GC_DEBUG_CMD
     if (!AllocConsole())
     {
-        OutputDebugString("[Init] æ— æ³•åˆ†é…æ§åˆ¶å°çª—å£");
+        OutputDebugString("[Init] ÎŞ·¨·ÖÅä¿ØÖÆÌ¨´°¿Ú");
         return 20;
     }
-    // è®¾ç½®æ ‡å‡†è¾“å…¥è¾“å‡ºé”™è¯¯å¥æŸ„åˆ°æ–°æ§åˆ¶å°
+    // ÉèÖÃ±ê×¼ÊäÈëÊä³ö´íÎó¾ä±úµ½ĞÂ¿ØÖÆÌ¨
     FILE* stream;
     freopen_s(&stream, "CONIN$", "r", stdin);
     freopen_s(&stream, "CONOUT$", "w", stdout);
@@ -74,12 +74,12 @@ int StartUpGC(HINSTANCE hInstance)
 #endif // GC_DEBUG_CMD
 
 #ifdef GC_REMOTE_DEBUG
-    MessageBox(NULL, "å·²å¼€å¯è¿œç¨‹è°ƒè¯•ï¼Œç‚¹å‡»ç¡®å®šç»§ç»­", "GC", MB_OK);
+    MessageBox(NULL, "ÒÑ¿ªÆôÔ¶³Ìµ÷ÊÔ£¬µã»÷È·¶¨¼ÌĞø", "GC", MB_OK);
 #endif //GC_REMOTE_DEBUG
 
     if (WorkPath.empty())
     {
-        MessageBox(NULL, ((config.UseChinese ? "æ— æ³•è·å–å·¥ä½œç›®å½•ï¼š" : "Oops!\nFailed to obtain the working directory:") + to_string(GetLastError())).c_str(), config.UseChinese ? "é”™è¯¯" : "Error", MB_OK | MB_ICONERROR);
+        MessageBox(NULL, ((config.UseChinese ? "ÎŞ·¨»ñÈ¡¹¤×÷Ä¿Â¼£º" : "Oops!\nFailed to obtain the working directory:") + to_string(GetLastError())).c_str(), config.UseChinese ? "´íÎó" : "Error", MB_OK | MB_ICONERROR);
         return 50;
     }
     {
@@ -91,7 +91,7 @@ int StartUpGC(HINSTANCE hInstance)
         for (char& c : temp) c = tolower(c);
         if (exe.find(temp) == 0)
         {
-            MessageBox(NULL, config.UseChinese ? "è¯·è§£å‹æ–‡ä»¶åä½¿ç”¨ï¼" : "Please unzip the program file,\nand then you can run it.", "é”™è¯¯", MB_OK | MB_ICONERROR);
+            MessageBox(NULL, config.UseChinese ? "Çë½âÑ¹ÎÄ¼şºóÊ¹ÓÃ£¡" : "Please unzip the program file,\nand then you can run it.", "´íÎó", MB_OK | MB_ICONERROR);
             return 60;
         }
     }
@@ -103,67 +103,67 @@ int StartUpGC(HINSTANCE hInstance)
         PackageLogFile();
         ClearFile(LogFile);
     }
-    InitLogSystem(LogFile); // åˆå§‹åŒ–æ—¥å¿—ç³»ç»Ÿï¼Œå¯åŠ¨æ—¥å¿—çº¿ç¨‹
+    InitLogSystem(LogFile); // ³õÊ¼»¯ÈÕÖ¾ÏµÍ³£¬Æô¶¯ÈÕÖ¾Ïß³Ì
 
     if (!IsRunningAsElevatedAdmin())
     {
-        const int ret = MessageBox(NULL, config.UseChinese ? "è¯¥ç¨‹åºéœ€è¦ç®¡ç†å‘˜æƒé™æ‰èƒ½è¿è¡Œã€‚\nä½†æ‹’ç»åä½ ä»ç„¶å¯ä»¥ä½¿ç”¨ï¼Œä½†å¯èƒ½ä¸ä¼šæ­£å¸¸å·¥ä½œã€‚\nç‚¹å‡»ç¡®å®šè‡ªåŠ¨è¯·æ±‚æƒé™" : "This program requires admin privileges to run. \nBut even if you refuse, you can still use it,\nbut it may not work properly.\nClick OK to auto request permissions.", config.UseChinese ? "GameClickerè­¦å‘Š" : "GameClicker Warning", MB_OKCANCEL);
+        const int ret = MessageBox(NULL, config.UseChinese ? "¸Ã³ÌĞòĞèÒª¹ÜÀíÔ±È¨ÏŞ²ÅÄÜÔËĞĞ¡£\nµ«¾Ü¾øºóÄãÈÔÈ»¿ÉÒÔÊ¹ÓÃ£¬µ«¿ÉÄÜ²»»áÕı³£¹¤×÷¡£\nµã»÷È·¶¨×Ô¶¯ÇëÇóÈ¨ÏŞ" : "This program requires admin privileges to run. \nBut even if you refuse, you can still use it,\nbut it may not work properly.\nClick OK to auto request permissions.", config.UseChinese ? "GameClicker¾¯¸æ" : "GameClicker Warning", MB_OKCANCEL);
         if (ret == IDOK)
         {
             CloseHandle(AntiMultiOpenMutex);
             const DWORD err = RequestAdminAndRestart();
             if (err != 0)
             {
-                PrintLog("è¯·æ±‚ç®¡ç†å‘˜æƒé™å¤±è´¥ï¼Œé”™è¯¯ä»£ç ï¼š" + to_string(err), PL_ERROR);
-                MessageBox(NULL, config.UseChinese ? "è¯·æ±‚ç®¡ç†å‘˜æƒé™å¤±è´¥ï¼Œ\nè¯·å°è¯•æ‰‹åŠ¨é€‰æ‹©ç®¡ç†å‘˜èº«ä»½è¿è¡Œã€‚" : "Failed to request administrator privileges.\nPlease try manually selecting the administrator identity to run.", config.UseChinese ? "GameClickeré”™è¯¯" : "GameClicker Error", MB_OK);
+                PrintLog("ÇëÇó¹ÜÀíÔ±È¨ÏŞÊ§°Ü£¬´íÎó´úÂë£º" + to_string(err), PL_ERROR);
+                MessageBox(NULL, config.UseChinese ? "ÇëÇó¹ÜÀíÔ±È¨ÏŞÊ§°Ü£¬\nÇë³¢ÊÔÊÖ¶¯Ñ¡Ôñ¹ÜÀíÔ±Éí·İÔËĞĞ¡£" : "Failed to request administrator privileges.\nPlease try manually selecting the administrator identity to run.", config.UseChinese ? "GameClicker´íÎó" : "GameClicker Error", MB_OK);
                 return 80;
             }
-		    return 81; // æˆåŠŸè¯·æ±‚æƒé™å¹¶é‡å¯ï¼Œé€€å‡ºå½“å‰è¿›ç¨‹
+		    return 81; // ³É¹¦ÇëÇóÈ¨ÏŞ²¢ÖØÆô£¬ÍË³öµ±Ç°½ø³Ì
         }
-		MessageBox(NULL, config.UseChinese ? "ä½ æ‹’ç»äº†ç®¡ç†å‘˜æƒé™è¯·æ±‚ï¼Œ\nç¨‹åºå°†ç»§ç»­è¿è¡Œï¼Œä½†å¯èƒ½ä¸ä¼šæ­£å¸¸å·¥ä½œã€‚" : "You refused the administrator privilege request,\nthe program will continue to run, but it may not work properly.", config.UseChinese ? "GameClickeræç¤º" : "GameClicker Warning", MB_OK);
+		MessageBox(NULL, config.UseChinese ? "Äã¾Ü¾øÁË¹ÜÀíÔ±È¨ÏŞÇëÇó£¬\n³ÌĞò½«¼ÌĞøÔËĞĞ£¬µ«¿ÉÄÜ²»»áÕı³£¹¤×÷¡£" : "You refused the administrator privilege request,\nthe program will continue to run, but it may not work properly.", config.UseChinese ? "GameClickerÌáÊ¾" : "GameClicker Warning", MB_OK);
     }
 
-    PrintLog("[Init] å¼€å§‹åŠ è½½åŠ¨ç”»", PL_INFO);
+    PrintLog("[Init] ¿ªÊ¼¼ÓÔØ¶¯»­", PL_INFO);
     CreateThreadSafe(LoadAnimationThread, NULL, 0, "LoadAnimationThread");
 
-    // åˆå§‹åŒ–ç¬¦å·å¤„ç†ï¼ˆç”¨äºæ›´å¥½çš„å †æ ˆè·Ÿè¸ªï¼‰
+    // ³õÊ¼»¯·ûºÅ´¦Àí£¨ÓÃÓÚ¸üºÃµÄ¶ÑÕ»¸ú×Ù£©
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
-    // è®¾ç½®å´©æºƒå¤„ç†å™¨
+    // ÉèÖÃ±ÀÀ£´¦ÀíÆ÷
     SetupCrashHandler();
 
-    // ä¸ç®¡æ€ä¹ˆtryéƒ½æŠ“ä¸ä½ä½ çš„å¿ƒ
+    // ²»¹ÜÔõÃ´try¶¼×¥²»×¡ÄãµÄĞÄ
     try
     {
         //_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-        cout << "è¿›å…¥GCMainLoop" << endl;
+        cout << "½øÈëGCMainLoop" << endl;
         int ret = GCMainLoop();
-        cout << "GCMainLoopé€€å‡ºï¼Œè¿”å›å€¼ï¼š" << ret << endl;
+        cout << "GCMainLoopÍË³ö£¬·µ»ØÖµ£º" << ret << endl;
     }
     catch (exception& e)
     {
         ExceptionHandling(GetLastError(), e.what() + " - [Main]"s);
-        PrintLog("[Exception] ç¨‹åºå‘ç”Ÿå´©æºƒï¼ŒåŸå› ï¼š"s + e.what(), PL_ERROR);
+        PrintLog("[Exception] ³ÌĞò·¢Éú±ÀÀ££¬Ô­Òò£º"s + e.what(), PL_ERROR);
         NetworkClient.Send("exit");
         return 70;
     }
     catch (...)
     {
-        ExceptionHandling(GetLastError(), "æœªçŸ¥åŸå›  - [Main]"s);
-        PrintLog("[Exception] ç¨‹åºå‘ç”Ÿå´©æºƒï¼ŒåŸå› å¾ˆç¥ç§˜", PL_ERROR);
+        ExceptionHandling(GetLastError(), "Î´ÖªÔ­Òò - [Main]"s);
+        PrintLog("[Exception] ³ÌĞò·¢Éú±ÀÀ££¬Ô­ÒòºÜÉñÃØ", PL_ERROR);
         NetworkClient.Send("exit");
         return 71;
     }
 
-    //===============================ç»“æŸ===============================
+    //===============================½áÊø===============================
     NetworkClient.Send("exit");
-    PrintLog("[Render] é‡Šæ”¾GUI", PL_INFO);
-    // å…ˆå…³é—­è„šæœ¬çº¿ç¨‹, é¿å…å…¶ä»åœ¨ç”¨ D3D åŠ è½½çº¹ç†(LoadTextureFromFile)æ—¶ ReleasGui é‡Šæ”¾è®¾å¤‡
+    PrintLog("[Render] ÊÍ·ÅGUI", PL_INFO);
+    // ÏÈ¹Ø±Õ½Å±¾Ïß³Ì, ±ÜÃâÆäÈÔÔÚÓÃ D3D ¼ÓÔØÎÆÀí(LoadTextureFromFile)Ê± ReleasGui ÊÍ·ÅÉè±¸
     CloseAllLua();
-    // åœæ­¢å¹¶ç­‰å¾…æ‰€æœ‰åå°çº¿ç¨‹ç»“æŸï¼Œå†é‡Šæ”¾ GUI/å…¨å±€å¯¹è±¡ï¼Œé¿å…é€€å‡ºæ—¶è®¿é—®å·²ææ„å†…å­˜
+    // Í£Ö¹²¢µÈ´ıËùÓĞºóÌ¨Ïß³Ì½áÊø£¬ÔÙÊÍ·Å GUI/È«¾Ö¶ÔÏó£¬±ÜÃâÍË³öÊ±·ÃÎÊÒÑÎö¹¹ÄÚ´æ
     StopAndWaitBackgroundThreads();
     ReleasGui(wcex, &MainGuiData);
 
-    PrintLog("[Render] é‡Šæ”¾Dx11", PL_INFO);
+    PrintLog("[Render] ÊÍ·ÅDx11", PL_INFO);
     DragAcceptFiles(GCHWND, FALSE);
     ShowWindow(GCHWND, SW_HIDE);
     if (IsFirstRun)
@@ -171,15 +171,15 @@ int StartUpGC(HINSTANCE hInstance)
 
     Shell_NotifyIcon(NIM_DELETE, &TrayNid);
 
-    // å…³é—­äº’æ–¥é‡
+    // ¹Ø±Õ»¥³âÁ¿
     if (AntiMultiOpenMutex)
         CloseHandle(AntiMultiOpenMutex);
-    // æ¸…é™¤ç¬¦å·å¤„ç†
+    // Çå³ı·ûºÅ´¦Àí
     SymCleanup(GetCurrentProcess());
 
     SaveConfig(GetPresetFile(PresetConfig::CurrentName));
 
-    PrintLog("[Render] GCè¿ç‚¹å™¨é€€å‡ºæˆåŠŸ - å¼€å‘è€…ï¼šCOM1919", PL_INFO);
+    PrintLog("[Render] GCÁ¬µãÆ÷ÍË³ö³É¹¦ - ¿ª·¢Õß£ºCOM1919", PL_INFO);
     return 1919;
 }
 
@@ -188,21 +188,21 @@ DWORD WINAPI SystemMsgHookLoop(LPVOID lpParam)
 #ifndef GC_NO_HOOK
     bool IsRetry = false;
 retry:
-    // é’©å­åˆå¹¶ï¼šåŸ 4 ä¸ªä½çº§é’©å­ï¼ˆé”®ç›˜ x2 + é¼ æ ‡ x2ï¼‰-> 2 ä¸ªï¼ˆé”®ç›˜ x1 + é¼ æ ‡ x1ï¼‰ï¼Œ
-    // åŒç±»å‹äº‹ä»¶åœ¨å›è°ƒå†…é ä¸­å¤®åˆ†å‘ï¼ˆè§ HookCentral.hï¼‰ã€‚ä½çº§é’©å­æ¯æ¬¡äº‹ä»¶éƒ½ä¼šæ‰“æ–­è¿›ç¨‹ï¼Œ
-    // åˆå¹¶ååŒä¸€æ¬¡äº‹ä»¶åªæ‰“æ–­ä¸€æ¬¡ï¼Œé‡å¤ CallNextHookEx é“¾éå†çš„å¼€é”€éšä¹‹æ¶ˆå¤±ã€‚
+    // ¹³×ÓºÏ²¢£ºÔ­ 4 ¸öµÍ¼¶¹³×Ó£¨¼üÅÌ x2 + Êó±ê x2£©-> 2 ¸ö£¨¼üÅÌ x1 + Êó±ê x1£©£¬
+    // Í¬ÀàĞÍÊÂ¼şÔÚ»Øµ÷ÄÚ¿¿ÖĞÑë·Ö·¢£¨¼û HookCentral.h£©¡£µÍ¼¶¹³×ÓÃ¿´ÎÊÂ¼ş¶¼»á´ò¶Ï½ø³Ì£¬
+    // ºÏ²¢ºóÍ¬Ò»´ÎÊÂ¼şÖ»´ò¶ÏÒ»´Î£¬ÖØ¸´ CallNextHookEx Á´±éÀúµÄ¿ªÏúËæÖ®ÏûÊ§¡£
     HHOOK Hook_Mouse = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetModuleHandle(NULL), 0);
     HHOOK Hook_Keybd = SetWindowsHookEx(WH_KEYBOARD_LL, KeybdHookProc, GetModuleHandle(NULL), 0);
 
     bool IsError = false;
     if (Hook_Mouse == NULL)
     {
-        PrintLog("[Hook] æ— æ³•è®¾ç½®é¼ æ ‡é’©å­", PL_ERROR);
+        PrintLog("[Hook] ÎŞ·¨ÉèÖÃÊó±ê¹³×Ó", PL_ERROR);
         IsError = true;
     }
     if (Hook_Keybd == NULL)
     {
-        PrintLog("[Hook] æ— æ³•è®¾ç½®é”®ç›˜é’©å­", PL_ERROR);
+        PrintLog("[Hook] ÎŞ·¨ÉèÖÃ¼üÅÌ¹³×Ó", PL_ERROR);
         IsError = true;
     }
 
@@ -210,12 +210,12 @@ retry:
     {
         map<string, UINT> button;
         map<string, ImVec4> colors;
-        button[u8"å¥½çš„"] = IDOK;
-        button[u8"é‡è¯•"] = IDRETRY;
-        colors[u8"å¥½çš„"] = GuiColor[ImGuiCol_ButtonHovered];
-        colors[u8"é‡è¯•"] = GuiColor[ImGuiCol_Button];
-        if (RenderMessageBoxEx(config.UseChinese ? "æ— æ³•è®¾ç½®å…¨å±€é’©å­ï¼ˆHOOKï¼‰ï¼Œè¿™ä¼šå¯¼è‡´éƒ¨åˆ†åŠŸèƒ½æ— æ³•ä½¿ç”¨ã€‚" : 
-            "Cannot set global hook.\nSome functions may not work!", config.UseChinese ? "é”™è¯¯" : "Error", 
+        button[u8"ºÃµÄ"] = IDOK;
+        button[u8"ÖØÊÔ"] = IDRETRY;
+        colors[u8"ºÃµÄ"] = GuiColor[ImGuiCol_ButtonHovered];
+        colors[u8"ÖØÊÔ"] = GuiColor[ImGuiCol_Button];
+        if (RenderMessageBoxEx(config.UseChinese ? "ÎŞ·¨ÉèÖÃÈ«¾Ö¹³×Ó£¨HOOK£©£¬Õâ»áµ¼ÖÂ²¿·Ö¹¦ÄÜÎŞ·¨Ê¹ÓÃ¡£" : 
+            "Cannot set global hook.\nSome functions may not work!", config.UseChinese ? "´íÎó" : "Error", 
             button, colors, true) == IDRETRY)
         {
             IsRetry = true;
@@ -224,11 +224,11 @@ retry:
         return 0;
     }
     else if (IsRetry)
-        RenderTip(config.UseChinese ? "å…¨å±€é’©å­è®¾ç½®æˆåŠŸï¼" : "Global hook set successfully", 4.0f, PT_INFO);
-    PrintLog("[Hook] å…¨å±€é’©å­å®‰è£…æˆåŠŸï¼ˆé”®ç›˜/é¼ æ ‡å„ 1 ä¸ªï¼Œäº‹ä»¶ä¸­å¤®åˆ†å‘ï¼‰", PL_INFO);
+        RenderTip(config.UseChinese ? "È«¾Ö¹³×ÓÉèÖÃ³É¹¦£¡" : "Global hook set successfully", 4.0f, PT_INFO);
+    PrintLog("[Hook] È«¾Ö¹³×Ó°²×°³É¹¦£¨¼üÅÌ/Êó±ê¸÷ 1 ¸ö£¬ÊÂ¼şÖĞÑë·Ö·¢£©", PL_INFO);
 
-    // å¯åŠ¨é’©å­äº‹ä»¶åˆ†å‘çº¿ç¨‹ï¼šé’©å­å›è°ƒåªå…¥é˜Ÿï¼ˆä½é¢‘ã€ä¸å¯é˜»å¡ï¼‰ï¼Œæ‰€æœ‰ Handle
-    // ï¼ˆçŠ¶æ€/å£°éŸ³/è¿ç‚¹å™¨ï¼‰åœ¨ HookDispatchThread å•ä¸€å·¥ä½œçº¿ç¨‹ä¸­å¼‚æ­¥æ‰§è¡Œï¼ˆè§ HookCentral.hï¼‰
+    // Æô¶¯¹³×ÓÊÂ¼ş·Ö·¢Ïß³Ì£º¹³×Ó»Øµ÷Ö»Èë¶Ó£¨µÍÆµ¡¢²»¿É×èÈû£©£¬ËùÓĞ Handle
+    // £¨×´Ì¬/ÉùÒô/Á¬µãÆ÷£©ÔÚ HookDispatchThread µ¥Ò»¹¤×÷Ïß³ÌÖĞÒì²½Ö´ĞĞ£¨¼û HookCentral.h£©
     CreateThreadSafe(HookDispatchThread, NULL, 0, "HookDispatchThread");
     
     MSG msg;
@@ -240,7 +240,7 @@ retry:
             break;
     }
 
-    PrintLog("[Hook] å¸è½½å…¨å±€HOOK", PL_INFO);
+    PrintLog("[Hook] Ğ¶ÔØÈ«¾ÖHOOK", PL_INFO);
     UnhookWindowsHookEx(Hook_Mouse);
     UnhookWindowsHookEx(Hook_Keybd);
 #endif // !GC_NO_HOOK
@@ -250,7 +250,7 @@ retry:
 void ScrollAnim::HandleScrolling()
 {
     ImGuiIO& io = ImGui::GetIO();
-    // å¤„ç†å‚ç›´æ»šåŠ¨
+    // ´¦Àí´¹Ö±¹ö¶¯
     float scroll_now_y = 0.0f;
     if (fabs(ScrollAnim::EnergyY.load()) > 0.001f)
     {
@@ -260,7 +260,7 @@ void ScrollAnim::HandleScrolling()
     else
         ScrollAnim::EnergyY.store(0.0f);
 
-    // å¤„ç†æ°´å¹³æ»šåŠ¨ï¼ˆå¦‚æœæœ‰ï¼‰
+    // ´¦ÀíË®Æ½¹ö¶¯£¨Èç¹ûÓĞ£©
     float scroll_now_x = 0.0f;
     if (fabs(ScrollAnim::EnergyX.load()) > 0.001f)
     {
@@ -270,17 +270,17 @@ void ScrollAnim::HandleScrolling()
     else
         ScrollAnim::EnergyX.store(0.0f);
 
-    // å°†å¹³æ»‘å€¼èµ‹ç»™ IOï¼ˆæ³¨æ„ç¬¦å·ï¼šImGui çš„æ­£æ–¹å‘ä¸ Win32 å¯èƒ½ç›¸åï¼‰
-    io.MouseWheel = scroll_now_y / 2.0f;   // å‚ç›´ï¼ˆé™¤ä»¥2æ¥å‡å°‘æ»‘åŠ¨è·ç¦»ï¼‰
-    io.MouseWheelH = -scroll_now_x;        // æ°´å¹³ï¼ˆå¯èƒ½éœ€è¦è´Ÿå·ï¼‰
+    // ½«Æ½»¬Öµ¸³¸ø IO£¨×¢Òâ·ûºÅ£ºImGui µÄÕı·½ÏòÓë Win32 ¿ÉÄÜÏà·´£©
+    io.MouseWheel = scroll_now_y / 2.0f;   // ´¹Ö±£¨³ıÒÔ2À´¼õÉÙ»¬¶¯¾àÀë£©
+    io.MouseWheelH = -scroll_now_x;        // Ë®Æ½£¨¿ÉÄÜĞèÒª¸ººÅ£©
 }
 
 int GCMainLoop()
 {
-    thread th2(DeleteOldLog); // åˆ é™¤å’Œæ¸…ç†oldæ—¥å¿—
+    thread th2(DeleteOldLog); // É¾³ıºÍÇåÀíoldÈÕÖ¾
     th2.detach();
 
-    // ä¸€å®šè¦åœ¨ä¸‹é¢æ–‡ä»¶åˆå§‹åŒ–å‰é¢
+    // Ò»¶¨ÒªÔÚÏÂÃæÎÄ¼ş³õÊ¼»¯Ç°Ãæ
 #ifdef GC_DEBUG_GUIDE_UI
     IsFirstRun = true;
 #else
@@ -289,29 +289,30 @@ int GCMainLoop()
 
     char path[MAX_PATH]{};
     if (GetModuleFileName(NULL, path, MAX_PATH) == 0)
-        PrintLog("[Init] å½“å‰ç¨‹åºçš„ç»å¯¹ä½ç½®ï¼š"s + path, PL_INFO);
+        PrintLog("[Init] µ±Ç°³ÌĞòµÄ¾ø¶ÔÎ»ÖÃ£º"s + path, PL_INFO);
 
-    PrintLog("[Init] æ£€æŸ¥æ–‡ä»¶å®Œæ•´æ€§ - MainThread", PL_INFO);
+    PrintLog("[Init] ¼ì²éÎÄ¼şÍêÕûĞÔ - MainThread", PL_INFO);
 
-    // åœ¨RefushScriptListä¹‹å‰åˆ é™¤
+    // ÔÚRefushScriptListÖ®Ç°É¾³ı
     if (DeleteDirectory(ScriptShopDir))
-        PrintLog("[File] åˆ é™¤è„šæœ¬ç¼“å­˜æˆåŠŸï¼", PL_INFO);
+        PrintLog("[File] É¾³ı½Å±¾»º´æ³É¹¦£¡", PL_INFO);
     else
-        PrintLog("[File] åˆ é™¤è„šæœ¬ç¼“å­˜å¤±è´¥ï¼", PL_ERROR);
+        PrintLog("[File] É¾³ı½Å±¾»º´æÊ§°Ü£¡", PL_ERROR);
     if (DeleteDirectory(ScriptTemp))
-        PrintLog("[File] åˆ é™¤è„šæœ¬å•†åº—ç¼“å­˜æˆåŠŸï¼", PL_INFO);
+        PrintLog("[File] É¾³ı½Å±¾ÉÌµê»º´æ³É¹¦£¡", PL_INFO);
     else
-        PrintLog("[File] åˆ é™¤è„šæœ¬å•†åº—ç¼“å­˜å¤±è´¥ï¼", PL_ERROR);
+        PrintLog("[File] É¾³ı½Å±¾ÉÌµê»º´æÊ§°Ü£¡", PL_ERROR);
     if (_access(ConfigPath.c_str(), 0) != 0)
         CreateDirectory(ConfigPath.c_str(), NULL);
 
     LoadConfig();
+    app_status.StartCount++;   // Æô¶¯´ÎÊı +1£¨±¾´ÎÆô¶¯£©
     PresetConfig::Presets = ScanPresets();
 
     if (_access(LogPath.c_str(), 0) != 0)
         CreateDirectory(LogPath.c_str(), NULL);
 
-    //===============================åˆ›å»ºçª—å£===============================
+    //===============================´´½¨´°¿Ú===============================
     {
         HICON hIcon = LoadIcon(GCInstance, MAKEINTRESOURCE(GC_ICON));
         wcex.cbSize = sizeof(WNDCLASSEX);
@@ -344,7 +345,7 @@ int GCMainLoop()
             SetWindowDisplayAffinity(GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
             //SetLayeredWindowAttributes(GCHWND, 0, round(255 * WindowAlpha), LWA_ALPHA);
 
-            // ä½¿ç”¨DWMæ‰©å±•å¸§å®ç°ç»ç’ƒæ•ˆæœ
+            // Ê¹ÓÃDWMÀ©Õ¹Ö¡ÊµÏÖ²£Á§Ğ§¹û
             /*
             DwmEnableComposition(DWM_EC_ENABLECOMPOSITION);
             MARGINS margins = { -1 };
@@ -356,7 +357,7 @@ int GCMainLoop()
 
             ShowWindow(GCHWND, SW_HIDE);
             UpdateWindow(GCHWND);
-            PrintLog("[Render] åˆ›å»ºçª—å£æˆåŠŸï¼", PL_INFO);
+            PrintLog("[Render] ´´½¨´°¿Ú³É¹¦£¡", PL_INFO);
         }
     }
 
@@ -365,11 +366,11 @@ int GCMainLoop()
         CleanupDeviceD3D();
         DestroyWindow(GCHWND);
         UnregisterClass(wcex.lpszClassName, wcex.hInstance);
-        PrintLog("[Render] Dx11åˆå§‹åŒ–å¤±è´¥", PL_ERROR);
-        ExceptionHandling(GetLastError(), "Dx11åˆå§‹åŒ–å¤±è´¥ - ä½ çš„ç”µè„‘è§†ä¹å¾ˆå¤è‘£");
+        PrintLog("[Render] Dx11³õÊ¼»¯Ê§°Ü", PL_ERROR);
+        ExceptionHandling(GetLastError(), "Dx11³õÊ¼»¯Ê§°Ü - ÄãµÄµçÄÔÊÓºõºÜ¹Å¶­");
         return 1;
     }
-    PrintLog("[Render] Dx11åˆå§‹åŒ–æˆåŠŸï¼", PL_INFO);
+    PrintLog("[Render] Dx11³õÊ¼»¯³É¹¦£¡", PL_INFO);
 
     IMGUI_CHECKVERSION();
     GCCtx = CreateContext();
@@ -393,16 +394,16 @@ int GCMainLoop()
     long DeltaTime = 0;
     int RenderSleepCount = 0;
     const int SleepFps = round(1000 / RenderFps);
-    PrintLog("[Render] å¼€å§‹æ¸²æŸ“UI", PL_INFO);
+    PrintLog("[Render] ¿ªÊ¼äÖÈ¾UI", PL_INFO);
 
     IsWindowInitSuccessful = true;
 
     while (!IsGCExit)
     {
         LastTime = clock();
-        //===============================æ¶ˆæ¯å¤„ç†===============================
+        //===============================ÏûÏ¢´¦Àí===============================
         {
-            constexpr int MaxMsgsPerFrame = 128;   // æ¯å¸§å¤„ç†çš„æ¶ˆæ¯æ•°é‡ï¼Œé™åˆ¶æ¯å¸§çš„å¤„ç†æ•°æ®é‡
+            constexpr int MaxMsgsPerFrame = 128;   // Ã¿Ö¡´¦ÀíµÄÏûÏ¢ÊıÁ¿£¬ÏŞÖÆÃ¿Ö¡µÄ´¦ÀíÊı¾İÁ¿
             int processed = 0;
             MSG msg;
             while (processed < MaxMsgsPerFrame && PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -433,13 +434,13 @@ int GCMainLoop()
             }
         }
 
-        //===============================å¤„ç†æš‚åœæ¸²æŸ“é€»è¾‘===============================
+        //===============================´¦ÀíÔİÍ£äÖÈ¾Âß¼­===============================
         {
             bool IsWindowTopmost = (GetWindowLongPtr(GCHWND, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
-            // å½“ç¨‹åºæœ€å°åŒ–æ—¶ï¼Œä¸æ¸²æŸ“UI
+            // µ±³ÌĞò×îĞ¡»¯Ê±£¬²»äÖÈ¾UI
             static bool RenderStoped = false;
             const bool IsMinWindows = (MainGuiData.pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) && MainGuiData.SwapChainOccluded;
-            static bool IsCoveredWindows = false; // æ¯ç§’æ›´æ–°ä¸€æ¬¡
+            static bool IsCoveredWindows = false; // Ã¿Ãë¸üĞÂÒ»´Î
             {
                 static ULONGLONG LastTime = GetTickCount64();
                 if (LastTime + 200 <= GetTickCount64())
@@ -455,7 +456,7 @@ int GCMainLoop()
                 if (RenderSleepCount >= 0)
                 {
                     RenderSleepCount++;
-                    if (RenderSleepCount > (1000 * 30) / 20) // è¶…è¿‡30ç§’ä¸ä½¿ç”¨UIï¼Œå°±ä¼˜åŒ–å†…å­˜ä½¿ç”¨
+                    if (RenderSleepCount > (1000 * 30) / 20) // ³¬¹ı30Ãë²»Ê¹ÓÃUI£¬¾ÍÓÅ»¯ÄÚ´æÊ¹ÓÃ
                     {
                         ClearProcessMemory();
                         RenderSleepCount = -1;
@@ -471,8 +472,8 @@ int GCMainLoop()
             MainGuiData.SwapChainOccluded = false;
         }
 
-        //===============================å¤„ç†å…¶ä»–æ¸²æŸ“é€»è¾‘===============================
-        // å¤„ç†çª—å£å¤§å°è°ƒæ•´ï¼ˆæˆ‘ä»¬ä¸ç›´æ¥åœ¨WM_SIZEå¤„ç†ç¨‹åºä¸­è°ƒæ•´å¤§å°ï¼‰
+        //===============================´¦ÀíÆäËûäÖÈ¾Âß¼­===============================
+        // ´¦Àí´°¿Ú´óĞ¡µ÷Õû£¨ÎÒÃÇ²»Ö±½ÓÔÚWM_SIZE´¦Àí³ÌĞòÖĞµ÷Õû´óĞ¡£©
         if (MainGuiData.ResizeWidth != 0 && MainGuiData.ResizeHeight != 0)
         {
             CleanupRenderTarget();
@@ -481,10 +482,10 @@ int GCMainLoop()
             CreateRenderTarget();
         }
         
-        // å¹³æ»‘æ»šåŠ¨æ¡
+        // Æ½»¬¹ö¶¯Ìõ
         ScrollAnim::HandleScrolling();
 
-        //===============================å¤„ç†æ¸²æŸ“===============================
+        //===============================´¦ÀíäÖÈ¾===============================
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -499,7 +500,7 @@ int GCMainLoop()
                 IsStopClicker = false;
 
                 SetWindowText(GCHWND, "  ");
-                // è®¾ç½®çª—å£å¤§å°
+                // ÉèÖÃ´°¿Ú´óĞ¡
                 int x = (ScreenWidth - WindowWidth) / 2;
                 SetWindowPos(GCHWND, NULL, x, ScreenHeigth + 30, 800, 500, SWP_NOZORDER | SWP_SHOWWINDOW);
                 ShowWindow(GCHWND, SW_SHOW);
@@ -510,7 +511,7 @@ int GCMainLoop()
                 WindowOpenAnimate(GCHWND, { x, (ScreenHeigth - WindowHeight) / 2 }, 0.3f);
                 UpdateWindow(GCHWND);
 
-                IsNeedReshowAgreement = false; // ä¸å†æ˜¾ç¤ºAgreement
+                IsNeedReshowAgreement = false; // ²»ÔÙÏÔÊ¾Agreement
             }
             else if (state == -1)
                 IsGCExit = true;
@@ -521,7 +522,7 @@ int GCMainLoop()
         /*if (IsAnyItemHovered() || IsAnyItemActive())
             cout << "a\n";*/
 
-        //=======================æ¸²æŸ“===========================
+        //=======================äÖÈ¾===========================
         ImGui::Render();
         const float ClearColor[4] = { clear_color.x, clear_color.y, clear_color.z, clear_color.w };
         MainGuiData.pd3dDeviceContext->OMSetRenderTargets(1, &MainGuiData.mainRenderTargetView, nullptr);
@@ -529,8 +530,8 @@ int GCMainLoop()
         ImGui_ImplDX11_RenderDrawData(GetDrawData());
 
         // Present
-        const HRESULT hr = MainGuiData.pSwapChain->Present(1, 0);// ä½¿ç”¨å‚ç›´åŒæ­¥
-        //const HRESULT hr = g_pSwapChain->Present(0, 0); // ä¸ä½¿ç”¨å‚ç›´åŒæ­¥
+        const HRESULT hr = MainGuiData.pSwapChain->Present(1, 0);// Ê¹ÓÃ´¹Ö±Í¬²½
+        //const HRESULT hr = g_pSwapChain->Present(0, 0); // ²»Ê¹ÓÃ´¹Ö±Í¬²½
         MainGuiData.SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
         DeltaTime = clock() - LastTime;
@@ -542,7 +543,7 @@ int GCMainLoop()
 
 DWORD WINAPI InitGC(LPVOID lpParam)
 {
-    PrintLog("[Init] åˆ›å»ºçº¿ç¨‹", PL_INFO);
+    PrintLog("[Init] ´´½¨Ïß³Ì", PL_INFO);
     CreateThreadSafe(HandleCPSRecord, NULL, 0, "HandleCPSRecord");
     SetThreadPriority(ClickRunThread, THREAD_PRIORITY_HIGHEST);
     ClickSoundThread = CreateThreadSafe(ClickSound, NULL, 0, "ClickSound");
@@ -560,8 +561,8 @@ DWORD WINAPI InitGC(LPVOID lpParam)
 
     bool IsDownload = false;
 
-    PrintLog("[Init] æ£€æŸ¥æ–‡ä»¶å®Œæ•´æ€§ - InitThread", PL_INFO);
-    // å®‰è£…çš„è„šæœ¬ä¼šåœ¨é…ç½®æ–‡ä»¶è¯»å–çš„å‡½æ•°ä¸­ï¼Œè·å–åˆ°
+    PrintLog("[Init] ¼ì²éÎÄ¼şÍêÕûĞÔ - InitThread", PL_INFO);
+    // °²×°µÄ½Å±¾»áÔÚÅäÖÃÎÄ¼ş¶ÁÈ¡µÄº¯ÊıÖĞ£¬»ñÈ¡µ½
     //RefreshScriptList(InstallScriptList, InstallTextureList, InstallScriptInfo, InstallScriptName);
 
     if (_access(ScriptPath.c_str(), 0) != 0)
@@ -605,7 +606,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         }
         catch (const exception&)
         {
-            PrintLog("[Init] ç‰ˆæœ¬å·æ ¼å¼é”™è¯¯", PL_ERROR);
+            PrintLog("[Init] °æ±¾ºÅ¸ñÊ½´íÎó", PL_ERROR);
         }
     }
     if (!ver.empty())
@@ -621,21 +622,21 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         }
         catch (const exception&)
         {
-            PrintLog("[Init] ç‰ˆæœ¬å·æ ¼å¼é”™è¯¯", PL_ERROR);
+            PrintLog("[Init] °æ±¾ºÅ¸ñÊ½´íÎó", PL_ERROR);
         }
     }
 
-    // å…è®¸æ‹–æ‹½æ–‡ä»¶åˆ°çª—å£
+    // ÔÊĞíÍÏ×§ÎÄ¼şµ½´°¿Ú
     DragAcceptFiles(GCHWND, true);
 
-    CreateDirectory(ScriptShopDir.c_str(), NULL); // æ³¨æ„é¡ºåº
+    CreateDirectory(ScriptShopDir.c_str(), NULL); // ×¢ÒâË³Ğò
     CreateDirectory(ScriptShopTemp.c_str(), NULL);
     CreateDirectory(ScriptTemp.c_str(), NULL);
     RefushScriptList();
-    // å·²å®‰è£…åˆ—è¡¨æ¢å¤å¿…é¡»åœ¨ ScriptData::Avaiable å¡«å……ä¹‹åï¼ˆåŸé€»è¾‘åœ¨ LoadConfig ä¸­å› åˆ—è¡¨ä¸ºç©ºè¢«è·³è¿‡ï¼‰
+    // ÒÑ°²×°ÁĞ±í»Ö¸´±ØĞëÔÚ ScriptData::Avaiable Ìî³äÖ®ºó£¨Ô­Âß¼­ÔÚ LoadConfig ÖĞÒòÁĞ±íÎª¿Õ±»Ìø¹ı£©
     RestoreInstalledScripts();
 
-    // ä¸ºå·²æ¢å¤çš„å·²å®‰è£…è„šæœ¬åˆ›å»ºçŠ¶æ€æ¡ç›®ï¼ˆä¾›"å¯ç”¨"å¼€å…³ä¸å¯åŠ¨æŒ‰é”®æ˜¾ç¤ºï¼‰
+    // ÎªÒÑ»Ö¸´µÄÒÑ°²×°½Å±¾´´½¨×´Ì¬ÌõÄ¿£¨¹©"ÆôÓÃ"¿ª¹ØÓëÆô¶¯°´¼üÏÔÊ¾£©
     {
         shared_lock lock1(ScriptData::InstalledMtx);
         lock_guard lock2(ScriptData::StatesMtx);
@@ -651,10 +652,10 @@ DWORD WINAPI InitGC(LPVOID lpParam)
             InitSuccessTime = GetNowMs();
     }
 
-    // æœªç¦ç”¨è„šæœ¬è‡ªåŠ¨å¯åŠ¨æ—¶ï¼Œå¯åŠ¨æ‰€æœ‰å·²å®‰è£…è„šæœ¬
+    // Î´½ûÓÃ½Å±¾×Ô¶¯Æô¶¯Ê±£¬Æô¶¯ËùÓĞÒÑ°²×°½Å±¾
     if (!DisableScriptAutoStart)
         StartInstalledScriptsOnBoot();
-    PrintLog("[Init] åˆå§‹åŒ–å·²å®Œæˆï¼Œè€—æ—¶: " + to_string(GetNowMs() - StartTime), PL_INFO); // åŸä»£ç è¯¯æ‰“å°äº†å¯åŠ¨æ—¶é—´æˆ³ï¼Œè€Œéè€—æ—¶
+    PrintLog("[Init] ³õÊ¼»¯ÒÑÍê³É£¬ºÄÊ±: " + to_string(GetNowMs() - StartTime), PL_INFO); // Ô­´úÂëÎó´òÓ¡ÁËÆô¶¯Ê±¼ä´Á£¬¶ø·ÇºÄÊ±
     return 0;
 }
 
@@ -662,9 +663,9 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
 {
     while (!IsGCExit)
     {
-        // ä¿®å¤ï¼šåŸä»£ç æ— é” push_back/eraseï¼Œä¸ä¸»æ¸²æŸ“çº¿ç¨‹çš„ back()/copy å¹¶å‘æ—¶ï¼Œ
-        // vector æ‰©å®¹/ç¼©å®¹å¯¼è‡´è¿­ä»£ä¸è®¿é—®å·²é‡Šæ”¾å†…å­˜ -> 0xC0000005ã€‚å†™å…¥ç»Ÿä¸€åŠ å†™é”ã€‚
-        // é‡‡æ ·å‡½æ•°ï¼ˆå†…éƒ¨ä¼š Sleepï¼‰æ”¾åœ¨é”å¤–ï¼Œé¿å…é•¿æ—¶é—´å ç”¨é”é˜»å¡æ¸²æŸ“çº¿ç¨‹ã€‚
+        // ĞŞ¸´£ºÔ­´úÂëÎŞËø push_back/erase£¬ÓëÖ÷äÖÈ¾Ïß³ÌµÄ back()/copy ²¢·¢Ê±£¬
+        // vector À©Èİ/ËõÈİµ¼ÖÂµü´úÓë·ÃÎÊÒÑÊÍ·ÅÄÚ´æ -> 0xC0000005¡£Ğ´ÈëÍ³Ò»¼ÓĞ´Ëø¡£
+        // ²ÉÑùº¯Êı£¨ÄÚ²¿»á Sleep£©·ÅÔÚËøÍâ£¬±ÜÃâ³¤Ê±¼äÕ¼ÓÃËø×èÈûäÖÈ¾Ïß³Ì¡£
         const float cpuRate = GetCpuUsageRate(200) / 100.0f;
         const float gpuRate = GetGpuUsageRate(200) / 100.0f;
         const float memRate = GetMemUsageRate(200) / 100.0f;
@@ -683,7 +684,7 @@ DWORD WINAPI RecordsPCRate(LPVOID lpParam)
             if (MemRates.size() > MAX_PERF_RECORDS)
                 MemRates.erase(MemRates.begin());
         }
-        //GetCpuUsageRateç­‰å‡½æ•°ä¼šè¿›è¡ŒSleep
+        //GetCpuUsageRateµÈº¯Êı»á½øĞĞSleep
     }
     return 0;
 }
@@ -693,10 +694,10 @@ void RenderGui(ImGuiIO& io)
     if (IsNeedResetConfig.exchange(false))
     {
         IsStopClicker = true;
-        IsReloadClicker = true; // è¿ç‚¹çº¿ç¨‹é‡è½½æ—¶ä¼šé‡æ–°è¯»å–æ–°é…ç½®
-        config.~Config();       // ææ„
-        new (&config) Config(); // åŸåœ°æ„é€ 
-        RenderTip(config.UseChinese ? u8"é‡ç½®æˆåŠŸ" : "Reset success", 1.5f, PT_INFO);
+        IsReloadClicker = true; // Á¬µãÏß³ÌÖØÔØÊ±»áÖØĞÂ¶ÁÈ¡ĞÂÅäÖÃ
+        config.~Config();       // Îö¹¹
+        new (&config) Config(); // Ô­µØ¹¹Ôì
+        RenderTip(config.UseChinese ? u8"ÖØÖÃ³É¹¦" : "Reset success", 1.5f, PT_INFO);
     }
 
     bool HasBgImage = _access(Pics_Background.c_str(), 0) == 0;
@@ -732,7 +733,7 @@ void RenderGui(ImGuiIO& io)
         ImGuiWindowFlags_NoResize |  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse |
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove);
 
-    // æŠŠå˜åŒ–å†™å› atomic
+    // °Ñ±ä»¯Ğ´»Ø atomic
     if (IsShowGuiCopy != IsShowGui.load(memory_order_relaxed))
         IsShowGui.store(IsShowGuiCopy, memory_order_relaxed);
 
@@ -740,7 +741,7 @@ void RenderGui(ImGuiIO& io)
     SetWindowPos({ 0, 0 });
     PopStyleVar();
 
-    //=======================æ ‡é¢˜å³é”®èœå•===========================
+    //=======================±êÌâÓÒ¼ü²Ëµ¥===========================
     constexpr ImRect title_rect(0, 0, 800, 32);
     static bool IsShowMenu = false;
     if (IsMouseDown(ImGuiMouseButton_Right) && title_rect.Contains(io.MousePos))
@@ -753,7 +754,7 @@ void RenderGui(ImGuiIO& io)
         if (BeginPopupContextItem())
         {
             static bool IsTopMost = false;
-            if (MenuItem(config.UseChinese ? (IsTopMost ? u8"å–æ¶ˆç½®é¡¶" : u8"ç½®é¡¶") : (IsTopMost ? "Cancel Topmost" : "Topmost")))
+            if (MenuItem(config.UseChinese ? (IsTopMost ? u8"È¡ÏûÖÃ¶¥" : u8"ÖÃ¶¥") : (IsTopMost ? "Cancel Topmost" : "Topmost")))
             {
                 IsTopMost = !IsTopMost;
                 SetWindowPos(GCHWND, (IsTopMost ? HWND_TOPMOST : HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
@@ -771,16 +772,16 @@ void RenderGui(ImGuiIO& io)
         static Texture2D texture = nullptr;
         if (IsBgImageRefresh || texture == nullptr)
         {
-            texture = LoadTextureFromFile(Pics_Background, true, &w, &h); // ç¦ç”¨ç¼“å­˜ï¼Œæ‰‹åŠ¨ç®¡ç†
+            texture = LoadTextureFromFile(Pics_Background, true, &w, &h); // ½ûÓÃ»º´æ£¬ÊÖ¶¯¹ÜÀí
             IsBgImageRefresh = false;
         }
         ImDrawList* draw_list = GetWindowDrawList();
         if (!BgAutoResize)
         {
-            // è®¡ç®—å›¾ç‰‡ç¼©æ”¾æ¯”ä¾‹ï¼Œè®©å›¾ç‰‡åœ¨ç¼©æ”¾çš„åŒæ—¶ä¸è¢«æ‹‰ä¼¸ï¼Œè¶…è¿‡çª—å£çš„å°±ä¸ç®¡äº†
+            // ¼ÆËãÍ¼Æ¬Ëõ·Å±ÈÀı£¬ÈÃÍ¼Æ¬ÔÚËõ·ÅµÄÍ¬Ê±²»±»À­Éì£¬³¬¹ı´°¿ÚµÄ¾Í²»¹ÜÁË
             const float WindowRate = (float)WindowWidth / (float)WindowHeight;
-            h = WindowHeight * (BgScale / 100.0f); // å¯¹é½é«˜åº¦ï¼Œè®©é«˜åº¦å’Œçª—å£ç›¸åŒ
-            w = (int)(h * WindowRate); // æ ¹æ®é«˜åº¦çš„ç¼©æ”¾ï¼Œæ¥è®¡ç®—å®½åº¦
+            h = WindowHeight * (BgScale / 100.0f); // ¶ÔÆë¸ß¶È£¬ÈÃ¸ß¶ÈºÍ´°¿ÚÏàÍ¬
+            w = (int)(h * WindowRate); // ¸ù¾İ¸ß¶ÈµÄËõ·Å£¬À´¼ÆËã¿í¶È
             draw_list->AddImage((ImTextureID)texture, ImVec2(BgOffsetX, BgOffsetY), ImVec2(w + BgOffsetX, h + BgOffsetY));
         }
         else
@@ -800,7 +801,7 @@ void RenderGui(ImGuiIO& io)
             SetForegroundWindow(GCHWND);
     }
 
-    //-----------------------åŠ¨ç”»å¤„ç†---------------------------
+    //-----------------------¶¯»­´¦Àí---------------------------
     static bool IsAnime = false;
     {
         static const ImVec2 ButtonSize = { 80, 40 };
@@ -817,7 +818,7 @@ void RenderGui(ImGuiIO& io)
             AddRectFilled(ImVec2(10, AnimPos), ImVec2(ButtonPosX, AnimPos + ButtonSize.y), GetColorU32(GuiColor[ImGuiCol_Button]), 6);
     }
 
-    //=======================æ ‡ç­¾é¡µ===========================
+    //=======================±êÇ©Ò³===========================
 
     PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
     PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(0, 0, 0, 0));
@@ -825,7 +826,7 @@ void RenderGui(ImGuiIO& io)
     PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(0, 0, 0, 0));
     SetCursorPos({ 10, 84 + 32 });
     static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Home);
-    if (ButtonImage((ImTextureID)image_texture1, config.UseChinese ? u8"ä¸»é¡µ" : "Home", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture1, config.UseChinese ? u8"Ö÷Ò³" : "Home", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Hub;
@@ -835,7 +836,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 134 + 32 });
     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Info);
-    if (ButtonImage((ImTextureID)image_texture2, config.UseChinese ? u8"ä¿¡æ¯" : "Info", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture2, config.UseChinese ? u8"ĞÅÏ¢" : "Info", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Info;
@@ -845,7 +846,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 184 + 32 });
     static const Texture2D image_texture3 = LoadTextureFromFile(Pics_Setting);
-    if (ButtonImage((ImTextureID)image_texture3, config.UseChinese ? u8"è®¾ç½®" : "Setting", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture3, config.UseChinese ? u8"ÉèÖÃ" : "Setting", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Setting;
@@ -855,7 +856,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 234 + 32 });
     static const Texture2D image_texture4 = LoadTextureFromFile(Pics_Script);
-    if (ButtonImage((ImTextureID)image_texture4, config.UseChinese ? u8"è„šæœ¬" : "Script", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture4, config.UseChinese ? u8"½Å±¾" : "Script", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Script;
@@ -865,7 +866,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 284 + 32 });
     static const Texture2D image_texture5 = LoadTextureFromFile(Pics_Other);
-    if (ButtonImage((ImTextureID)image_texture5, config.UseChinese ? u8"å…¶ä»–" : "Other", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture5, config.UseChinese ? u8"ÆäËû" : "Other", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Other;
@@ -875,7 +876,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 334 + 32 });
     static const Texture2D image_texture6 = LoadTextureFromFile(Pics_About);
-    if (ButtonImage((ImTextureID)image_texture6, config.UseChinese ? u8"å…³äº" : "About", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture6, config.UseChinese ? u8"¹ØÓÚ" : "About", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::About;
@@ -885,11 +886,11 @@ void RenderGui(ImGuiIO& io)
     PopStyleColor(3);
     PopStyleVar();
 
-    // åº”å¯¹å¤–éƒ¨æ›´æ”¹NextTab
+    // Ó¦¶ÔÍâ²¿¸ü¸ÄNextTab
     if (VarHasChanged(NextTab, "NextTab"))
         IsAnime = true;
 
-    //=======================åŠ¨ç”»ç®¡ç†===========================
+    //=======================¶¯»­¹ÜÀí===========================
     static int B_ClickTabCount = ClickTabCount;
     if (B_ClickTabCount != ClickTabCount)
     {
@@ -897,7 +898,7 @@ void RenderGui(ImGuiIO& io)
         B_ClickTabCount = ClickTabCount;
     }
 
-    //=======================ä¿¡æ¯æ˜¾ç¤º===========================
+    //=======================ĞÅÏ¢ÏÔÊ¾===========================
     SetCursorPosX(14);
     {
         shared_lock lock(CurrentCPSMutex);
@@ -914,7 +915,7 @@ void RenderGui(ImGuiIO& io)
     {
         const bool IsClickerDown = GetKeyDown((i == 0) ? Click::Left : Click::Right);
         DrawList->AddRectFilled(rect.Min, rect.Max, IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_Button]) : GetColorU32(GuiColor[ImGuiCol_FrameBg]), 6.0f);
-        DrawList->AddRect(rect.Min, rect.Max, GetColorU32(GuiColor[ImGuiCol_Border]), 5.0f); // åœ†è§’ä¸ä½¿ç”¨ 6 çš„åŸå› æ˜¯ï¼Œåœ¨ç›¸åŒåœ†è§’å€¼æ—¶AddRectFilledçš„åœ†è§’å°ä¸€ç‚¹
+        DrawList->AddRect(rect.Min, rect.Max, GetColorU32(GuiColor[ImGuiCol_Border]), 5.0f); // Ô²½Ç²»Ê¹ÓÃ 6 µÄÔ­ÒòÊÇ£¬ÔÚÏàÍ¬Ô²½ÇÖµÊ±AddRectFilledµÄÔ²½ÇĞ¡Ò»µã
         DrawList->AddText(ImVec2(rect.Min.x + 7, rect.Min.y + 2), IsClickerDown ? GetColorU32(GuiColor[ImGuiCol_TextDisabled]) : GetColorU32(GuiColor[ImGuiCol_Text]), (i == 0) ? "L" : "R");
         
         if ((IsClickering.left && i == 0) || (IsClickering.right && i == 1))
@@ -923,7 +924,7 @@ void RenderGui(ImGuiIO& io)
         if ((!config.EnableLeftClicker && i == 0) || (!config.EnableRightClicker && i == 1))
             DrawList->AddRectFilled(rect.Min, rect.Max, GetColorU32((ImVec4)ImColor(56, 56, 56, 120)), 5.5f);
 
-        //ç§»åŠ¨çŸ©å½¢
+        //ÒÆ¶¯¾ØĞÎ
         rect.Translate(ImVec2(RectSize.x + 20, 0));
     }
 
@@ -943,7 +944,7 @@ void RenderGui(ImGuiIO& io)
         }
     }
 
-    //=======================èœå•æ˜¾ç¤º===========================
+    //=======================²Ëµ¥ÏÔÊ¾===========================
     SetCursorPos(ImVec2(100, 6 + 32));
     PushStyleColor(ImGuiCol_ChildBg, GuiColor[ImGuiCol_WindowBg]);
     BeginChild(u8"##PaperTab", ImVec2(696, 456), 1);
@@ -951,22 +952,22 @@ void RenderGui(ImGuiIO& io)
 
     if (ClickTabCount >= 50)
     {
-        if (MessageBox(config.UseChinese ? u8"ä¸è¦åœ¨ç©äº†~~éƒ½å¿«è¢«ç©åæ‰äº†~~\nä½ è¿™ä¹ˆé—²ä¸ºä»€ä¹ˆéå¾—ç©æˆ‘å‘¢~" : "I hate it, don't play anymore. The GC-Clicker is not a toy", u8"å½©è›‹", MB_OK) != -1)
+        if (MessageBox(config.UseChinese ? u8"²»ÒªÔÚÍæÁË~~¶¼¿ì±»Íæ»µµôÁË~~\nÄãÕâÃ´ÏĞÎªÊ²Ã´·ÇµÃÍæÎÒÄØ~" : "I hate it, don't play anymore. The GC-Clicker is not a toy", u8"²Êµ°", MB_OK) != -1)
             ClickTabCount = 0;
     }
 
-    //=======================æ ‡ç­¾é¡µå†…å®¹===========================
+    //=======================±êÇ©Ò³ÄÚÈİ===========================
     const static ImGuiWindowFlags flags = ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
     EndAnimation();
     switch (CurrentTab)
     {
         case Tab::Hub:
         {
-            TabsText((ICON_FA_HOUSE + (config.UseChinese ? u8"ä¸»é¡µ"s : "Home"s)).c_str());
+            TabsText((ICON_FA_HOUSE + (config.UseChinese ? u8"Ö÷Ò³"s : "Home"s)).c_str());
 
-            // ä¿®å¤ï¼šåŸä»£ç ä¸º static const intï¼Œä¼šæŠŠ ULONGLONG å·®å€¼æˆªæ–­ä¸º 32 ä½ intï¼ˆ>24.8å¤©å³æº¢å‡ºï¼‰ï¼Œ
-            // ä¸” InitSuccessTime å¯èƒ½å°šæœªè¢« InitGC å†™å…¥ï¼ˆ==0ï¼‰ï¼Œ0-StartTime æ— ç¬¦å·ä¸‹æº¢æˆå·¨å¤§å€¼ã€‚
-            // æ”¹ä¸ºåŠ é”è¯»å– + ULONGLONG ç±»å‹ + æœªåˆå§‹åŒ–æ—¶å®æ—¶è®¡ç®—ã€‚
+            // ĞŞ¸´£ºÔ­´úÂëÎª static const int£¬»á°Ñ ULONGLONG ²îÖµ½Ø¶ÏÎª 32 Î» int£¨>24.8Ìì¼´Òç³ö£©£¬
+            // ÇÒ InitSuccessTime ¿ÉÄÜÉĞÎ´±» InitGC Ğ´Èë£¨==0£©£¬0-StartTime ÎŞ·ûºÅÏÂÒç³É¾Ş´óÖµ¡£
+            // ¸ÄÎª¼ÓËø¶ÁÈ¡ + ULONGLONG ÀàĞÍ + Î´³õÊ¼»¯Ê±ÊµÊ±¼ÆËã¡£
             ULONGLONG StartupTime = 0;
             {
                 shared_lock lock(InitSuccessTimeMutex);
@@ -975,9 +976,9 @@ void RenderGui(ImGuiIO& io)
             }
 
             static string DailyMotto = DailyMottos[RandGentor.Random(0, 47)];
-            Text(config.UseChinese ? u8"&cæœ¬æ¬¡å¯åŠ¨è€—æ—¶" : "&cStartup time");
+            Text(config.UseChinese ? u8"&c±¾´ÎÆô¶¯ºÄÊ±" : "&cStartup time");
             SameLine();
-            Text(config.UseChinese ? u8"&a%llu æ¯«ç§’" : "&a%llu ms", StartupTime);
+            Text(config.UseChinese ? u8"&a%llu ºÁÃë" : "&a%llu ms", StartupTime);
             SameLine();
             Text(DailyMotto.c_str());
 
@@ -989,7 +990,7 @@ void RenderGui(ImGuiIO& io)
             EndChild();
             */
             {
-                // ä¿®å¤ï¼šNoticeStr ç”± GetInfo çº¿ç¨‹å†™å…¥ï¼Œä¸»çº¿ç¨‹æ¯å¸§è¯»å– c_str() ä¼šæ‚¬å‚ â†’ å¿«ç…§æ‹·è´
+                // ĞŞ¸´£ºNoticeStr ÓÉ GetInfo Ïß³ÌĞ´Èë£¬Ö÷Ïß³ÌÃ¿Ö¡¶ÁÈ¡ c_str() »áĞü´¹ ¡ú ¿ìÕÕ¿½±´
                 shared_lock lock(NoticeMutex);
                 InputTextMultiline(u8"##notice", (char*)NoticeStr.c_str(), NoticeStr.size(), ImVec2(677, -1), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_NoHorizontalScroll);
             }
@@ -997,14 +998,14 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Info:
         {
-            TabsText((ICON_FA_CHART_LINE + (config.UseChinese ? u8"ä¿¡æ¯"s : "Infomation"s)).c_str());
+            TabsText((ICON_FA_CHART_LINE + (config.UseChinese ? u8"ĞÅÏ¢"s : "Infomation"s)).c_str());
 
             BeginTabBar("##Script");
 
-            //-----------------------ç”µè„‘æ€§èƒ½---------------------------
-            if (BeginTabItem(config.UseChinese ? u8"ç”µè„‘æ€§èƒ½" : "PC Performance"))
+            //-----------------------µçÄÔĞÔÄÜ---------------------------
+            if (BeginTabItem(config.UseChinese ? u8"µçÄÔĞÔÄÜ" : "PC Performance"))
             {
-                //-----------------------CPSç›‘æ§ä¿¡æ¯---------------------------
+                //-----------------------CPS¼à¿ØĞÅÏ¢---------------------------
 
                 const static ImGuiWindowFlags flags =
                     ImGuiWindowFlags_HorizontalScrollbar |
@@ -1027,35 +1028,35 @@ void RenderGui(ImGuiIO& io)
                 rotate(tempInstant.begin(), tempInstant.begin() + RRecordsInstantCPS.size(), tempInstant.end());
                 RecordsCPSMutex.unlock();
 
-                Text(config.UseChinese ? u8"å³é”®CPSç›‘æ§  &bæ™®é€šCPS &7/ &6ç¬æ—¶CPS" : "RCPS monitoring  Normal / Instant");
+                Text(config.UseChinese ? u8"ÓÒ¼üCPS¼à¿Ø  &bÆÕÍ¨CPS &7/ &6Ë²Ê±CPS" : "RCPS monitoring  Normal / Instant");
                 const float PosY2 = GetCursorPosY();
                 BeginChild("##RRecordsBeginChild", { 250, 120 }, false, flags);
                 {
-                    // Y è½´ä¸Šé™ï¼š"æ­£å¸¸CPS"ä¸"ç¬æ—¶CPS"ä¸¤æ¡æ›²çº¿å…±åŒå‚ä¸å–æœ€å¤§å€¼ï¼ˆè°å¤§ç”¨è°ï¼‰ï¼Œ
-                    // æœ€ä½ 12ï¼ˆé»˜è®¤åˆ»åº¦ï¼‰ï¼›ä¸‹é™å›ºå®š 0ï¼Œä½¿çŸ©å½¢åº•éƒ¨å³ X è½´ï¼ˆCPS ä¸å¯èƒ½ä¸ºè´Ÿï¼‰ã€‚
-                    // æ¯å¸§é‡ç®—ï¼Œéšæœ€å¤§å€¼è‡ªåŠ¨å˜åŒ–ã€‚
+                    // Y ÖáÉÏÏŞ£º"Õı³£CPS"Óë"Ë²Ê±CPS"Á½ÌõÇúÏß¹²Í¬²ÎÓëÈ¡×î´óÖµ£¨Ë­´óÓÃË­£©£¬
+                    // ×îµÍ 12£¨Ä¬ÈÏ¿Ì¶È£©£»ÏÂÏŞ¹Ì¶¨ 0£¬Ê¹¾ØĞÎµ×²¿¼´ X Öá£¨CPS ²»¿ÉÄÜÎª¸º£©¡£
+                    // Ã¿Ö¡ÖØËã£¬Ëæ×î´óÖµ×Ô¶¯±ä»¯¡£
                     float RMaxY = 12.0f;
                     for (const float v : temp)        if (v > RMaxY) RMaxY = v;
                     for (const float v : tempInstant) if (v > RMaxY) RMaxY = v;
-                    if (RMaxY > 12.0f) RMaxY *= 1.1f;   // æœ‰æ•°æ®æ—¶é¡¶éƒ¨ç•™ 10% ä½™é‡ï¼Œé¿å…å³°å€¼è´´é¡¶
+                    if (RMaxY > 12.0f) RMaxY *= 1.1f;   // ÓĞÊı¾İÊ±¶¥²¿Áô 10% ÓàÁ¿£¬±ÜÃâ·åÖµÌù¶¥
 
-                    // åŒæ›²çº¿ï¼šè“è‰²=æ­£å¸¸CPSï¼ˆ1ç§’çª—å£ç»Ÿè®¡ï¼‰ï¼›æ©™è‰²=ç¬æ—¶CPSï¼ˆæœ€è¿‘ä¸¤æ¬¡ç‚¹å‡»é—´éš”æ¨ç®—ï¼‰
-                    // NoInputsï¼šç¦ç”¨ ImPlot è‡ªèº«çš„ç¼©æ”¾/å¹³ç§»ï¼ŒæŠŠé¼ æ ‡äº‹ä»¶è®©ç»™å¤–å±‚ Child çš„æ°´å¹³æ»šåŠ¨æ¡
+                    // Ë«ÇúÏß£ºÀ¶É«=Õı³£CPS£¨1Ãë´°¿ÚÍ³¼Æ£©£»³ÈÉ«=Ë²Ê±CPS£¨×î½üÁ½´Îµã»÷¼ä¸ôÍÆËã£©
+                    // NoInputs£º½ûÓÃ ImPlot ×ÔÉíµÄËõ·Å/Æ½ÒÆ£¬°ÑÊó±êÊÂ¼şÈÃ¸øÍâ²ã Child µÄË®Æ½¹ö¶¯Ìõ
                     if (ImPlot::BeginPlot("##RRecordsPlot", ImVec2((float)MAX_RECORDS, 110), ImPlotFlags_NoLegend | ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect | ImPlotFlags_NoMouseText | ImPlotFlags_NoInputs))
                     {
-                        // Y è½´åŠ  LockMin/LockMaxï¼Œç¡®ä¿èŒƒå›´ä¸¥æ ¼ç”±ä¸Šé¢è®¡ç®—å€¼å†³å®šï¼Œä¸è¢«è‡ªåŠ¨é€‚é…æˆ–äº¤äº’è¦†ç›–
+                        // Y Öá¼Ó LockMin/LockMax£¬È·±£·¶Î§ÑÏ¸ñÓÉÉÏÃæ¼ÆËãÖµ¾ö¶¨£¬²»±»×Ô¶¯ÊÊÅä»ò½»»¥¸²¸Ç
                         ImPlot::SetupAxes(nullptr, nullptr,
                             ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks,
                             ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax);
                         ImPlot::SetupAxesLimits(0, MAX_RECORDS, 0, RMaxY, ImPlotCond_Always);
                         ImPlot::SetNextLineStyle(ImVec4(0.07f, 0.49f, 0.73f, 1.0f));
-                        ImPlot::PlotLine(config.UseChinese ? u8"æ­£å¸¸CPS" : "Normal CPS", temp.data(), MAX_RECORDS);
+                        ImPlot::PlotLine(config.UseChinese ? u8"Õı³£CPS" : "Normal CPS", temp.data(), MAX_RECORDS);
                         ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-                        ImPlot::PlotLine(config.UseChinese ? u8"ç¬æ—¶CPS" : "Instant CPS", tempInstant.data(), MAX_RECORDS);
+                        ImPlot::PlotLine(config.UseChinese ? u8"Ë²Ê±CPS" : "Instant CPS", tempInstant.data(), MAX_RECORDS);
                         ImPlot::EndPlot();
                     }
-                    // è‡ªåŠ¨è·Ÿéšæœ€æ–°ï¼šä»…å½“æ»šåŠ¨æ¡æœ¬å°±è´´åœ¨æœ€å³æ—¶æ‰è·Ÿéšï¼›
-                    // ç”¨æˆ·å‘å·¦æ‹–åŠ¨æŸ¥çœ‹å†å²åæš‚åœè·Ÿéšï¼Œæ‹–å›æœ€å³åˆ™æ¢å¤ã€‚
+                    // ×Ô¶¯¸úËæ×îĞÂ£º½öµ±¹ö¶¯Ìõ±¾¾ÍÌùÔÚ×îÓÒÊ±²Å¸úËæ£»
+                    // ÓÃ»§Ïò×óÍÏ¶¯²é¿´ÀúÊ·ºóÔİÍ£¸úËæ£¬ÍÏ»Ø×îÓÒÔò»Ö¸´¡£
                     const float scrollMaxX = GetScrollMaxX();
                     const float scrollX = GetScrollX();
                     if (scrollMaxX <= 0.0f || scrollX >= scrollMaxX - 0.5f)
@@ -1087,36 +1088,36 @@ void RenderGui(ImGuiIO& io)
                 SameLine();
                 TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), u8"GPU");
                 SameLine();
-                Text(config.UseChinese ? u8"å·¦é”®CPSç›‘æ§" : "LCPS Monitoring");
+                Text(config.UseChinese ? u8"×ó¼üCPS¼à¿Ø" : "LCPS Monitoring");
 
                 SetCursorPos({ PosX, PosY2 });
                 BeginChild("##LRecordsBeginChild", { 250, 120 }, false, flags);
                 {
-                    // Y è½´ä¸Šé™ï¼š"æ­£å¸¸CPS"ä¸"ç¬æ—¶CPS"ä¸¤æ¡æ›²çº¿å…±åŒå‚ä¸å–æœ€å¤§å€¼ï¼ˆè°å¤§ç”¨è°ï¼‰ï¼Œ
-                    // æœ€ä½ 12ï¼ˆé»˜è®¤åˆ»åº¦ï¼‰ï¼›ä¸‹é™å›ºå®š 0ï¼Œä½¿çŸ©å½¢åº•éƒ¨å³ X è½´ï¼ˆCPS ä¸å¯èƒ½ä¸ºè´Ÿï¼‰ã€‚
-                    // æ¯å¸§é‡ç®—ï¼Œéšæœ€å¤§å€¼è‡ªåŠ¨å˜åŒ–ã€‚
+                    // Y ÖáÉÏÏŞ£º"Õı³£CPS"Óë"Ë²Ê±CPS"Á½ÌõÇúÏß¹²Í¬²ÎÓëÈ¡×î´óÖµ£¨Ë­´óÓÃË­£©£¬
+                    // ×îµÍ 12£¨Ä¬ÈÏ¿Ì¶È£©£»ÏÂÏŞ¹Ì¶¨ 0£¬Ê¹¾ØĞÎµ×²¿¼´ X Öá£¨CPS ²»¿ÉÄÜÎª¸º£©¡£
+                    // Ã¿Ö¡ÖØËã£¬Ëæ×î´óÖµ×Ô¶¯±ä»¯¡£
                     float LMaxY = 12.0f;
                     for (const float v : temp)        if (v > LMaxY) LMaxY = v;
                     for (const float v : tempInstant) if (v > LMaxY) LMaxY = v;
-                    if (LMaxY > 12.0f) LMaxY *= 1.1f;   // æœ‰æ•°æ®æ—¶é¡¶éƒ¨ç•™ 10% ä½™é‡ï¼Œé¿å…å³°å€¼è´´é¡¶
+                    if (LMaxY > 12.0f) LMaxY *= 1.1f;   // ÓĞÊı¾İÊ±¶¥²¿Áô 10% ÓàÁ¿£¬±ÜÃâ·åÖµÌù¶¥
 
-                    // åŒæ›²çº¿ï¼šè“è‰²=æ­£å¸¸CPSï¼ˆ1ç§’çª—å£ç»Ÿè®¡ï¼‰ï¼›æ©™è‰²=ç¬æ—¶CPSï¼ˆæœ€è¿‘ä¸¤æ¬¡ç‚¹å‡»é—´éš”æ¨ç®—ï¼‰
-                    // NoInputsï¼šç¦ç”¨ ImPlot è‡ªèº«çš„ç¼©æ”¾/å¹³ç§»ï¼ŒæŠŠé¼ æ ‡äº‹ä»¶è®©ç»™å¤–å±‚ Child çš„æ°´å¹³æ»šåŠ¨æ¡
+                    // Ë«ÇúÏß£ºÀ¶É«=Õı³£CPS£¨1Ãë´°¿ÚÍ³¼Æ£©£»³ÈÉ«=Ë²Ê±CPS£¨×î½üÁ½´Îµã»÷¼ä¸ôÍÆËã£©
+                    // NoInputs£º½ûÓÃ ImPlot ×ÔÉíµÄËõ·Å/Æ½ÒÆ£¬°ÑÊó±êÊÂ¼şÈÃ¸øÍâ²ã Child µÄË®Æ½¹ö¶¯Ìõ
                     if (ImPlot::BeginPlot("##LRecordsPlot", ImVec2((float)MAX_RECORDS, 110), ImPlotFlags_NoLegend | ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect | ImPlotFlags_NoMouseText | ImPlotFlags_NoInputs))
                     {
-                        // Y è½´åŠ  LockMin/LockMaxï¼Œç¡®ä¿èŒƒå›´ä¸¥æ ¼ç”±ä¸Šé¢è®¡ç®—å€¼å†³å®šï¼Œä¸è¢«è‡ªåŠ¨é€‚é…æˆ–äº¤äº’è¦†ç›–
+                        // Y Öá¼Ó LockMin/LockMax£¬È·±£·¶Î§ÑÏ¸ñÓÉÉÏÃæ¼ÆËãÖµ¾ö¶¨£¬²»±»×Ô¶¯ÊÊÅä»ò½»»¥¸²¸Ç
                         ImPlot::SetupAxes(nullptr, nullptr,
                             ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks,
                             ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_LockMin | ImPlotAxisFlags_LockMax);
                         ImPlot::SetupAxesLimits(0, MAX_RECORDS, 0, LMaxY, ImPlotCond_Always);
                         ImPlot::SetNextLineStyle(ImVec4(0.07f, 0.49f, 0.73f, 1.0f));
-                        ImPlot::PlotLine(config.UseChinese ? u8"æ­£å¸¸CPS" : "Normal CPS", temp.data(), MAX_RECORDS);
+                        ImPlot::PlotLine(config.UseChinese ? u8"Õı³£CPS" : "Normal CPS", temp.data(), MAX_RECORDS);
                         ImPlot::SetNextLineStyle(ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-                        ImPlot::PlotLine(config.UseChinese ? u8"ç¬æ—¶CPS" : "Instant CPS", tempInstant.data(), MAX_RECORDS);
+                        ImPlot::PlotLine(config.UseChinese ? u8"Ë²Ê±CPS" : "Instant CPS", tempInstant.data(), MAX_RECORDS);
                         ImPlot::EndPlot();
                     }
-                    // è‡ªåŠ¨è·Ÿéšæœ€æ–°ï¼šä»…å½“æ»šåŠ¨æ¡æœ¬å°±è´´åœ¨æœ€å³æ—¶æ‰è·Ÿéšï¼›
-                    // ç”¨æˆ·å‘å·¦æ‹–åŠ¨æŸ¥çœ‹å†å²åæš‚åœè·Ÿéšï¼Œæ‹–å›æœ€å³åˆ™æ¢å¤ã€‚
+                    // ×Ô¶¯¸úËæ×îĞÂ£º½öµ±¹ö¶¯Ìõ±¾¾ÍÌùÔÚ×îÓÒÊ±²Å¸úËæ£»
+                    // ÓÃ»§Ïò×óÍÏ¶¯²é¿´ÀúÊ·ºóÔİÍ£¸úËæ£¬ÍÏ»Ø×îÓÒÔò»Ö¸´¡£
                     const float scrollMaxX = GetScrollMaxX();
                     const float scrollX = GetScrollX();
                     if (scrollMaxX <= 0.0f || scrollX >= scrollMaxX - 0.5f)
@@ -1145,12 +1146,12 @@ void RenderGui(ImGuiIO& io)
 
                 const float PosX2 = GetCursorPosX();
 
-                Text(config.UseChinese ? u8"å³é”®æœ€é«˜CPSï¼š%d" : "Highest RCPS: %d", Rmax);
+                Text(config.UseChinese ? u8"ÓÒ¼ü×î¸ßCPS£º%d" : "Highest RCPS: %d", Rmax);
                 SameLine();
                 SetCursorPos({ PosX2, GetCursorPosY() + 19 });
-                Text(config.UseChinese ? u8"å·¦é”®æœ€é«˜CPSï¼š%d" : "Highest LCPS: %d", Lmax);
+                Text(config.UseChinese ? u8"×ó¼ü×î¸ßCPS£º%d" : "Highest LCPS: %d", Lmax);
 
-                //-----------------------CPU/GPU/å†…å­˜ç›‘æ§ä¿¡æ¯---------------------------
+                //-----------------------CPU/GPU/ÄÚ´æ¼à¿ØĞÅÏ¢---------------------------
                 {
                     shared_lock lock(PerformanceMutex);
 
@@ -1158,7 +1159,7 @@ void RenderGui(ImGuiIO& io)
                     SameLine();
                     DrawRoundProgressBar(config.UseChinese ? u8"GPU" : "GPU", (GpuRates.empty() ? 0.0f : GpuRates.back()), ImVec2(150, 160), ImVec4(0.20f, 0.76f, 0.58f, 1.0f));
                     SameLine();
-                    DrawRoundProgressBar(config.UseChinese ? u8"å†…å­˜" : "Memory", (MemRates.empty() ? 0.0f : MemRates.back()), ImVec2(150, 160), ImVec4(0.98f, 0.62f, 0.15f, 1.0f));
+                    DrawRoundProgressBar(config.UseChinese ? u8"ÄÚ´æ" : "Memory", (MemRates.empty() ? 0.0f : MemRates.back()), ImVec2(150, 160), ImVec4(0.98f, 0.62f, 0.15f, 1.0f));
 
                     //-----------------------CPU/GPU---------------------------
 
@@ -1169,9 +1170,9 @@ void RenderGui(ImGuiIO& io)
                     SameLine();
                     TextColored((ImVec4)ImColor(222, 18, 20, 255), u8"GPU");
                     SameLine();
-                    Text(config.UseChinese ? u8"å ç”¨ç‡ç›‘æ§" : "CPS Monitoring");
+                    Text(config.UseChinese ? u8"Õ¼ÓÃÂÊ¼à¿Ø" : "CPS Monitoring");
 
-                    //ä¸ç”¨const staitcçš„ï¼Œæ˜¯å› ä¸ºè¿™ç©æ„ä»»æ„é”™ä½
+                    //²»ÓÃconst staitcµÄ£¬ÊÇÒòÎªÕâÍæÒâÈÎÒâ´íÎ»
                     float PosY4 = GetCursorPosY();
                     BeginChild("##CPURecordsBeginChild", ImVec2(250, 120), false, flags);
                     {
@@ -1213,7 +1214,7 @@ void RenderGui(ImGuiIO& io)
 
                     SetCursorPosY(PosY3);
 
-                    Text(config.UseChinese ? u8"å†…å­˜å ç”¨ç‡ç›‘æ§" : "Memory Usage Monitoring");
+                    Text(config.UseChinese ? u8"ÄÚ´æÕ¼ÓÃÂÊ¼à¿Ø" : "Memory Usage Monitoring");
                     SetCursorPos(ImVec2(PosX4, PosY4));
                     BeginChild("##MemRecordsBeginChild", ImVec2(250, 120), false, flags);
                     {
@@ -1226,95 +1227,95 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
 
-            if (BeginTabItem(config.UseChinese ? u8"ç»Ÿè®¡ä¿¡æ¯" : "Statistics"))
+            if (BeginTabItem(config.UseChinese ? u8"Í³¼ÆĞÅÏ¢" : "Statistics"))
             {
-                //=======================ç»Ÿè®¡ä¿¡æ¯===========================
+                //=======================Í³¼ÆĞÅÏ¢===========================
 
-                const ULONGLONG ThisUseTime = (GetNowMs() - StartTime) / 60000; //60000MSä¸º1åˆ†é’Ÿ
-                //-----------------------ç‚¹å‡»æ¬¡æ•°-----------------------
-                BeginCard(config.UseChinese ? u8"æ€»æ½" : "Overall", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                const ULONGLONG ThisUseTime = (GetNowMs() - StartTime) / 60000; //60000MSÎª1·ÖÖÓ
+                //-----------------------µã»÷´ÎÊı-----------------------
+                BeginCard(config.UseChinese ? u8"×ÜÀ¿" : "Overall", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Text(config.UseChinese ? u8"æ‰‹åŠ¨å·¦é”®ç‚¹å‡»æ¬¡æ•°ï¼š" : "Manual left click count");
+                    Text(config.UseChinese ? u8"ÊÖ¶¯×ó¼üµã»÷´ÎÊı£º" : "Manual left click count");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%llu", app_status.MouseClickCount.left);
 
-                    Text(config.UseChinese ? u8"æ‰‹åŠ¨å³é”®ç‚¹å‡»æ¬¡æ•°ï¼š" : "Manual right click count");
+                    Text(config.UseChinese ? u8"ÊÖ¶¯ÓÒ¼üµã»÷´ÎÊı£º" : "Manual right click count");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%llu", app_status.MouseClickCount.right);
 
-                    Text(config.UseChinese ? u8"è¿ç‚¹å·¦é”®çš„æ¬¡æ•°ï¼š" : "Clicker left count:");
+                    Text(config.UseChinese ? u8"Á¬µã×ó¼üµÄ´ÎÊı£º" : "Clicker left count:");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%llu", app_status.ClickerClickCount.left);
 
-                    Text(config.UseChinese ? u8"è¿ç‚¹å³é”®çš„æ¬¡æ•°ï¼š" : "Clicker right count:");
+                    Text(config.UseChinese ? u8"Á¬µãÓÒ¼üµÄ´ÎÊı£º" : "Clicker right count:");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%llu", app_status.ClickerClickCount.right);
 
-                    Text(config.UseChinese ? u8"ä½¿ç”¨GCçš„æ—¶é•¿ï¼š" : "Duration of using GC:");
+                    Text(config.UseChinese ? u8"Ê¹ÓÃGCµÄÊ±³¤£º" : "Duration of using GC:");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%Lf", app_status.UsageDuration);
 
-                    Text(config.UseChinese ? u8"æœ¬æ¬¡ä½¿ç”¨GCçš„æ—¶é•¿ï¼š" : "The duration of using GC this time:");
+                    Text(config.UseChinese ? u8"±¾´ÎÊ¹ÓÃGCµÄÊ±³¤£º" : "The duration of using GC this time:");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%Lf", ThisUseTime);
 
-                    //-----------------------ç‚¹å‡»æ¬¡æ•°çš„æ¯”å€¼-----------------------
-                    Text(config.UseChinese ? u8"GCä¸æ‰‹åŠ¨ç‚¹å‡»æ¬¡æ•°çš„æ¯”å€¼" : "The ratio of GC to manual clicks");
+                    //-----------------------µã»÷´ÎÊıµÄ±ÈÖµ-----------------------
+                    Text(config.UseChinese ? u8"GCÓëÊÖ¶¯µã»÷´ÎÊıµÄ±ÈÖµ" : "The ratio of GC to manual clicks");
                     DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
-                    Text(config.UseChinese ? u8"å·¦é”®" : "Left button");
+                    Text(config.UseChinese ? u8"×ó¼ü" : "Left button");
 					SameLine();
 					SetCursorPosX(300);
                     ProgressBar((double)app_status.ClickerClickCount.left / max(app_status.ClickerClickCount.left + app_status.MouseClickCount.left, 1), ImVec2(300, 20));
 
-                    Text(config.UseChinese ? u8"å³é”®" : "Right button");
+                    Text(config.UseChinese ? u8"ÓÒ¼ü" : "Right button");
                     SameLine();
                     SetCursorPosX(300);
                     ProgressBar((double)app_status.ClickerClickCount.right / max(app_status.ClickerClickCount.right + app_status.MouseClickCount.right, 1), ImVec2(300, 20));
 
-                    Text(config.UseChinese ? u8"å·¦å³é”®ç‚¹å‡»æ¬¡æ•°æ¯”å€¼" : "Ratio of LB and RB clicks");
+                    Text(config.UseChinese ? u8"×óÓÒ¼üµã»÷´ÎÊı±ÈÖµ" : "Ratio of LB and RB clicks");
                     SameLine();
                     SetCursorPosX(300);
                     ProgressBar((double)app_status.ClickerClickCount.left / max(app_status.ClickerClickCount.left + app_status.ClickerClickCount.right, 1), ImVec2(300, 20));
 
-                    //-----------------------é¼ æ ‡å¹³å‡ç‚¹å‡»æ¬¡æ•°-----------------------
-                    Text(config.UseChinese ? u8"æ¯åˆ†é’Ÿæ‰‹åŠ¨å¹³å‡ç‚¹å‡»æ¬¡æ•°ï¼š" : "Manual average clicks per minute:");
+                    //-----------------------Êó±êÆ½¾ùµã»÷´ÎÊı-----------------------
+                    Text(config.UseChinese ? u8"Ã¿·ÖÖÓÊÖ¶¯Æ½¾ùµã»÷´ÎÊı£º" : "Manual average clicks per minute:");
                     DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
-                    Text(config.UseChinese ? u8"å·¦é”®" : "Left button");
+                    Text(config.UseChinese ? u8"×ó¼ü" : "Left button");
                     SameLine();
                     SetCursorPosX(300);
-                    Text("%.1f", (double)app_status.MouseClickCount.left / max(ThisUseTime * 60, 1));
+                    Text("%.1f", (double)app_status.MouseClickCount.left / max(ThisUseTime, 1));
 
-                    Text(config.UseChinese ? u8"å³é”®" : "Right button");
+                    Text(config.UseChinese ? u8"ÓÒ¼ü" : "Right button");
                     SameLine();
                     SetCursorPosX(300);
-                    Text("%.1f", (double)app_status.MouseClickCount.right / max(ThisUseTime * 60, 1));
+                    Text("%.1f", (double)app_status.MouseClickCount.right / max(ThisUseTime, 1));
 
-                    //-----------------------GCå¹³å‡ç‚¹å‡»æ¬¡æ•°-----------------------
-                    Text(config.UseChinese ? u8"æ¯åˆ†é’Ÿè¿ç‚¹å™¨å¹³å‡ç‚¹å‡»æ¬¡æ•°ï¼š" : "Average clicker clicks per minute");
+                    //-----------------------GCÆ½¾ùµã»÷´ÎÊı-----------------------
+                    Text(config.UseChinese ? u8"Ã¿·ÖÖÓÁ¬µãÆ÷Æ½¾ùµã»÷´ÎÊı£º" : "Average clicker clicks per minute");
                     DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
-                    Text(config.UseChinese ? u8"å·¦é”®" : "Left button");
+                    Text(config.UseChinese ? u8"×ó¼ü" : "Left button");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%.1f", (double)app_status.ClickerClickCount.left / max(ThisUseTime, 1));
 
-                    Text(config.UseChinese ? u8"å³é”®" : "Right button");
+                    Text(config.UseChinese ? u8"ÓÒ¼ü" : "Right button");
                     SameLine();
                     SetCursorPosX(300);
                     Text("%.1f", (double)app_status.ClickerClickCount.right / max(ThisUseTime, 1));
                 }
                 EndCard();
 
-                //-----------------------GCè¿ç‚¹ä¸é¼ æ ‡ç‚¹å‡»æ¬¡æ•°çš„å¹³å‡æ¯”å€¼-----------------------
-                BeginCard(config.UseChinese ? u8"æ‰‹åŠ¨ç‚¹å‡»çš„æ¯”å€¼" : "Ratio of manual clicks to GC", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                //-----------------------GCÁ¬µãÓëÊó±êµã»÷´ÎÊıµÄÆ½¾ù±ÈÖµ-----------------------
+                BeginCard(config.UseChinese ? u8"ÊÖ¶¯µã»÷µÄ±ÈÖµ" : "Ratio of manual clicks to GC", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     const float PlotSize = 200.0f;
                     static const ImPlotFlags PieFlag = ImPlotFlags_Equal | ImPlotFlags_NoMouseText | ImPlotFlags_NoInputs;
@@ -1323,18 +1324,18 @@ void RenderGui(ImGuiIO& io)
                     {
                         float StartX = GetCursorPosX();
 
-                        // è®¡ç®—æ ‡é¢˜å®½åº¦å¹¶è®¾ç½®å±…ä¸­
-                        const char* LeftTitle = config.UseChinese ? u8"å·¦é”®" : "Left Button";
+                        // ¼ÆËã±êÌâ¿í¶È²¢ÉèÖÃ¾ÓÖĞ
+                        const char* LeftTitle = config.UseChinese ? u8"×ó¼ü" : "Left Button";
                         SetCursorPosX(StartX + (PlotSize - CalcTextSize(LeftTitle).x) / 2);
                         Text(LeftTitle);
 
                         SetCursorPos(ImVec2(StartX, PosY + 20.0f));
 
-                        // ç»˜åˆ¶é¥¼å›¾
+                        // »æÖÆ±ıÍ¼
                         const unsigned long long values[] = { app_status.ClickerClickCount.left, app_status.MouseClickCount.left };
                         const char* labels[] = {
-                            (char*)(config.UseChinese ? u8"è¿ç‚¹å™¨" : "Clicker"),
-                            (char*)(config.UseChinese ? u8"æ‰‹åŠ¨" : "Manual")
+                            (char*)(config.UseChinese ? u8"Á¬µãÆ÷" : "Clicker"),
+                            (char*)(config.UseChinese ? u8"ÊÖ¶¯" : "Manual")
                         };
 
                         if (ImPlot::BeginPlot("##stat_gml", ImVec2(PlotSize, PlotSize), PieFlag))
@@ -1351,18 +1352,18 @@ void RenderGui(ImGuiIO& io)
                     {
                         float StartX = GetCursorPosX();
 
-                        // è®¡ç®—æ ‡é¢˜å®½åº¦å¹¶è®¾ç½®å±…ä¸­
-                        const char* RightTitle = config.UseChinese ? u8"å³é”®" : "Right Button";
+                        // ¼ÆËã±êÌâ¿í¶È²¢ÉèÖÃ¾ÓÖĞ
+                        const char* RightTitle = config.UseChinese ? u8"ÓÒ¼ü" : "Right Button";
                         SetCursorPos(ImVec2(StartX + (PlotSize - CalcTextSize(RightTitle).x) / 2, PosY));
                         Text(RightTitle);
 
                         SetCursorPos(ImVec2(StartX, PosY + 20));
 
-                        // ç»˜åˆ¶é¥¼å›¾
+                        // »æÖÆ±ıÍ¼
                         const unsigned long long values[] = { app_status.ClickerClickCount.right, app_status.MouseClickCount.right };
                         const char* labels[] = {
-                            (char*)(config.UseChinese ? u8"è¿ç‚¹å™¨" : "Clicker"),
-                            (char*)(config.UseChinese ? u8"æ‰‹åŠ¨" : "Manual")
+                            (char*)(config.UseChinese ? u8"Á¬µãÆ÷" : "Clicker"),
+                            (char*)(config.UseChinese ? u8"ÊÖ¶¯" : "Manual")
                         };
 
                         if (ImPlot::BeginPlot("##stat_gmr", ImVec2(PlotSize, PlotSize), PieFlag))
@@ -1382,16 +1383,16 @@ void RenderGui(ImGuiIO& io)
             
             break;
         }
-        case Tab::Setting: //-----------------------è®¾ç½®---------------------------
+        case Tab::Setting: //-----------------------ÉèÖÃ---------------------------
         {
             static const Texture2D ImageItembar = LoadTextureFromFile(Pics_Itembar, false);
             static const Texture2D ImageSelected = LoadTextureFromFile(Pics_Selected, false);
 
             const ImVec2 Pos = GetCursorPos();
-            TabsText((ICON_FA_GEAR + (config.UseChinese ? u8"è®¾ç½®"s : "Setting"s)).c_str());
+            TabsText((ICON_FA_GEAR + (config.UseChinese ? u8"ÉèÖÃ"s : "Setting"s)).c_str());
 
             const ImVec2 Pos2 = GetCursorPos();
-            // é…ç½®é¢„è®¾ä¸‹æ‹‰åˆ—è¡¨ï¼ˆä½äºâ€œä¿å­˜â€æŒ‰é’®çš„å·¦ä¾§ï¼‰
+            // ÅäÖÃÔ¤ÉèÏÂÀ­ÁĞ±í£¨Î»ÓÚ¡°±£´æ¡±°´Å¥µÄ×ó²à£©
             const float presetW = 110.0f;
             SetCursorPos(ImVec2(Pos.x + 540 - presetW - 8, Pos.y + 10));
             {
@@ -1401,7 +1402,7 @@ void RenderGui(ImGuiIO& io)
                 {
                     if (presetName != PresetConfig::CurrentName)
                     {
-                        // åˆ‡æ¢ä¸¢åˆ°åå°çº¿ç¨‹æ‰§è¡Œï¼ŒUI çº¿ç¨‹ä¸å†é•¿æ—¶é—´æŒæœ‰ ConfigAccessMutexã€‚
+                        // ÇĞ»»¶ªµ½ºóÌ¨Ïß³ÌÖ´ĞĞ£¬UI Ïß³Ì²»ÔÙ³¤Ê±¼ä³ÖÓĞ ConfigAccessMutex¡£
                         string FromName;
                         string ToName = presetName;
                         {
@@ -1411,7 +1412,7 @@ void RenderGui(ImGuiIO& io)
                         thread th([FromName, ToName]()
                         {
                             SwitchPreset(FromName, ToName);
-                            IsReloadClicker = true;   // è½½å…¥å®Œæˆåæ‰é€šçŸ¥ç‚¹å‡»çº¿ç¨‹ä¿å­˜
+                            IsReloadClicker = true;   // ÔØÈëÍê³Éºó²ÅÍ¨Öªµã»÷Ïß³Ì±£´æ
                         });
                         th.detach();
                     }
@@ -1429,7 +1430,7 @@ void RenderGui(ImGuiIO& io)
                         DeletePreset(delName);
                     });
                     th.detach();
-                    RenderTip(config.UseChinese ? u8"å·²åˆ é™¤é…ç½®é¢„è®¾" : "Preset deleted", 1.5f, PT_INFO);
+                    RenderTip(config.UseChinese ? u8"ÒÑÉ¾³ıÅäÖÃÔ¤Éè" : "Preset deleted", 1.5f, PT_INFO);
                 }
                 else if (presetHit == PRESET_ACTION_ADD)
                 {
@@ -1440,27 +1441,27 @@ void RenderGui(ImGuiIO& io)
             }
 
             SetCursorPos(ImVec2(Pos.x + 540, Pos.y + 10));
-            if (Button((ICON_FA_FLOPPY_DISK + (config.UseChinese ? u8"ä¿å­˜è®¾ç½®"s : "Save"s)).c_str(), ImVec2(80, 40)))
+            if (Button((ICON_FA_FLOPPY_DISK + (config.UseChinese ? u8"±£´æÉèÖÃ"s : "Save"s)).c_str(), ImVec2(80, 40)))
                 IsReloadClicker = true;
             SameLine();
 
             static const ButtonPopupMenuItem menu_items[] = {
-                { ICON_FA_ARROW_ROTATE_LEFT + (config.UseChinese ? u8" é‡ç½®é…ç½®"s : " Reset"s), true },
-                { ICON_FA_FOLDER_OPEN + (config.UseChinese ? u8" æ‰“å¼€é…ç½®ç›®å½•"s : " Explore Config"s), true },
-                { ICON_FA_FILE_EXPORT + (config.UseChinese ? u8" å¯¼å‡ºå½“å‰é…ç½®"s : " Export Current Config"s), true },
-                { ICON_FA_FILE_IMPORT + (config.UseChinese ? u8" å¯¼å…¥é…ç½®"s : " Import Config"s), true }
+                { ICON_FA_ARROW_ROTATE_LEFT + (config.UseChinese ? u8" ÖØÖÃÅäÖÃ"s : " Reset"s), true },
+                { ICON_FA_FOLDER_OPEN + (config.UseChinese ? u8" ´ò¿ªÅäÖÃÄ¿Â¼"s : " Explore Config"s), true },
+                { ICON_FA_FILE_EXPORT + (config.UseChinese ? u8" µ¼³öµ±Ç°ÅäÖÃ"s : " Export Current Config"s), true },
+                { ICON_FA_FILE_IMPORT + (config.UseChinese ? u8" µ¼ÈëÅäÖÃ"s : " Import Config"s), true }
             };
             const int hit = ButtonPopupMenu(ICON_FA_BARS, "OtherMenuAction", menu_items, IM_ARRAYSIZE(menu_items), 150.0f, ImVec2(40, 40));
             switch (hit)
             {
                 case 0:
                 {
-                    // ä¿®å¤ï¼šåŸ detach çº¿ç¨‹åœ¨ç¡®è®¤åç›´æ¥æ‰§è¡Œ config.~Config()+placement newï¼Œ
-                    // ä¸ ClickerControl/MouseSoundThread/GetInfo ç­‰çº¿ç¨‹å¹¶å‘è¯»å†™ config -> 0xC0000005ã€‚
-                    // çº¿ç¨‹åªè´Ÿè´£å¼¹çª—ç¡®è®¤ï¼ŒçœŸæ­£çš„é‡å»ºç”±ä¸»çº¿ç¨‹åœ¨ä¸‹ä¸€å¸§ RenderGui å¼€å¤´æ‰§è¡Œã€‚
+                    // ĞŞ¸´£ºÔ­ detach Ïß³ÌÔÚÈ·ÈÏºóÖ±½ÓÖ´ĞĞ config.~Config()+placement new£¬
+                    // Óë ClickerControl/MouseSoundThread/GetInfo µÈÏß³Ì²¢·¢¶ÁĞ´ config -> 0xC0000005¡£
+                    // Ïß³ÌÖ»¸ºÔğµ¯´°È·ÈÏ£¬ÕæÕıµÄÖØ½¨ÓÉÖ÷Ïß³ÌÔÚÏÂÒ»Ö¡ RenderGui ¿ªÍ·Ö´ĞĞ¡£
                     thread FunThread([]()
                     {
-                        if (RenderMessageBox(config.UseChinese ? u8"çœŸçš„è¦é‡ç½®å½“å‰é…ç½®å—ï¼Ÿ" : "Are you sure\nto reset the current config?", config.UseChinese ? u8"æç¤º" : "TIPS", MB_OKCANCEL, true) == IDOK)
+                        if (RenderMessageBox(config.UseChinese ? u8"ÕæµÄÒªÖØÖÃµ±Ç°ÅäÖÃÂğ£¿" : "Are you sure\nto reset the current config?", config.UseChinese ? u8"ÌáÊ¾" : "TIPS", MB_OKCANCEL, true) == IDOK)
                             IsNeedResetConfig = true;
                     });
                     FunThread.detach();
@@ -1474,8 +1475,8 @@ void RenderGui(ImGuiIO& io)
                 }
                 case 2:
                 {
-                    // æ‰“å¼€æ–‡ä»¶ä¿å­˜å¯¹è¯æ¡†ï¼Œä¿å­˜å½“å‰é¢„è®¾é…ç½®çš„æ–‡ä»¶
-                    // ä¸ä½¿ç”¨å¼‚æ­¥ï¼Œå› ä¸ºä¿æŒé€»è¾‘ç»Ÿä¸€ï¼Œä¸‹é¢éƒ½æ²¡ä½¿ç”¨å¼‚æ­¥ï¼Œé‚£åœ¨è¿™é‡Œæœ‰ä»€ä¹ˆç†ç”±ä½¿ç”¨å‘¢ï¼Ÿ
+                    // ´ò¿ªÎÄ¼ş±£´æ¶Ô»°¿ò£¬±£´æµ±Ç°Ô¤ÉèÅäÖÃµÄÎÄ¼ş
+                    // ²»Ê¹ÓÃÒì²½£¬ÒòÎª±£³ÖÂß¼­Í³Ò»£¬ÏÂÃæ¶¼Ã»Ê¹ÓÃÒì²½£¬ÄÇÔÚÕâÀïÓĞÊ²Ã´ÀíÓÉÊ¹ÓÃÄØ£¿
                     const string TargetFile = GetPresetFile(PresetConfig::CurrentName);
 
                     OPENFILENAME ofn;
@@ -1484,71 +1485,71 @@ void RenderGui(ImGuiIO& io)
 
                     ZeroMemory(&ofn, sizeof(ofn));
                     ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = NULL; // å¯ä»¥è®¾ç½®ä¸ºä½ çš„çª—å£å¥æŸ„
+                    ofn.hwndOwner = NULL; // ¿ÉÒÔÉèÖÃÎªÄãµÄ´°¿Ú¾ä±ú
                     ofn.lpstrFilter = "GC Config Files (*.ini)\0*.ini\0All Files (*.*)\0*.*\0";
                     ofn.lpstrFile = szFileName;
                     ofn.nMaxFile = MAX_PATH;
                     ofn.hwndOwner = GCHWND;
-                    // è®¾ç½®å¯¹è¯æ¡†æ ‡å¿—ï¼Œä¾‹å¦‚æç¤ºè¦†ç›–ç­‰
+                    // ÉèÖÃ¶Ô»°¿ò±êÖ¾£¬ÀıÈçÌáÊ¾¸²¸ÇµÈ
                     ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
-                    ofn.lpstrDefExt = "ini"; // é»˜è®¤æ‰©å±•å
+                    ofn.lpstrDefExt = "ini"; // Ä¬ÈÏÀ©Õ¹Ãû
 
                     if (GetSaveFileName(&ofn))
                     {
-                        string destinationPath = ofn.lpstrFile; // ç”¨æˆ·é€‰æ‹©çš„å®Œæ•´ç›®æ ‡è·¯å¾„
+                        string destinationPath = ofn.lpstrFile; // ÓÃ»§Ñ¡ÔñµÄÍêÕûÄ¿±êÂ·¾¶
                         if (CopyFile(TargetFile.c_str(), destinationPath.c_str(), FALSE) == FALSE)
                         {
                             DWORD error = GetLastError();
-                            PrintLog("[Preset] å¯¼å‡ºé…ç½®å¤±è´¥ï¼Œé”™è¯¯ç : " + to_string(error), PL_ERROR);
+                            PrintLog("[Preset] µ¼³öÅäÖÃÊ§°Ü£¬´íÎóÂë: " + to_string(error), PL_ERROR);
                         }
                     }
                     break;
                 }
                 case 3:
                 {
-                    // æ‰“å¼€æ–‡ä»¶é€‰æ‹©å¯¹è¯æ¡†ï¼Œé€‰æ‹©ä¸€ä¸ªé…ç½®æ–‡ä»¶å¯¼å…¥
-					// ä½†ä¸ä½¿ç”¨å¼‚æ­¥ï¼Œè€Œæ˜¯åŒæ—¶è®¾ç½®hwndOwner = GCHWNDï¼Œé€‰æ‹©æ–‡ä»¶æ—¶ä¸èƒ½æ“ä½œGCçª—å£ï¼Œè¿™æ ·å¯ä»¥é¿å…çº¿ç¨‹é—®é¢˜
+                    // ´ò¿ªÎÄ¼şÑ¡Ôñ¶Ô»°¿ò£¬Ñ¡ÔñÒ»¸öÅäÖÃÎÄ¼şµ¼Èë
+					// µ«²»Ê¹ÓÃÒì²½£¬¶øÊÇÍ¬Ê±ÉèÖÃhwndOwner = GCHWND£¬Ñ¡ÔñÎÄ¼şÊ±²»ÄÜ²Ù×÷GC´°¿Ú£¬ÕâÑù¿ÉÒÔ±ÜÃâÏß³ÌÎÊÌâ
                     OPENFILENAME ofn;
                     char szFileName[MAX_PATH]{};
                     ZeroMemory(&ofn, sizeof(ofn));
                     ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = NULL; // å¯ä»¥è®¾ç½®ä¸ºä½ çš„çª—å£å¥æŸ„
+                    ofn.hwndOwner = NULL; // ¿ÉÒÔÉèÖÃÎªÄãµÄ´°¿Ú¾ä±ú
                     ofn.lpstrFilter = "GC Config Files (*.ini)\0*.ini\0";
                     ofn.lpstrFile = szFileName;
                     ofn.nMaxFile = MAX_PATH;
                     ofn.hwndOwner = GCHWND;
-                    // è®¾ç½®å¯¹è¯æ¡†æ ‡å¿—ï¼Œä¾‹å¦‚æç¤ºè¦†ç›–ç­‰
+                    // ÉèÖÃ¶Ô»°¿ò±êÖ¾£¬ÀıÈçÌáÊ¾¸²¸ÇµÈ
                     ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-                    ofn.lpstrDefExt = "ini"; // é»˜è®¤æ‰©å±•å
+                    ofn.lpstrDefExt = "ini"; // Ä¬ÈÏÀ©Õ¹Ãû
                     if (GetOpenFileName(&ofn))
                     {
-                        string SourcePath = ofn.lpstrFile; // ç”¨æˆ·é€‰æ‹©çš„å®Œæ•´æºè·¯å¾„
+                        string SourcePath = ofn.lpstrFile; // ÓÃ»§Ñ¡ÔñµÄÍêÕûÔ´Â·¾¶
                         string PresetName = [&SourcePath]() -> string {
                             size_t pos = SourcePath.find_last_of("\\");
                             size_t dotPos = SourcePath.find_last_of(".");
                             if (pos != string::npos)
-                                return SourcePath.substr(pos + 1, dotPos - pos - 1); // è·å–æ–‡ä»¶åéƒ¨åˆ†
+                                return SourcePath.substr(pos + 1, dotPos - pos - 1); // »ñÈ¡ÎÄ¼şÃû²¿·Ö
                             else
-                                return SourcePath.substr(0, 12); // éšä¾¿ä½¿ç”¨åå­—ï¼Œä½†è¦é™åˆ¶é•¿åº¦ä¸º12ï¼Œè¶…è¿‡éƒ¨åˆ†ç›´æ¥æˆªæ–­
+                                return SourcePath.substr(0, 12); // Ëæ±ãÊ¹ÓÃÃû×Ö£¬µ«ÒªÏŞÖÆ³¤¶ÈÎª12£¬³¬¹ı²¿·ÖÖ±½Ó½Ø¶Ï
                         }();
-                        if (CopyFile(SourcePath.c_str(), GetPresetFile(PresetName).c_str(), TRUE)) // è®¾ç½®TRUEè¡¨ç¤ºä¸è¦†ç›–å·²ç»å­˜åœ¨çš„ç›®æ ‡æ–‡ä»¶
+                        if (CopyFile(SourcePath.c_str(), GetPresetFile(PresetName).c_str(), TRUE)) // ÉèÖÃTRUE±íÊ¾²»¸²¸ÇÒÑ¾­´æÔÚµÄÄ¿±êÎÄ¼ş
                         {
                             PresetConfig::Presets.push_back(PresetName);
                             SwitchPreset(PresetConfig::CurrentName, PresetName);
-                            RenderTip(config.UseChinese ? u8"å¯¼å…¥é…ç½®æˆåŠŸ" : "Preset imported successfully", 2.0f, PT_INFO);
+                            RenderTip(config.UseChinese ? u8"µ¼ÈëÅäÖÃ³É¹¦" : "Preset imported successfully", 2.0f, PT_INFO);
                         }
                         else
                         {
                             DWORD error = GetLastError();
-                            if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS) // è¿™æ ·å°±ä¸ç”¨éå†å¯»æ‰¾åˆ—è¡¨æœ‰æ²¡æœ‰å­˜åœ¨çš„äº†ï¼Œæé«˜æ€§èƒ½
+                            if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS) // ÕâÑù¾Í²»ÓÃ±éÀúÑ°ÕÒÁĞ±íÓĞÃ»ÓĞ´æÔÚµÄÁË£¬Ìá¸ßĞÔÄÜ
                             {
-                                RenderTip((config.UseChinese ? u8"å¯¼å…¥é…ç½®å¤±è´¥ï¼Œåç§°å·²å­˜åœ¨" : "Failed to import preset, name already exists"), 3.0f, PT_ERROR);
-                                PrintLog("[Preset] å¯¼å…¥é…ç½®å¤±è´¥ï¼Œåç§°å·²å­˜åœ¨: " + PresetName, PL_ERROR);
+                                RenderTip((config.UseChinese ? u8"µ¼ÈëÅäÖÃÊ§°Ü£¬Ãû³ÆÒÑ´æÔÚ" : "Failed to import preset, name already exists"), 3.0f, PT_ERROR);
+                                PrintLog("[Preset] µ¼ÈëÅäÖÃÊ§°Ü£¬Ãû³ÆÒÑ´æÔÚ: " + PresetName, PL_ERROR);
                             }
                             else
                             {
-                                RenderTip((config.UseChinese ? u8"å¯¼å…¥é…ç½®å¤±è´¥" : "Failed to import preset") + " ("s + to_string(error) + ")", 3.0f, PT_ERROR);
-                                PrintLog("[Preset] å¯¼å…¥é…ç½®å¤±è´¥ï¼Œé”™è¯¯ç : " + to_string(error), PL_ERROR);
+                                RenderTip((config.UseChinese ? u8"µ¼ÈëÅäÖÃÊ§°Ü" : "Failed to import preset") + " ("s + to_string(error) + ")", 3.0f, PT_ERROR);
+                                PrintLog("[Preset] µ¼ÈëÅäÖÃÊ§°Ü£¬´íÎóÂë: " + to_string(error), PL_ERROR);
                             }
                         }
                     }
@@ -1556,21 +1557,21 @@ void RenderGui(ImGuiIO& io)
                 }
             }
 
-            //=======================æ–°å»ºé…ç½®é¢„è®¾å¼¹çª—===========================
-            if (BeginPopupWindow(config.UseChinese ? u8"æ–°å»ºé…ç½®é¢„è®¾" : "New Config Preset", &PresetConfig::ShowAdd, ImVec2(400, 200), POPUP_ANIM_FADE, POPUP_OPT_HIDE_CLOSE | POPUP_OPT_SHADOW))
+            //=======================ĞÂ½¨ÅäÖÃÔ¤Éèµ¯´°===========================
+            if (BeginPopupWindow(config.UseChinese ? u8"ĞÂ½¨ÅäÖÃÔ¤Éè" : "New Config Preset", &PresetConfig::ShowAdd, ImVec2(400, 200), POPUP_ANIM_FADE, POPUP_OPT_HIDE_CLOSE | POPUP_OPT_SHADOW))
             {
-                Text(config.UseChinese ? u8"è¯·è¾“å…¥é…ç½®é¢„è®¾åç§°ï¼š" : "Enter a preset name:");
+                Text(config.UseChinese ? u8"ÇëÊäÈëÅäÖÃÔ¤ÉèÃû³Æ£º" : "Enter a preset name:");
 
                 SetNextItemWidth(-1);
                 InputText("##preset_name", PresetConfig::NameBuf, IM_ARRAYSIZE(PresetConfig::NameBuf));
 
-                // å³ä¸‹è§’æ“ä½œæŒ‰é’®ï¼ˆç½‘é¡µé£æ ¼å¸ƒå±€ï¼‰
+                // ÓÒÏÂ½Ç²Ù×÷°´Å¥£¨ÍøÒ³·ç¸ñ²¼¾Ö£©
                 const ImGuiStyle& pstyle = GetStyle();
                 const float btnW = 92.0f, btnH = 34.0f;
                 const float totalW = btnW * 2.0f + pstyle.ItemSpacing.x;
                 const float btnY = ImGui::GetWindowHeight() - btnH - 16.0f;
 
-                // å†…è”æ ¡éªŒæç¤ºï¼Œæ˜¾ç¤ºåœ¨è¾“å…¥æ¡†ä¸‹æ–¹ï¼ˆ3 ç§’åè‡ªåŠ¨æ·¡å‡ºï¼‰
+                // ÄÚÁªĞ£ÑéÌáÊ¾£¬ÏÔÊ¾ÔÚÊäÈë¿òÏÂ·½£¨3 Ãëºó×Ô¶¯µ­³ö£©
                 if (PresetConfig::ErrorTime > 0.0f)
                 {
                     PresetConfig::ErrorTime -= ImGui::GetIO().DeltaTime;
@@ -1584,7 +1585,7 @@ void RenderGui(ImGuiIO& io)
                 ImGui::SetCursorPosY(btnY);
                 ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - totalW);
 
-                if (Button(config.UseChinese ? u8"ç¡®å®š" : "OK", ImVec2(btnW, btnH)))
+                if (Button(config.UseChinese ? u8"È·¶¨" : "OK", ImVec2(btnW, btnH)))
                 {
                     string NameStr = PresetConfig::NameBuf;
                     const size_t s = NameStr.find_first_not_of(" \t");
@@ -1593,19 +1594,19 @@ void RenderGui(ImGuiIO& io)
 
                     if (NameStr.empty())
                     {
-                        PresetConfig::ErrorMsg = config.UseChinese ? u8"åç§°ä¸èƒ½ä¸ºç©º" : "Name cannot be empty";
+                        PresetConfig::ErrorMsg = config.UseChinese ? u8"Ãû³Æ²»ÄÜÎª¿Õ" : "Name cannot be empty";
                         PresetConfig::ErrorTime = 3.0f;
                     }
                     if (NameStr.length() > 13)
                     {
-                        PresetConfig::ErrorMsg = config.UseChinese ? u8"åç§°å¤ªé•¿" : "Name is too long";
+                        PresetConfig::ErrorMsg = config.UseChinese ? u8"Ãû³ÆÌ«³¤" : "Name is too long";
                         PresetConfig::ErrorTime = 3.0f;
                     }
                     else
                     {
                         if (AddPreset(NameStr))
                         {
-                            // æ–°å»ºåçš„åˆ‡æ¢åŒæ ·æ”¾åå°çº¿ç¨‹ã€‚
+                            // ĞÂ½¨ºóµÄÇĞ»»Í¬Ñù·ÅºóÌ¨Ïß³Ì¡£
                             string FromName, ToName = NameStr;
                             {
                                 FromName = PresetConfig::CurrentName;
@@ -1617,18 +1618,18 @@ void RenderGui(ImGuiIO& io)
                                 IsReloadClicker = true;
                             });
                             th.detach();
-                            RenderTip(config.UseChinese ? u8"åˆ›å»ºé¢„è®¾é…ç½®æˆåŠŸ" : "Preset created successfully", 2.0f, PT_INFO);
+                            RenderTip(config.UseChinese ? u8"´´½¨Ô¤ÉèÅäÖÃ³É¹¦" : "Preset created successfully", 2.0f, PT_INFO);
                             PresetConfig::ShowAdd = false;
                         }
                         else
                         {
-                            PresetConfig::ErrorMsg = config.UseChinese ? u8"åç§°å·²å­˜åœ¨æˆ–æ— æ•ˆ" : "Name already exists or is invalid";
+                            PresetConfig::ErrorMsg = config.UseChinese ? u8"Ãû³ÆÒÑ´æÔÚ»òÎŞĞ§" : "Name already exists or is invalid";
                             PresetConfig::ErrorTime = 3.0f;
                         }
                     }
                 }
                 SameLine();
-                if (Button(config.UseChinese ? u8"å–æ¶ˆ" : "Cancel", ImVec2(btnW, btnH)))
+                if (Button(config.UseChinese ? u8"È¡Ïû" : "Cancel", ImVec2(btnW, btnH)))
                     PresetConfig::ShowAdd = false;
 
                 EndPopupWindow();
@@ -1639,18 +1640,18 @@ void RenderGui(ImGuiIO& io)
 
             BeginTabBar("##Script");
 
-            //-----------------------åŸºæœ¬è®¾ç½®---------------------------
-            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"åŸºæœ¬è®¾ç½®"s : "Basic Setting"s)).c_str()))
+            //-----------------------»ù±¾ÉèÖÃ---------------------------
+            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"»ù±¾ÉèÖÃ"s : "Basic Setting"s)).c_str()))
             {
-                BeginCard(config.UseChinese ? u8"åŸºæœ¬" : "Basic", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"»ù±¾" : "Basic", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    //-------------------------CPSè®¾ç½®/å¿«æ·é”®è®¾ç½®----------------------------
+                    //-------------------------CPSÉèÖÃ/¿ì½İ¼üÉèÖÃ----------------------------
                     if (VarHasChanged(config.UseBrutalMode, "UseBrutalMode"))
                     {
                         if (config.UseBrutalMode)
                         {
                             MessageBeep(MB_ICONWARNING);
-                            RenderTip(config.UseChinese ? u8"æš´åŠ›æ¨¡å¼ä¸‹ï¼Œå¯èƒ½ä¼šåŠ å¤§CPUçš„å¼€é”€ï¼" : "Brutal mode may cause a lot of computer CPU performance!", 2.0f, PT_WARNING);
+                            RenderTip(config.UseChinese ? u8"±©Á¦Ä£Ê½ÏÂ£¬¿ÉÄÜ»á¼Ó´óCPUµÄ¿ªÏú£¡" : "Brutal mode may cause a lot of computer CPU performance!", 2.0f, PT_WARNING);
                             config.RCPS += 60;
                             config.LCPS += 60;
                             config.UseRFluctuation = false;
@@ -1665,37 +1666,37 @@ void RenderGui(ImGuiIO& io)
                         }
                     }
 
-                    Text(config.UseChinese ? u8"å³é”®è¿ç‚¹æŒ‰é”®" : "RClicker Key");
+                    Text(config.UseChinese ? u8"ÓÒ¼üÁ¬µã°´¼ü" : "RClicker Key");
                     SameLine();
                     SetNextItemWidth(100);
                     {
                         int LastKey = config.RKEY;
-                        if (InputKey("##RClickKey", &config.RKEY, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key"))
+                        if (InputKey("##RClickKey", &config.RKEY, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key"))
                         {
                             if (LastKey == 2)
                             {
                                 config.RClickerMode |= C_BUTTONMODE;
                                 config.RClickerMode &= ~C_MOUSESMODE;
-                                RenderTip(config.UseChinese ? u8"å·²è‡ªåŠ¨åˆ‡æ¢ä¸º &6é»˜è®¤æ¨¡å¼" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"ÒÑ×Ô¶¯ÇĞ»»Îª &6Ä¬ÈÏÄ£Ê½" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
                             }
                             if (config.RKEY == 2)
                             {
                                 config.RClickerMode |= C_MOUSESMODE;
                                 config.RClickerMode &= ~C_BUTTONMODE;
-                                RenderTip(config.UseChinese ? u8"å·²è‡ªåŠ¨åˆ‡æ¢ä¸º &6é¼ æ ‡æ¨¡å¼" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"ÒÑ×Ô¶¯ÇĞ»»Îª &6Êó±êÄ£Ê½" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
                             }
                         }
                     }
                     if (!(config.RClickerMode & C_BUTTONMODE || config.RClickerMode & C_SWITCHMODE) && 
                         (config.RClickerMode & C_MOUSESMODE || config.RClickerMode & C_ASSISTMODE))
-                        AttachTooltip(config.UseChinese ? u8"&bè¾…åŠ©æ¨¡å¼ &fæˆ– &bé¼ æ ‡æ¨¡å¼&fä¸éœ€è¦è®¾ç½®å¿«æ·é”®" : "AssistMode or MouseMode does not need to set a shortcut key");
+                        AttachTooltip(config.UseChinese ? u8"&b¸¨ÖúÄ£Ê½ &f»ò &bÊó±êÄ£Ê½&f²»ĞèÒªÉèÖÃ¿ì½İ¼ü" : "AssistMode or MouseMode does not need to set a shortcut key");
                     else
-                        AttachTooltip(config.UseChinese ? u8"å¦‚æœéœ€è¦å®ç° æŒ‰ä½é¼ æ ‡ æ¥è¿ç‚¹\nå¯ä»¥ä½¿ç”¨é¼ æ ‡æ¨¡å¼ã€‚" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
+                        AttachTooltip(config.UseChinese ? u8"Èç¹ûĞèÒªÊµÏÖ °´×¡Êó±ê À´Á¬µã\n¿ÉÒÔÊ¹ÓÃÊó±êÄ£Ê½¡£" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
                    
                     SameLine();
 
-                    Text(config.UseChinese ? u8"å³é”®CPS" : "RClicker CPS");
-                    AttachTooltip(config.UseChinese ? u8"CPSæŒ‡æ¯ç§’è¿ç‚¹æ¬¡æ•°ï¼Œè¶Šé«˜è¶Šå¿«ï¼Œ\nä¸€èˆ¬å³é”®è®¾ç½® 20CPS å°±å¯ä»¥ã€‚" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the left key sets 14CPS can be used.");
+                    Text(config.UseChinese ? u8"ÓÒ¼üCPS" : "RClicker CPS");
+                    AttachTooltip(config.UseChinese ? u8"CPSÖ¸Ã¿ÃëÁ¬µã´ÎÊı£¬Ô½¸ßÔ½¿ì£¬\nÒ»°ãÓÒ¼üÉèÖÃ 20CPS ¾Í¿ÉÒÔ¡£" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the left key sets 14CPS can be used.");
                     SameLine();
                     SetNextItemWidth(350);
                     if (config.UseRFluctuation && !config.UseBrutalMode)
@@ -1712,7 +1713,7 @@ void RenderGui(ImGuiIO& io)
                     }
                     else
                     {
-                        if (SliderInt(u8"##rcps", &config.RCPS, MIN_CPS, config.UseBrutalMode ? 1000 : MAX_CPS, (config.RCPS >= 1000) ? (config.UseChinese ? u8"æé™" : "Max") : "%dCPS", ImGuiSliderFlags_AlwaysClamp))
+                        if (SliderInt(u8"##rcps", &config.RCPS, MIN_CPS, config.UseBrutalMode ? 1000 : MAX_CPS, (config.RCPS >= 1000) ? (config.UseChinese ? u8"¼«ÏŞ" : "Max") : "%dCPS", ImGuiSliderFlags_AlwaysClamp))
                         {
                             if (config.RCPS >= 1000)
                             {
@@ -1724,37 +1725,37 @@ void RenderGui(ImGuiIO& io)
                         }
                     }
 
-                    Text(config.UseChinese ? u8"å·¦é”®è¿ç‚¹æŒ‰é”®" : "LClicker Key");
+                    Text(config.UseChinese ? u8"×ó¼üÁ¬µã°´¼ü" : "LClicker Key");
                     SameLine();
                     SetNextItemWidth(100);
                     {
                         int LastKey = config.RKEY;
-                        if (InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key"))
+                        if (InputKey("##LClickKey", &config.LKEY, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key"))
                         {
                             if (LastKey == 2)
                             {
                                 config.LClickerMode |= C_BUTTONMODE;
                                 config.LClickerMode &= ~C_MOUSESMODE;
-                                RenderTip(config.UseChinese ? u8"å·²è‡ªåŠ¨åˆ‡æ¢ä¸º &6é»˜è®¤æ¨¡å¼" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"ÒÑ×Ô¶¯ÇĞ»»Îª &6Ä¬ÈÏÄ£Ê½" : "Automatically switched to &6Default Mode", 3.0f, PT_INFO);
                             }
                             if (config.LKEY == 1)
                             {
                                 config.LClickerMode |= C_MOUSESMODE;
                                 config.LClickerMode &= ~C_BUTTONMODE;
-                                RenderTip(config.UseChinese ? u8"å·²è‡ªåŠ¨åˆ‡æ¢ä¸º &6é¼ æ ‡æ¨¡å¼" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"ÒÑ×Ô¶¯ÇĞ»»Îª &6Êó±êÄ£Ê½" : "Automatically switched to &6Mouse Mode", 3.0f, PT_INFO);
                             }
                         }
                     }
                     if (!(config.LClickerMode & C_BUTTONMODE || config.LClickerMode & C_SWITCHMODE) &&
                         (config.LClickerMode & C_MOUSESMODE || config.LClickerMode & C_ASSISTMODE))
-                        AttachTooltip(config.UseChinese ? u8"&bè¾…åŠ©æ¨¡å¼ &fæˆ– &bé¼ æ ‡æ¨¡å¼&fä¸éœ€è¦è®¾ç½®å¿«æ·é”®" : "AssistMode or MouseMode does not need to set a shortcut key");
+                        AttachTooltip(config.UseChinese ? u8"&b¸¨ÖúÄ£Ê½ &f»ò &bÊó±êÄ£Ê½&f²»ĞèÒªÉèÖÃ¿ì½İ¼ü" : "AssistMode or MouseMode does not need to set a shortcut key");
                     else
-                        AttachTooltip(config.UseChinese ? u8"å¦‚æœéœ€è¦å®ç° æŒ‰ä½é¼ æ ‡ æ¥è¿ç‚¹\nå¯ä»¥ä½¿ç”¨é¼ æ ‡æ¨¡å¼ã€‚" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
+                        AttachTooltip(config.UseChinese ? u8"Èç¹ûĞèÒªÊµÏÖ °´×¡Êó±ê À´Á¬µã\n¿ÉÒÔÊ¹ÓÃÊó±êÄ£Ê½¡£" : "If you need to implement holding the mouse to click\nYou can use the mouse mode.");
 
                     SameLine();
 
-                    Text(config.UseChinese ? u8"å·¦é”®CPS" : "LClicker CPS");
-                    AttachTooltip(config.UseChinese ? u8"CPSæŒ‡æ¯ç§’è¿ç‚¹æ¬¡æ•°ï¼Œè¶Šé«˜è¶Šå¿«ï¼Œ\nä¸€èˆ¬å·¦é”®è®¾ç½® 14CPS å°±å¯ä»¥ã€‚" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the right key sets 20CPS can be used.");
+                    Text(config.UseChinese ? u8"×ó¼üCPS" : "LClicker CPS");
+                    AttachTooltip(config.UseChinese ? u8"CPSÖ¸Ã¿ÃëÁ¬µã´ÎÊı£¬Ô½¸ßÔ½¿ì£¬\nÒ»°ã×ó¼üÉèÖÃ 14CPS ¾Í¿ÉÒÔ¡£" : "CPS means the number of clicks per second, the higher the faster, \ngenerally the right key sets 20CPS can be used.");
                     SameLine();
                     SetNextItemWidth(350);
                     if (config.UseLFluctuation && !config.UseBrutalMode)
@@ -1771,7 +1772,7 @@ void RenderGui(ImGuiIO& io)
                     }
                     else
                     {
-                        if (SliderInt(u8"##lcps", &config.LCPS, MIN_CPS, config.UseBrutalMode ? 1000 : MAX_CPS, (config.LCPS >= 1000) ? (config.UseChinese ? u8"æé™" : "Max") : "%dCPS", ImGuiSliderFlags_AlwaysClamp))
+                        if (SliderInt(u8"##lcps", &config.LCPS, MIN_CPS, config.UseBrutalMode ? 1000 : MAX_CPS, (config.LCPS >= 1000) ? (config.UseChinese ? u8"¼«ÏŞ" : "Max") : "%dCPS", ImGuiSliderFlags_AlwaysClamp))
                         {
                             if (config.LCPS >= 1000)
                             {
@@ -1783,20 +1784,20 @@ void RenderGui(ImGuiIO& io)
                         }
                     }
 
-                    Toggle(config.UseChinese ? u8"å³é”®CPSæ³¢åŠ¨" : "RCPS Fluctuation", &config.UseRFluctuation, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"ÓÒ¼üCPS²¨¶¯" : "RCPS Fluctuation", &config.UseRFluctuation, ToggleFlags);
                     SameLine();
-                    Toggle(config.UseChinese ? u8"å·¦é”®CPSæ³¢åŠ¨" : "LCPS Fluctuation", &config.UseLFluctuation, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"×ó¼üCPS²¨¶¯" : "LCPS Fluctuation", &config.UseLFluctuation, ToggleFlags);
 
                     BeginDisabled(!config.UseLFluctuation && !config.UseRFluctuation);
                     {
                         SameLine();
                         static bool IsOpen = false;
-                        if (Button(config.UseChinese ? u8"éšæœºæ›²çº¿åˆ†å¸ƒ" : "Random Curve"))
+                        if (Button(config.UseChinese ? u8"Ëæ»úÇúÏß·Ö²¼" : "Random Curve"))
                             IsOpen = !IsOpen;
 
                         static LRPair<vector<WaveParam>> WaveList;
                         static bool LastOpenState = false;
-                        // æ‰“å¼€å¼¹çª—æ—¶åŠ è½½å·²ä¿å­˜çš„æ•°æ®
+                        // ´ò¿ªµ¯´°Ê±¼ÓÔØÒÑ±£´æµÄÊı¾İ
                         if (IsOpen && !LastOpenState)
                         {
                             if (!config.CPSWaves.left.empty())
@@ -1806,30 +1807,30 @@ void RenderGui(ImGuiIO& io)
                         }
                         LastOpenState = IsOpen;
 
-                        if (BeginPopupWindow(config.UseChinese ? u8"éšæœºæ³¢å½¢è®¾ç½®" : "Rand Wave Settings", &IsOpen))
+                        if (BeginPopupWindow(config.UseChinese ? u8"Ëæ»ú²¨ĞÎÉèÖÃ" : "Rand Wave Settings", &IsOpen))
                         {
-                            // å·¦å³ç‹¬ç«‹çŠ¶æ€
-                            static int CurrentTab = 0;                     // 0=å·¦é”®, 1=å³é”®
+                            // ×óÓÒ¶ÀÁ¢×´Ì¬
+                            static int CurrentTab = 0;                     // 0=×ó¼ü, 1=ÓÒ¼ü
                             static int SelectedWaveIndexLeft = -1;
                             static int SelectedWaveIndexRight = -1;
                             static bool ShowWaveSettingsLeft = false;
                             static bool ShowWaveSettingsRight = false;
                             static bool ShowAppliedCPS = false;
 
-                            if (Button(config.UseChinese ? u8"å·¦é”®" : "Left", ImVec2(80, 0)))
+                            if (Button(config.UseChinese ? u8"×ó¼ü" : "Left", ImVec2(80, 0)))
                                 CurrentTab = 0;
                             SameLine();
-                            if (Button(config.UseChinese ? u8"å³é”®" : "Right", ImVec2(80, 0)))
+                            if (Button(config.UseChinese ? u8"ÓÒ¼ü" : "Right", ImVec2(80, 0)))
                                 CurrentTab = 1;
                             SameLine();
                             if (CurrentTab == 0)
-                                Text(config.UseChinese ? u8"å·¦é”®æ³¢å½¢è®¾ç½®" : "LB Wave");
+                                Text(config.UseChinese ? u8"×ó¼ü²¨ĞÎÉèÖÃ" : "LB Wave");
                             else
-                                Text(config.UseChinese ? u8"å³é”®æ³¢å½¢è®¾ç½®" : "RB Wave");
+                                Text(config.UseChinese ? u8"ÓÒ¼ü²¨ĞÎÉèÖÃ" : "RB Wave");
 
                             {
                                 SameLine();
-                                const char* BtnText = config.UseChinese ? u8"ä¿å­˜" : "Save";
+                                const char* BtnText = config.UseChinese ? u8"±£´æ" : "Save";
                                 const ImGuiStyle style = GetStyle();
                                 const float BtnWidth = 50;
                                 SetCursorPosX(GetWindowContentRegionMax().x - BtnWidth - style.FramePadding.x);
@@ -1838,13 +1839,13 @@ void RenderGui(ImGuiIO& io)
                                     config.CPSWaves.left = WaveList.left;
                                     config.CPSWaves.right = WaveList.right;
                                     IsCPSWaveSettingChanged = true;
-                                    IsReloadClicker = true; // é‡è½½é…ç½® / ä¿å­˜é…ç½®
+                                    IsReloadClicker = true; // ÖØÔØÅäÖÃ / ±£´æÅäÖÃ
                                 }
                             }
 
                             Separator();
 
-                            // æ ¹æ®å½“å‰æ ‡ç­¾è·å–å¯¹åº”æ•°æ®å¼•ç”¨
+                            // ¸ù¾İµ±Ç°±êÇ©»ñÈ¡¶ÔÓ¦Êı¾İÒıÓÃ
                             vector<WaveParam>& waveList = (CurrentTab == 0) ? WaveList.left : WaveList.right;
                             float BaseCPS = (CurrentTab == 0) ? config.LCPS : config.RCPS;
                             float FluctRange = (CurrentTab == 0) ? config.LFluctuationCPS : config.RFluctuationCPS;
@@ -1853,7 +1854,7 @@ void RenderGui(ImGuiIO& io)
 
                             BeginChild("TopArea", ImVec2(0, GetContentRegionAvail().y * 0.6f), true);
                             {
-                                // å·¦ä¾§ï¼šé¢„è§ˆå›¾ï¼ˆå 60%å®½åº¦ï¼‰
+                                // ×ó²à£ºÔ¤ÀÀÍ¼£¨Õ¼60%¿í¶È£©
                                 BeginChild("LeftPreview", ImVec2(GetContentRegionAvail().x * 0.6f, 0), true);
                                 {
                                     if (SelectedIdx >= 0 && SelectedIdx < (int)waveList.size())
@@ -1862,7 +1863,7 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             const float rangeMax = 200.0f;
                                             float amp = waveList[SelectedIdx].amplitude;
-                                            if (amp <= 0.0f) amp = 1.0f; // é˜²æ­¢é™¤é›¶
+                                            if (amp <= 0.0f) amp = 1.0f; // ·ÀÖ¹³ıÁã
                                             ImPlot::SetupAxesLimits(0, rangeMax, -amp * 1.2f, amp * 1.2f);
                                             ImPlot::SetupAxis(ImAxis_X1, nullptr, ImPlotAxisFlags_AutoFit);
                                             
@@ -1872,25 +1873,25 @@ void RenderGui(ImGuiIO& io)
                                             {
                                                 float t = (float)i / points * rangeMax;
                                                 xs[i] = t;
-                                                // ç›´æ¥ç»˜åˆ¶å®é™…æŒ¯å¹…ï¼Œä¸å†å½’ä¸€åŒ–
+                                                // Ö±½Ó»æÖÆÊµ¼ÊÕñ·ù£¬²»ÔÙ¹éÒ»»¯
                                                 ys[i] = EvaluateWave(waveList[SelectedIdx], t);
                                             }
-                                            ImPlot::PlotLine(config.UseChinese ? u8"æ³¢å½¢" : "Waves", xs.data(), ys.data(), points);
+                                            ImPlot::PlotLine(config.UseChinese ? u8"²¨ĞÎ" : "Waves", xs.data(), ys.data(), points);
                                             ImPlot::EndPlot();
                                         }
                                     }
                                     else
-                                        Text(config.UseChinese ? u8"æœªé€‰ä¸­æ³¢å½¢" : "No wave selected");
+                                        Text(config.UseChinese ? u8"Î´Ñ¡ÖĞ²¨ĞÎ" : "No wave selected");
                                 }
                                 EndChild();
                                 SameLine();
 
-                                // å³ä¾§ï¼šåˆ—è¡¨ æˆ– ç¼–è¾‘é¢æ¿
+                                // ÓÒ²à£ºÁĞ±í »ò ±à¼­Ãæ°å
                                 BeginChild("RightPanel", ImVec2(0, 0), true);
                                 {
                                     if (!ShowSettings)
                                     {
-                                        if (Button(config.UseChinese ? u8"æ·»åŠ æ³¢å½¢" : "Add Waves"))
+                                        if (Button(config.UseChinese ? u8"Ìí¼Ó²¨ĞÎ" : "Add Waves"))
                                         {
                                             if (waveList.size() < 12)
                                             {
@@ -1914,7 +1915,7 @@ void RenderGui(ImGuiIO& io)
                                             }
                                         }
                                         SameLine();
-                                        if (SmallButton(config.UseChinese ? u8"ç¼–è¾‘" : "Edit"))
+                                        if (SmallButton(config.UseChinese ? u8"±à¼­" : "Edit"))
                                             ShowSettings = true;
                                         BeginChild("WaveListChild", ImVec2(0, 0), true);
                                         for (int i = 0; i < (int)waveList.size(); ++i)
@@ -1930,7 +1931,7 @@ void RenderGui(ImGuiIO& io)
                                             const WaveParam& w = waveList[i];
                                             sprintf_s(label, "A:%.2f F:%.2f P:%.2f", w.amplitude, w.frequency, w.phase);
 
-                                            // å¯é€‰é¡¹ï¼ˆç•™å‡ºæŒ‰é’®ç©ºé—´ï¼‰
+                                            // ¿ÉÑ¡Ïî£¨Áô³ö°´Å¥¿Õ¼ä£©
                                             if (Selectable(label, isSelected, 0, ImVec2(avail - TotalBtnWidth, 0)))
                                                 SelectedIdx = i;
 
@@ -1957,40 +1958,40 @@ void RenderGui(ImGuiIO& io)
                                     }
                                     else
                                     {
-                                        if (Button(config.UseChinese ? u8"è¿”å›" : "Back"))
+                                        if (Button(config.UseChinese ? u8"·µ»Ø" : "Back"))
                                             ShowSettings = false;
 
                                         if (SelectedIdx >= 0 && SelectedIdx < (int)waveList.size())
                                         {
                                             WaveParam& w = waveList[SelectedIdx];
-                                            // æŒ¯å¹…ï¼ˆæ­¥é•¿0.05ï¼‰
-                                            SliderFloat(config.UseChinese ? u8"æŒ¯å¹…&7(CPS)" : "Amplitude&7(CPS)", &w.amplitude, 0.0f, 10.0f);
-                                            Text(config.UseChinese ? u8"å¾®è°ƒ" : "Tweak");
+                                            // Õñ·ù£¨²½³¤0.05£©
+                                            SliderFloat(config.UseChinese ? u8"Õñ·ù&7(CPS)" : "Amplitude&7(CPS)", &w.amplitude, 0.0f, 10.0f);
+                                            Text(config.UseChinese ? u8"Î¢µ÷" : "Tweak");
                                             SameLine();
                                             if (Button("-##amp")) { w.amplitude = max(0.0f, w.amplitude - 0.05f); }
                                             SameLine();
                                             if (Button("+##amp")) { w.amplitude = min(10.0f, w.amplitude + 0.05f); }
 
-                                            // é¢‘ç‡ï¼ˆæ­¥é•¿0.005ï¼‰
-                                            SliderFloat(config.UseChinese ? u8"é¢‘ç‡&7(Hz)" : "Freq&7(Hz)", &w.frequency, 0.01f, 2.0f);
-                                            Text(config.UseChinese ? u8"å¾®è°ƒ" : "Tweak");
+                                            // ÆµÂÊ£¨²½³¤0.005£©
+                                            SliderFloat(config.UseChinese ? u8"ÆµÂÊ&7(Hz)" : "Freq&7(Hz)", &w.frequency, 0.01f, 2.0f);
+                                            Text(config.UseChinese ? u8"Î¢µ÷" : "Tweak");
                                             SameLine();
                                             if (Button("-##freq")) { w.frequency = max(0.01f, w.frequency - 0.005f); }
                                             SameLine();
                                             if (Button("+##freq")) { w.frequency = min(2.0f, w.frequency + 0.005f); }
 
-                                            // ç›¸ä½ï¼ˆæ­¥é•¿0.05ï¼‰
-                                            SliderFloat(config.UseChinese ? u8"ç›¸ä½&7(å¼§åº¦)" : "Phase&7(Rad)", &w.phase, -PI, PI);
-                                            Text(config.UseChinese ? u8"å¾®è°ƒ" : "Tweak");
+                                            // ÏàÎ»£¨²½³¤0.05£©
+                                            SliderFloat(config.UseChinese ? u8"ÏàÎ»&7(»¡¶È)" : "Phase&7(Rad)", &w.phase, -PI, PI);
+                                            Text(config.UseChinese ? u8"Î¢µ÷" : "Tweak");
                                             SameLine();
                                             if (Button("-##phase")) { w.phase = max(-PI, w.phase - 0.05f); }
                                             SameLine();
                                             if (Button("+##phase")) { w.phase = min(PI, w.phase + 0.05f); }
 
-                                            Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enabled", &w.enabled, ToggleFlags);
+                                            Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enabled", &w.enabled, ToggleFlags);
                                         }
                                         else
-                                            Text(config.UseChinese ? u8"æœªé€‰ä¸­æ³¢å½¢" : "No wave selected");
+                                            Text(config.UseChinese ? u8"Î´Ñ¡ÖĞ²¨ĞÎ" : "No wave selected");
                                     }
                                 }
                                 EndChild();
@@ -1999,15 +2000,15 @@ void RenderGui(ImGuiIO& io)
 
                             Separator();
 
-                            // ---------- ä¸‹åŠéƒ¨åˆ†ï¼šæ€» CPS å åŠ å›¾ ----------
+                            // ---------- ÏÂ°ë²¿·Ö£º×Ü CPS µş¼ÓÍ¼ ----------
                             BeginChild("BottomArea", ImVec2(0, 216), true);
                             {
-                                Toggle(config.UseChinese ? u8"æ˜¾ç¤ºåº”ç”¨CPSåçš„æ›²çº¿" : "Show applied CPS curve", &ShowAppliedCPS, ToggleFlags);
+                                Toggle(config.UseChinese ? u8"ÏÔÊ¾Ó¦ÓÃCPSºóµÄÇúÏß" : "Show applied CPS curve", &ShowAppliedCPS, ToggleFlags);
 
                                 if (ImPlot::BeginPlot("##OverallCPS", ImVec2(-1, 170)))
                                 {
                                     const float rangeMax = 700.0f;
-                                    // è®¡ç®—æ€»æŒ¯å¹…
+                                    // ¼ÆËã×ÜÕñ·ù
                                     float totalAmp = 0.0f;
                                     for (const auto& w : waveList)
                                         if (w.enabled)
@@ -2029,11 +2030,11 @@ void RenderGui(ImGuiIO& io)
                                         ys_clamped[i] = clamped;
                                     }
 
-                                    ImPlot::PlotLine(config.UseChinese ? u8"åŸå§‹æ€»CPS" : "Raw total CPS", xs.data(), ys_raw.data(), points);
+                                    ImPlot::PlotLine(config.UseChinese ? u8"Ô­Ê¼×ÜCPS" : "Raw total CPS", xs.data(), ys_raw.data(), points);
                                     if (ShowAppliedCPS)
                                     {
                                         ImPlot::SetNextLineStyle(ImVec4(1, 0.5f, 0, 1), 2);
-                                        ImPlot::PlotLine(config.UseChinese ? u8"åº”ç”¨åCPS" : "Applied CPS", xs.data(), ys_clamped.data(), points);
+                                        ImPlot::PlotLine(config.UseChinese ? u8"Ó¦ÓÃºóCPS" : "Applied CPS", xs.data(), ys_clamped.data(), points);
                                     }
                                     ImPlot::EndPlot();
                                 }
@@ -2043,18 +2044,18 @@ void RenderGui(ImGuiIO& io)
                             EndPopupWindow();
                         }
 
-                        // å…³é—­å¼¹çª—æ—¶ä¿å­˜å·¦å³åˆ—è¡¨
+                        // ¹Ø±Õµ¯´°Ê±±£´æ×óÓÒÁĞ±í
                         if (!IsOpen && LastOpenState)
                         {
                             config.CPSWaves.left = WaveList.left;
                             config.CPSWaves.right = WaveList.right;
                             IsCPSWaveSettingChanged = true;
-                            LastOpenState = false; // é˜²æ­¢é‡å¤ä¿å­˜
+                            LastOpenState = false; // ·ÀÖ¹ÖØ¸´±£´æ
                         }
                     }
                     EndDisabled();
 
-                    Text(config.UseChinese ? u8"&7å¦‚æœè¦è®¾ç½®ä¸ºé¼ æ ‡å·¦å³é”®ï¼Œè¯·ä½¿ç”¨é¼ æ ‡æ¨¡å¼ã€‚" : "&7If you want to set it to the mouse buttons, please use the Mouse Mode.");
+                    Text(config.UseChinese ? u8"&7Èç¹ûÒªÉèÖÃÎªÊó±ê×óÓÒ¼ü£¬ÇëÊ¹ÓÃÊó±êÄ£Ê½¡£" : "&7If you want to set it to the mouse buttons, please use the Mouse Mode.");
                 }
                 EndCard();
                 
@@ -2066,37 +2067,37 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-1-1", ImVec2(156, -1), false);
                     {
-                        //-------------------------æš´åŠ›æ¨¡å¼--------------------------
-                        Toggle(config.UseChinese ? u8"æš´åŠ›æ¨¡å¼" : "Brutal Mode", &config.UseBrutalMode, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"è®©ä½ çš„CPSè½»æ¾ç ´ç™¾\nä½†å¯èƒ½ä¼šå¯¼è‡´å¤§é‡å ç”¨ç”µè„‘CPUæ€§èƒ½ï¼\nå¹¶ä¸”å¯èƒ½ä¼šå¯¼è‡´CPSè®°å½•å™¨æ•°æ®ä¸å‡†ç¡®ï¼\n&då¼€å¯è¯¥åŠŸèƒ½ä¼šå¯¼è‡´ ç‰©å“æ å¼€å…³ åŠŸèƒ½å¤±æ•ˆã€‚" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!\n&dEnabling this feature will cause the ItemBarSwitch function to malfunction.");
+                        //-------------------------±©Á¦Ä£Ê½--------------------------
+                        Toggle(config.UseChinese ? u8"±©Á¦Ä£Ê½" : "Brutal Mode", &config.UseBrutalMode, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"ÈÃÄãµÄCPSÇáËÉÆÆ°Ù\nµ«¿ÉÄÜ»áµ¼ÖÂ´óÁ¿Õ¼ÓÃµçÄÔCPUĞÔÄÜ£¡\n²¢ÇÒ¿ÉÄÜ»áµ¼ÖÂCPS¼ÇÂ¼Æ÷Êı¾İ²»×¼È·£¡\n&d¿ªÆô¸Ã¹¦ÄÜ»áµ¼ÖÂ ÎïÆ·À¸¿ª¹Ø ¹¦ÄÜÊ§Ğ§¡£" : "Let your CPS easily break 100\nBut it may cause a lot of computer CPU performance!\nAnd it may cause the CPS recorder data to be inaccurate!\n&dEnabling this feature will cause the ItemBarSwitch function to malfunction.");
 
-                        //-------------------------å¯ç”¨è¿ç‚¹--------------------------
-                        Toggle(config.UseChinese ? u8"å¯ç”¨å³é”®è¿ç‚¹" : "Enable RClicker", &config.EnableRightClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"è¯¥é€‰é¡¹å¯èƒ½ä¼šè¢«å…¶ä»–åŠŸèƒ½è®¾ç½®\n&7å¦‚æœå‡ºç°æ— æ³• &aæ‰“å¼€&7/&cå…³é—­ &fè¯¥é€‰é¡¹\nå¯ä»¥å°è¯•å…³é—­ä¸€ä¸‹åŠŸèƒ½ï¼š\n&7ç‰©å“æ å¼€å…³\n&7ä»…ç§»åŠ¨è¿ç‚¹\n&7GUIæ£€æµ‹" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
+                        //-------------------------ÆôÓÃÁ¬µã--------------------------
+                        Toggle(config.UseChinese ? u8"ÆôÓÃÓÒ¼üÁ¬µã" : "Enable RClicker", &config.EnableRightClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¸ÃÑ¡Ïî¿ÉÄÜ»á±»ÆäËû¹¦ÄÜÉèÖÃ\n&7Èç¹û³öÏÖÎŞ·¨ &a´ò¿ª&7/&c¹Ø±Õ &f¸ÃÑ¡Ïî\n¿ÉÒÔ³¢ÊÔ¹Ø±ÕÒ»ÏÂ¹¦ÄÜ£º\n&7ÎïÆ·À¸¿ª¹Ø\n&7½öÒÆ¶¯Á¬µã\n&7GUI¼ì²â" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
 
-                        Toggle(config.UseChinese ? u8"å¯ç”¨å·¦é”®è¿ç‚¹" : "Enable LClicker", &config.EnableLeftClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"è¯¥é€‰é¡¹å¯èƒ½ä¼šè¢«å…¶ä»–åŠŸèƒ½è®¾ç½®\n&7å¦‚æœå‡ºç°æ— æ³• &aæ‰“å¼€&7/&cå…³é—­ &fè¯¥é€‰é¡¹\nå¯ä»¥å°è¯•å…³é—­ä¸€ä¸‹åŠŸèƒ½ï¼š\n&7ç‰©å“æ å¼€å…³\n&7ä»…ç§»åŠ¨è¿ç‚¹\n&7GUIæ£€æµ‹" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
+                        Toggle(config.UseChinese ? u8"ÆôÓÃ×ó¼üÁ¬µã" : "Enable LClicker", &config.EnableLeftClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¸ÃÑ¡Ïî¿ÉÄÜ»á±»ÆäËû¹¦ÄÜÉèÖÃ\n&7Èç¹û³öÏÖÎŞ·¨ &a´ò¿ª&7/&c¹Ø±Õ &f¸ÃÑ¡Ïî\n¿ÉÒÔ³¢ÊÔ¹Ø±ÕÒ»ÏÂ¹¦ÄÜ£º\n&7ÎïÆ·À¸¿ª¹Ø\n&7½öÒÆ¶¯Á¬µã\n&7GUI¼ì²â" : "This option may be controlled by other functions.\n&fIf you encounter issues &aEnable/&cDisabled &fthis option,\nyou can try disabling the following features:\n&7Inventory Toggle\n&7Only Move Clicking\n&7GUI Detection");
 
-                        if (Toggle(config.UseChinese ? u8"å¼€æœºè‡ªåŠ¨å¯åŠ¨" : "Start With System", &config.UseStartWithWindows, ToggleFlags))
+                        if (Toggle(config.UseChinese ? u8"¿ª»ú×Ô¶¯Æô¶¯" : "Start With System", &config.UseStartWithWindows, ToggleFlags))
                         {
                             static int FailedCount = 0;
                             thread FunThread([]()
                                 {
                                     if (FailedCount >= 3)
-                                        RenderTip(config.UseChinese ? u8"æ— æ³•è®¾ç½®å¼€æœºè‡ªåŠ¨å¯åŠ¨\nç–‘ä¼¼æ€æ¯’è½¯ä»¶è‡ªåŠ¨æ‹¦æˆªï¼Œ\nè¯·å…³é—­æ€æ¯’è½¯ä»¶åå†è¯•ã€‚" : "Failed to set start with system\nAnti-virus software interferes,\nplease close it and try again.", 4.0f, PT_WARNING);
+                                        RenderTip(config.UseChinese ? u8"ÎŞ·¨ÉèÖÃ¿ª»ú×Ô¶¯Æô¶¯\nÒÉËÆÉ±¶¾Èí¼ş×Ô¶¯À¹½Ø£¬\nÇë¹Ø±ÕÉ±¶¾Èí¼şºóÔÙÊÔ¡£" : "Failed to set start with system\nAnti-virus software interferes,\nplease close it and try again.", 4.0f, PT_WARNING);
                                     if (config.UseStartWithWindows)
                                     {
                                         if (!AddToStartup())
                                         {
                                             config.UseStartWithWindows = false;
-                                            RenderTip(config.UseChinese ? u8"æ·»åŠ åˆ°å¼€æœºå¯åŠ¨å¤±è´¥" : "Failed to add to startup", 1.5f, PT_ERROR);
-                                            PrintLog("[System] æ·»åŠ åˆ°å¼€æœºå¯åŠ¨å¤±è´¥", PL_ERROR);
+                                            RenderTip(config.UseChinese ? u8"Ìí¼Óµ½¿ª»úÆô¶¯Ê§°Ü" : "Failed to add to startup", 1.5f, PT_ERROR);
+                                            PrintLog("[System] Ìí¼Óµ½¿ª»úÆô¶¯Ê§°Ü", PL_ERROR);
                                             FailedCount++;
                                         }
                                         else
                                         {
-                                            RenderTip(config.UseChinese ? u8"æ·»åŠ åˆ°å¼€æœºå¯åŠ¨æˆåŠŸ" : "Added to startup successfully", 1.5f, PT_INFO);
-                                            PrintLog("[System] æ·»åŠ åˆ°å¼€æœºå¯åŠ¨æˆåŠŸ", PL_INFO);
+                                            RenderTip(config.UseChinese ? u8"Ìí¼Óµ½¿ª»úÆô¶¯³É¹¦" : "Added to startup successfully", 1.5f, PT_INFO);
+                                            PrintLog("[System] Ìí¼Óµ½¿ª»úÆô¶¯³É¹¦", PL_INFO);
                                             FailedCount = 0;
                                         }
                                     }
@@ -2105,14 +2106,14 @@ void RenderGui(ImGuiIO& io)
                                         if (!RemoveStartup())
                                         {
                                             config.UseStartWithWindows = true;
-                                            RenderTip(config.UseChinese ? u8"åˆ é™¤å¼€æœºè‡ªåŠ¨å¯åŠ¨å¤±è´¥" : "Failed to remove from startup", 1.5f, PT_ERROR);
-                                            PrintLog("[System] ä»å¼€æœºå¯åŠ¨ä¸­åˆ é™¤å¤±è´¥", PL_ERROR);
+                                            RenderTip(config.UseChinese ? u8"É¾³ı¿ª»ú×Ô¶¯Æô¶¯Ê§°Ü" : "Failed to remove from startup", 1.5f, PT_ERROR);
+                                            PrintLog("[System] ´Ó¿ª»úÆô¶¯ÖĞÉ¾³ıÊ§°Ü", PL_ERROR);
                                             FailedCount++;
                                         }
                                         else
                                         {
-                                            RenderTip(config.UseChinese ? u8"ä»å¼€æœºå¯åŠ¨ä¸­åˆ é™¤æˆåŠŸ" : "Removed from startup successfully", 1.5f, PT_INFO);
-                                            PrintLog("[System] ä»å¼€æœºå¯åŠ¨ä¸­åˆ é™¤æˆåŠŸ", PL_INFO);
+                                            RenderTip(config.UseChinese ? u8"´Ó¿ª»úÆô¶¯ÖĞÉ¾³ı³É¹¦" : "Removed from startup successfully", 1.5f, PT_INFO);
+                                            PrintLog("[System] ´Ó¿ª»úÆô¶¯ÖĞÉ¾³ı³É¹¦", PL_INFO);
                                             FailedCount = 0;
                                         }
                                     }
@@ -2120,22 +2121,22 @@ void RenderGui(ImGuiIO& io)
                             FunThread.detach();
                         }
 
-                        //-------------------------é€‚é…æ–°ç‰ˆåŸºå²©ç‰ˆ--------------------------
+                        //-------------------------ÊÊÅäĞÂ°æ»ùÑÒ°æ--------------------------
                         static int backup_mode = config.SimulateClickMode;
-                        if (Toggle(config.UseChinese ? u8"é€‚é…&cæ–°ç‰ˆ&fåŸºå²©ç‰ˆ" : "Adapt BE", &config.UseBEAdaptation, ToggleFlags))
+                        if (Toggle(config.UseChinese ? u8"ÊÊÅä&cĞÂ°æ&f»ùÑÒ°æ" : "Adapt BE", &config.UseBEAdaptation, ToggleFlags))
                         {
                             if (config.UseBEAdaptation)
                             {
                                 backup_mode = config.SimulateClickMode;
                                 config.SimulateClickMode = SC_SEND_INPUT;
-                                RenderTip(config.UseChinese ? u8"å·²è°ƒæ•´ &dç‚¹å‡»æ–¹å¼ &fåˆ‡æ¢ä¸º &6Send Input" : "The &dSimulate Click mode set to &6Send Input.", 2.2f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"ÒÑµ÷Õû &dµã»÷·½Ê½ &fÇĞ»»Îª &6Send Input" : "The &dSimulate Click mode set to &6Send Input.", 2.2f, PT_INFO);
                             }
                             else
                                 config.SimulateClickMode = backup_mode;
                         }
 
-                        //-------------------------ä¸»æ’­æ¨¡å¼--------------------------
-                        if (Toggle(config.UseChinese ? u8"ä¸»æ’­æ¨¡å¼" : "Broadcaster Mode", &config.UseBroadcasterMode, ToggleFlags))
+                        //-------------------------Ö÷²¥Ä£Ê½--------------------------
+                        if (Toggle(config.UseChinese ? u8"Ö÷²¥Ä£Ê½" : "Broadcaster Mode", &config.UseBroadcasterMode, ToggleFlags))
                         {
                             thread FunThread(SetWindowDisplayAffinity, GCHWND, config.UseBroadcasterMode ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
                             FunThread.detach();
@@ -2147,43 +2148,43 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-1-2", ImVec2(248, -1), false);
                     {
-                        //-------------------------å·¦å³ä¼˜å…ˆçº§--------------------------
+                        //-------------------------×óÓÒÓÅÏÈ¼¶--------------------------
                         static const array<const char*, 3> ClickerPriorityListText = {
-                            (config.UseChinese ? u8"æ— " : "None"),
-                            (config.UseChinese ? u8"å³é”®è¿ç‚¹ä¼˜å…ˆ" : "RC Highter Priority"),
-                            (config.UseChinese ? u8"å·¦é”®è¿ç‚¹ä¼˜å…ˆ" : "LC Highter Priority")
+                            (config.UseChinese ? u8"ÎŞ" : "None"),
+                            (config.UseChinese ? u8"ÓÒ¼üÁ¬µãÓÅÏÈ" : "RC Highter Priority"),
+                            (config.UseChinese ? u8"×ó¼üÁ¬µãÓÅÏÈ" : "LC Highter Priority")
                         };
 
-                        Text(config.UseChinese ? u8"å·¦å³ä¼˜å…ˆçº§" : "AC Priority");
+                        Text(config.UseChinese ? u8"×óÓÒÓÅÏÈ¼¶" : "AC Priority");
                         SetNextItemWidth(146);
                         SameLine();
                         Combo("##ClickerPriorityMode", &config.ClickerPriorityMode, ClickerPriorityListText.data(), 3);
 
-                        //-------------------------å¼ºåˆ¶å¼€å…³å·¦å³é”®è¿ç‚¹--------------------------
+                        //-------------------------Ç¿ÖÆ¿ª¹Ø×óÓÒ¼üÁ¬µã--------------------------
                         SetNextItemWidth(80);
-                        InputKey("##EnableRightAssisKey", &config.EnableRightClickerKey, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
-                        AttachTooltip(config.UseChinese ? u8"è¿™ä¸ªä¸æ˜¯æ§åˆ¶è¿ç‚¹å¼€å…³çš„ï¼Œæ˜¯é˜²æ­¢çªå‘æƒ…å†µå‡†å¤‡çš„å¼ºåˆ¶æ€§å¼€å…³ã€‚" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
+                        InputKey("##EnableRightAssisKey", &config.EnableRightClickerKey, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
+                        AttachTooltip(config.UseChinese ? u8"Õâ¸ö²»ÊÇ¿ØÖÆÁ¬µã¿ª¹ØµÄ£¬ÊÇ·ÀÖ¹Í»·¢Çé¿ö×¼±¸µÄÇ¿ÖÆĞÔ¿ª¹Ø¡£" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
                         SameLine();
-                        Text(config.UseChinese ? u8"å¼ºåˆ¶å¼€å…³å³é”®è¿ç‚¹" : "Force Key RClicker");
+                        Text(config.UseChinese ? u8"Ç¿ÖÆ¿ª¹ØÓÒ¼üÁ¬µã" : "Force Key RClicker");
 
                         SetNextItemWidth(80);
-                        InputKey("##EnableLeftAssisKey", &config.EnableLeftClickerKey, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
-                        AttachTooltip(config.UseChinese ? u8"è¿™ä¸ªä¸æ˜¯æ§åˆ¶è¿ç‚¹å¼€å…³çš„ï¼Œæ˜¯é˜²æ­¢çªå‘æƒ…å†µå‡†å¤‡çš„å¼ºåˆ¶æ€§å¼€å…³ã€‚" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
+                        InputKey("##EnableLeftAssisKey", &config.EnableLeftClickerKey, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
+                        AttachTooltip(config.UseChinese ? u8"Õâ¸ö²»ÊÇ¿ØÖÆÁ¬µã¿ª¹ØµÄ£¬ÊÇ·ÀÖ¹Í»·¢Çé¿ö×¼±¸µÄÇ¿ÖÆĞÔ¿ª¹Ø¡£" : "This is not a switch for the clicker,\nit is a forced switch to prevent an emergency situation.");
                         SameLine();
-                        Text(config.UseChinese ? u8"å¼ºåˆ¶å¼€å…³å·¦é”®è¿ç‚¹" : "Force Key LClicker");
+                        Text(config.UseChinese ? u8"Ç¿ÖÆ¿ª¹Ø×ó¼üÁ¬µã" : "Force Key LClicker");
 
-                        //-----------------------è‡ªæ¯å¿«æ·é”®----------------------------
+                        //-----------------------×Ô»Ù¿ì½İ¼ü----------------------------
                         SetNextItemWidth(80);
-                        InputKey("##sdkey", &config.SelfDestructionKey, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
-                        AttachTooltip(config.UseChinese ? u8"è¯¥åŠŸèƒ½åœ¨GCçª—å£ä¸­å°†ä¸èµ·ä½œç”¨ï¼Œ\nè¯·åœ¨å…¶ä»–åœ°æ–¹æŒ‰ä¸‹æŒ‰é”®æ–¹å¯ç”Ÿæ•ˆã€‚" : "This function will not work in the GC window, \nplease press the key in another place to take effect.");
+                        InputKey("##sdkey", &config.SelfDestructionKey, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
+                        AttachTooltip(config.UseChinese ? u8"¸Ã¹¦ÄÜÔÚGC´°¿ÚÖĞ½«²»Æğ×÷ÓÃ£¬\nÇëÔÚÆäËûµØ·½°´ÏÂ°´¼ü·½¿ÉÉúĞ§¡£" : "This function will not work in the GC window, \nplease press the key in another place to take effect.");
                         SameLine();
-                        Text(config.UseChinese ? u8"è‡ªæ¯å¿«æ·é”®" : "Self-Destruct Key");
+                        Text(config.UseChinese ? u8"×Ô»Ù¿ì½İ¼ü" : "Self-Destruct Key");
 
-                        //-------------------------å…è®¸æ§åˆ¶è¿ç‚¹å¼€å…³--------------------------
-                        Toggle(config.UseChinese ? u8"å…è®¸æ§åˆ¶å³é”®è¿ç‚¹å¼€å…³" : "Allow Ctrl RC Enables", &config.AllowSetRClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"é»˜è®¤å¼€å¯ï¼Œå…³é—­åï¼Œè¿ç‚¹å™¨å°†æ— æ³•æ§åˆ¶å³é”®çš„å¼€å…³çŠ¶æ€ã€‚" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the right-click switch status. ");
-                        Toggle(config.UseChinese ? u8"å…è®¸æ§åˆ¶å·¦é”®è¿ç‚¹å¼€å…³" : "Allow Ctrl LC Enables", &config.AllowSetLClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"é»˜è®¤å¼€å¯ï¼Œå…³é—­åï¼Œè¿ç‚¹å™¨å°†æ— æ³•æ§åˆ¶å·¦é”®çš„å¼€å…³çŠ¶æ€ã€‚" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the left-click switch status. ");
+                        //-------------------------ÔÊĞí¿ØÖÆÁ¬µã¿ª¹Ø--------------------------
+                        Toggle(config.UseChinese ? u8"ÔÊĞí¿ØÖÆÓÒ¼üÁ¬µã¿ª¹Ø" : "Allow Ctrl RC Enables", &config.AllowSetRClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"Ä¬ÈÏ¿ªÆô£¬¹Ø±Õºó£¬Á¬µãÆ÷½«ÎŞ·¨¿ØÖÆÓÒ¼üµÄ¿ª¹Ø×´Ì¬¡£" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the right-click switch status. ");
+                        Toggle(config.UseChinese ? u8"ÔÊĞí¿ØÖÆ×ó¼üÁ¬µã¿ª¹Ø" : "Allow Ctrl LC Enables", &config.AllowSetLClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"Ä¬ÈÏ¿ªÆô£¬¹Ø±Õºó£¬Á¬µãÆ÷½«ÎŞ·¨¿ØÖÆ×ó¼üµÄ¿ª¹Ø×´Ì¬¡£" : "The default is to turn on, and if you turn off,\nthe clicker will not be able to control the left-click switch status. ");
                     }
                     EndChild();
 
@@ -2191,32 +2192,32 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-1-3", ImVec2(229, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"è¿‡çƒ­ä¿æŠ¤" : "Feature Timeout", &config.UseOverheatProtec, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"¹ıÈÈ±£»¤" : "Feature Timeout", &config.UseOverheatProtec, ToggleFlags);
 
                         BeginDisabled(!config.UseOverheatProtec);
                         {
-                            Text(config.UseChinese ? u8"è¿‡çƒ­æ—¶é•¿" : "Timeout");
+                            Text(config.UseChinese ? u8"¹ıÈÈÊ±³¤" : "Timeout");
                             SameLine();
-                            SliderFloat(u8"##OverheatTime", &config.OverheatTime, 1.0f, 20.0f, config.UseChinese ? u8"%.2fç§’" : "%.2fs", ImGuiSliderFlags_AlwaysClamp);
+                            SliderFloat(u8"##OverheatTime", &config.OverheatTime, 1.0f, 20.0f, config.UseChinese ? u8"%.2fÃë" : "%.2fs", ImGuiSliderFlags_AlwaysClamp);
 
-                            Text(config.UseChinese ? u8"å†·å´æ—¶é•¿" : "Cooldown");
+                            Text(config.UseChinese ? u8"ÀäÈ´Ê±³¤" : "Cooldown");
                             SameLine();
                             SetNextItemWidth(120);
-                            SliderFloat(u8"##OverheatCooldownTime", &config.OverheatCooldownTime, 0.0f, 6.0f, (config.OverheatCooldownTime <= 0) ? (config.UseChinese ? u8"ç¦ç”¨" : "Disabled") : "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                            SliderFloat(u8"##OverheatCooldownTime", &config.OverheatCooldownTime, 0.0f, 6.0f, (config.OverheatCooldownTime <= 0) ? (config.UseChinese ? u8"½ûÓÃ" : "Disabled") : "%.2f", ImGuiSliderFlags_AlwaysClamp);
 
                             static const array<const char*, 3> OverheatSoundTypeListText = {
-                                (config.UseChinese ? u8"ç¦ç”¨" : "Disabled"),
-                                (config.UseChinese ? u8"ç³»ç»Ÿé»˜è®¤" : "System Default"),
-                                (config.UseChinese ? u8"ç‰¹æ®Šçš„å½©è›‹" : "Special Easter Egg")
+                                (config.UseChinese ? u8"½ûÓÃ" : "Disabled"),
+                                (config.UseChinese ? u8"ÏµÍ³Ä¬ÈÏ" : "System Default"),
+                                (config.UseChinese ? u8"ÌØÊâµÄ²Êµ°" : "Special Easter Egg")
                             };
 
-                            Text(config.UseChinese ? u8"æç¤ºéŸ³" : "Alert");
+                            Text(config.UseChinese ? u8"ÌáÊ¾Òô" : "Alert");
                             SetNextItemWidth(146);
                             SameLine();
                             Combo("##OverheatSoundType", &config.OverheatSoundType, OverheatSoundTypeListText.data(), 3);
 
-                            Text(config.UseChinese ? u8"è¿‡çƒ­è®¡æ—¶å™¨å€¼ï¼š%.2f" : "Overheat Timer: %.2f", OverheatTimer::Heat);
-                            Text(config.UseChinese ? u8"å†·å´è®¡æ—¶å™¨å€¼ï¼š%.2f" : "Cooldown Timer: %.2f", OverheatTimer::Cooldown);
+                            Text(config.UseChinese ? u8"¹ıÈÈ¼ÆÊ±Æ÷Öµ£º%.2f" : "Overheat Timer: %.2f", OverheatTimer::Heat);
+                            Text(config.UseChinese ? u8"ÀäÈ´¼ÆÊ±Æ÷Öµ£º%.2f" : "Cooldown Timer: %.2f", OverheatTimer::Cooldown);
                         }
                         EndDisabled();
                     }
@@ -2226,7 +2227,7 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
 
-                //-------------------------è¿ç‚¹æ¨¡å¼----------------------------
+                //-------------------------Á¬µãÄ£Ê½----------------------------
                 //DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 BeginCard("##ClickerModeCard", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
@@ -2238,102 +2239,102 @@ void RenderGui(ImGuiIO& io)
                         if (i == 2)
                             SetCursorPosY(GetCursorPosY() + 20);
 
-                        Text(config.UseChinese ? ((i == 0) ? u8"å³é”®è¿ç‚¹æ¨¡å¼" : u8"å·¦é”®è¿ç‚¹æ¨¡å¼") : ((i == 0) ? "RClicker Mode" : "LClicker Mode"));
+                        Text(config.UseChinese ? ((i == 0) ? u8"ÓÒ¼üÁ¬µãÄ£Ê½" : u8"×ó¼üÁ¬µãÄ£Ê½") : ((i == 0) ? "RClicker Mode" : "LClicker Mode"));
                         SameLine();
 
                         bool is_selected = *vlist[i] & C_BUTTONMODE;
-                        if (Checkbox(config.UseChinese ? u8"é»˜è®¤æ¨¡å¼" : "Default Mode", &is_selected))
+                        if (Checkbox(config.UseChinese ? u8"Ä¬ÈÏÄ£Ê½" : "Default Mode", &is_selected))
                         {
                             *vlist[i] &= ~C_SWITCHMODE;
                             *vlist[i] = is_selected ? *vlist[i] | C_BUTTONMODE : *vlist[i] & ~C_BUTTONMODE;
                         }
-                        AttachTooltip(config.UseChinese ? u8"æŒ‰ä½æŒ‰é”®è¿ç‚¹ï¼Œæ¾å¼€åœæ­¢\nè¿ç‚¹å™¨é»˜è®¤æ¨¡å¼ã€‚" : "Hold down the key to click\nRelease to stop\nThe default mode of the clicker.");
+                        AttachTooltip(config.UseChinese ? u8"°´×¡°´¼üÁ¬µã£¬ËÉ¿ªÍ£Ö¹\nÁ¬µãÆ÷Ä¬ÈÏÄ£Ê½¡£" : "Hold down the key to click\nRelease to stop\nThe default mode of the clicker.");
 
                         SameLine();
 
                         is_selected = *vlist[i] & C_SWITCHMODE;
-                        if (Checkbox(config.UseChinese ? u8"å¼€å…³æ¨¡å¼##" : "Switch Mode", &is_selected))
+                        if (Checkbox(config.UseChinese ? u8"¿ª¹ØÄ£Ê½##" : "Switch Mode", &is_selected))
                         {
                             *vlist[i] &= ~C_BUTTONMODE;
                             *vlist[i] = is_selected ? *vlist[i] | C_SWITCHMODE : *vlist[i] & ~C_SWITCHMODE;
                         }
-                        AttachTooltip(config.UseChinese ? u8"æŒ‰ä¸‹æŒ‰é”®è¿ç‚¹ï¼Œå†æŒ‰ä¸‹æŒ‰é”®åœæ­¢ï¼Œæœ€æ™®é€šçš„æ¨¡å¼ã€‚" : "Press the key to click and release the key to stop\nThe most common mode.");
+                        AttachTooltip(config.UseChinese ? u8"°´ÏÂ°´¼üÁ¬µã£¬ÔÙ°´ÏÂ°´¼üÍ£Ö¹£¬×îÆÕÍ¨µÄÄ£Ê½¡£" : "Press the key to click and release the key to stop\nThe most common mode.");
 
                         SameLine();
 
                         is_selected = *vlist[i] & C_ASSISTMODE;
-                        if (Checkbox(config.UseChinese ? u8"è¾…åŠ©æ¨¡å¼" : "Assist Mode", &is_selected))
+                        if (Checkbox(config.UseChinese ? u8"¸¨ÖúÄ£Ê½" : "Assist Mode", &is_selected))
                         {
                             *vlist[i] &= ~C_MOUSESMODE;
                             *vlist[i] = is_selected ? *vlist[i] | C_ASSISTMODE : *vlist[i] & ~C_ASSISTMODE;
                         }
-                        AttachTooltip(config.UseChinese ? u8"å½“ç‚¹å‡»é¼ æ ‡æ—¶ï¼Œè‡ªåŠ¨ç‚¹å‡»ä½ è®¾ç½®çš„æ¬¡æ•°ï¼Œä»¥è¡¥å…¨CPS\nç±»ä¼¼é¼ æ ‡å®çš„åŒå€ç‚¹å‡»ã€‚\n&dä½¿ç”¨è¿™ä¸ªæ¨¡å¼åï¼Œæ— æ³•åœ¨è¿ç‚¹å™¨ä¸­è¿ç‚¹ï¼Œ\n&dé˜²æ­¢è¯¯ç‚¹åˆ°è¿ç‚¹å™¨çš„è®¾ç½®ã€‚" : "When you click the mouse button automatically click the number you set\nSimilar to the double-click of the mouse macro.\n&dAfter using this mode, you cannot click in the clicker, \n&dto prevent misclicking the settings of the clicker.");
+                        AttachTooltip(config.UseChinese ? u8"µ±µã»÷Êó±êÊ±£¬×Ô¶¯µã»÷ÄãÉèÖÃµÄ´ÎÊı£¬ÒÔ²¹È«CPS\nÀàËÆÊó±êºêµÄË«±¶µã»÷¡£\n&dÊ¹ÓÃÕâ¸öÄ£Ê½ºó£¬ÎŞ·¨ÔÚÁ¬µãÆ÷ÖĞÁ¬µã£¬\n&d·ÀÖ¹Îóµãµ½Á¬µãÆ÷µÄÉèÖÃ¡£" : "When you click the mouse button automatically click the number you set\nSimilar to the double-click of the mouse macro.\n&dAfter using this mode, you cannot click in the clicker, \n&dto prevent misclicking the settings of the clicker.");
 
                         SameLine();
 
                         is_selected = *vlist[i] & C_MOUSESMODE;
 
-                        if (Checkbox(config.UseChinese ? u8"é¼ æ ‡æ¨¡å¼" : "Mouse Mode", &is_selected))
+                        if (Checkbox(config.UseChinese ? u8"Êó±êÄ£Ê½" : "Mouse Mode", &is_selected))
                         {
                             *vlist[i] &= ~C_ASSISTMODE;
                             *vlist[i] = is_selected ? *vlist[i] | C_MOUSESMODE : *vlist[i] & ~C_MOUSESMODE;
                         }
-                        AttachTooltip(config.UseChinese ? u8"æŒ‰ä½é¼ æ ‡é”®è¿ç‚¹ï¼Œæ¾å¼€åœæ­¢\nä¼šå¯¼è‡´æŒ–æ–¹å—çš„é€Ÿåº¦å‡æ…¢ã€‚\n&dä½¿ç”¨è¿™ä¸ªæ¨¡å¼åï¼Œæ— æ³•åœ¨è¿ç‚¹å™¨ä¸­è¿ç‚¹ï¼Œé˜²æ­¢è¯¯ç‚¹åˆ°è¿ç‚¹å™¨çš„è®¾ç½®ã€‚" : "Hold down the mouse button to click\nRelease to stop\nIt will slow down the speed of mining blocks.\n&dAfter using this mode, you cannot click in the clicker, \n&dto prevent misclicking the settings of the clicker.");
+                        AttachTooltip(config.UseChinese ? u8"°´×¡Êó±ê¼üÁ¬µã£¬ËÉ¿ªÍ£Ö¹\n»áµ¼ÖÂÍÚ·½¿éµÄËÙ¶È¼õÂı¡£\n&dÊ¹ÓÃÕâ¸öÄ£Ê½ºó£¬ÎŞ·¨ÔÚÁ¬µãÆ÷ÖĞÁ¬µã£¬·ÀÖ¹Îóµãµ½Á¬µãÆ÷µÄÉèÖÃ¡£" : "Hold down the mouse button to click\nRelease to stop\nIt will slow down the speed of mining blocks.\n&dAfter using this mode, you cannot click in the clicker, \n&dto prevent misclicking the settings of the clicker.");
 
-                        // ä¸å…è®¸å…¨å…³
+                        // ²»ÔÊĞíÈ«¹Ø
                         if (*vlist[i] == 0)
                             *vlist[i] |= C_BUTTONMODE;
                         PopID();
                     }
 
-                    //-------------------------ç ´åæ–¹å—/ä½¿ç”¨ç‰©å“--------------------------
+                    //-------------------------ÆÆ»µ·½¿é/Ê¹ÓÃÎïÆ·--------------------------
                     if (config.RClickerMode & C_ASSISTMODE || config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_MOUSESMODE || config.LClickerMode & C_MOUSESMODE)
                     {
-                        Toggle(config.UseChinese ? u8"ç ´åæ–¹å—" : "Break Blocks", &config.UseLClickerTrigInter, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œä½ å¯ä»¥ç ´åæ–¹å—ã€‚\n&dè¯¥åŠŸèƒ½ä¸ æŒ‰ä¸‹é—´éš” å†²çª\n&då¯ç”¨åå°†ä¼šç¦ç”¨å†²çªåŠŸèƒ½ã€‚" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
+                        Toggle(config.UseChinese ? u8"ÆÆ»µ·½¿é" : "Break Blocks", &config.UseLClickerTrigInter, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Äã¿ÉÒÔÆÆ»µ·½¿é¡£\n&d¸Ã¹¦ÄÜÓë °´ÏÂ¼ä¸ô ³åÍ»\n&dÆôÓÃºó½«»á½ûÓÃ³åÍ»¹¦ÄÜ¡£" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         SameLine();
 
-                        Toggle(config.UseChinese ? u8"ä½¿ç”¨ç‰©å“" : "Use Items", &config.UseRClickerTrigInter, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œä½ å¯ä»¥ç ´åæ–¹å—ã€‚\n&dè¯¥åŠŸèƒ½ä¸ æŒ‰ä¸‹é—´éš” å†²çª\n&då¯ç”¨åå°†ä¼šç¦ç”¨å†²çªåŠŸèƒ½ã€‚" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
+                        Toggle(config.UseChinese ? u8"Ê¹ÓÃÎïÆ·" : "Use Items", &config.UseRClickerTrigInter, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Äã¿ÉÒÔÆÆ»µ·½¿é¡£\n&d¸Ã¹¦ÄÜÓë °´ÏÂ¼ä¸ô ³åÍ»\n&dÆôÓÃºó½«»á½ûÓÃ³åÍ»¹¦ÄÜ¡£" : "If you turn on this option, you can use items.\n&dThis feature conflicts with the interval between clicks, \n&dand will disable the conflicting function.");
 
                         SameLine();
 
-                        Toggle(config.UseChinese ? u8"ä½¿ç”¨æ—§æ–¹æ³•" : "Use Old Method", &config.UseOldMethodToTrigInter, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"æœ¬åŠŸèƒ½é’ˆå¯¹ &dä½¿ç”¨ç‰©å“ &7/ &dç ´åæ–¹å—&f\nå¦‚æœå‡ºç°ä¸Šè¿°åŠŸèƒ½æ— æ³•ä½¿ç”¨\nåˆ™å¯ä»¥å°è¯•å¼€å¯æœ¬åŠŸèƒ½" : "This function is designed for&d UseItem s&7/&d BreakBlocks&f.\nAnd it can cause the mouse sound to be a bit strange\nIf the above functions cannot be used,\nyou can try to turn on this function");
+                        Toggle(config.UseChinese ? u8"Ê¹ÓÃ¾É·½·¨" : "Use Old Method", &config.UseOldMethodToTrigInter, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"±¾¹¦ÄÜÕë¶Ô &dÊ¹ÓÃÎïÆ· &7/ &dÆÆ»µ·½¿é&f\nÈç¹û³öÏÖÉÏÊö¹¦ÄÜÎŞ·¨Ê¹ÓÃ\nÔò¿ÉÒÔ³¢ÊÔ¿ªÆô±¾¹¦ÄÜ" : "This function is designed for&d UseItem s&7/&d BreakBlocks&f.\nAnd it can cause the mouse sound to be a bit strange\nIf the above functions cannot be used,\nyou can try to turn on this function");
 
                         if (config.UseLClickerTrigInter)
-                            Text(config.UseChinese ? u8"&eæ³¨æ„ï¼šå¼€å¯ ç ´åæ–¹å— å¯èƒ½å‡ºç°å¡åˆ€çš„æƒ…å†µ\nå¹¶ä¸”ä¼šå¯¼è‡´é¼ æ ‡å£°éŸ³æœ‰äº›å¥‡æ€ª\nè¯·è‡ªè¡Œè¡¡é‡ï¼" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nUse at your own risk!");
+                            Text(config.UseChinese ? u8"&e×¢Òâ£º¿ªÆô ÆÆ»µ·½¿é ¿ÉÄÜ³öÏÖ¿¨µ¶µÄÇé¿ö\n²¢ÇÒ»áµ¼ÖÂÊó±êÉùÒôÓĞĞ©Ææ¹Ö\nÇë×ÔĞĞºâÁ¿£¡" : "&eNote: Enabling \"Break blocks\" may cause attack lag.\nUse at your own risk!");
                     }
 
-                    //-------------------------è¿‡æ»¤å•ç‚¹--------------------------
+                    //-------------------------¹ıÂËµ¥µã--------------------------
                     if (config.RClickerMode & C_MOUSESMODE)
                     {
-                        Toggle(config.UseChinese ? u8"è¿‡æ»¤å³é”®å•ç‚¹" : "Filter RMB Single Clicks", &config.UseFilterRSingleClick, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œä½ æ™®é€šçš„ç‚¹å‡»å°†&cä¸ä¼šè§¦å‘è¿ç‚¹" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
+                        Toggle(config.UseChinese ? u8"¹ıÂËÓÒ¼üµ¥µã" : "Filter RMB Single Clicks", &config.UseFilterRSingleClick, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬ÄãÆÕÍ¨µÄµã»÷½«&c²»»á´¥·¢Á¬µã" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
                     }
 
                     if (config.LClickerMode & C_MOUSESMODE)
                     {
                         if (config.RClickerMode & C_MOUSESMODE)
                             SameLine();
-                        Toggle(config.UseChinese ? u8"è¿‡æ»¤å·¦é”®å•ç‚¹" : "Filter LMB Single Clicks", &config.UseFilterLSingleClick, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œä½ æ™®é€šçš„ç‚¹å‡»å°†&cä¸ä¼šè§¦å‘è¿ç‚¹" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
+                        Toggle(config.UseChinese ? u8"¹ıÂË×ó¼üµ¥µã" : "Filter LMB Single Clicks", &config.UseFilterLSingleClick, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬ÄãÆÕÍ¨µÄµã»÷½«&c²»»á´¥·¢Á¬µã" : "If you turn on this option, normal clicks will &cnot trigger the clicker.");
                     }
 
-                    //-------------------------è¾…åŠ©è¡¥å…¨æ•°--------------------------
+                    //-------------------------¸¨Öú²¹È«Êı--------------------------
 
                     if (config.RClickerMode & C_ASSISTMODE || config.LClickerMode & C_ASSISTMODE)
                     {
                         DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                         if (config.RClickerMode & C_ASSISTMODE)
                         {
-                            Text(config.UseChinese ? u8"å³é”®è¾…åŠ©è¡¥å…¨æ•°" : "RClicker Assist Completion");
+                            Text(config.UseChinese ? u8"ÓÒ¼ü¸¨Öú²¹È«Êı" : "RClicker Assist Completion");
                             SameLine();
                             SetNextItemWidth(300);
                             SetCursorPosX(300);
-                            SliderInt(u8"##RMultipleClickValue", &config.RMultipleClickValue, 1, 6, config.UseChinese ? u8"%dæ¬¡" : "%d times", ImGuiSliderFlags_AlwaysClamp);
-                            AttachTooltip(config.UseChinese ? u8"å½“ä½ ç‚¹å‡»é¼ æ ‡å³é”®æ—¶ï¼Œ\nä¼šè¿ç»­ç‚¹å‡»ä½ è®¾ç½®çš„æ¬¡æ•°ã€‚" : "When you click the right mouse button, \nIt will continuously click the number you set.");
+                            SliderInt(u8"##RMultipleClickValue", &config.RMultipleClickValue, 1, 6, config.UseChinese ? u8"%d´Î" : "%d times", ImGuiSliderFlags_AlwaysClamp);
+                            AttachTooltip(config.UseChinese ? u8"µ±Äãµã»÷Êó±êÓÒ¼üÊ±£¬\n»áÁ¬Ğøµã»÷ÄãÉèÖÃµÄ´ÎÊı¡£" : "When you click the right mouse button, \nIt will continuously click the number you set.");
 
                             static int PredictingCPS = 0;
                             static int b_MCV = -1;
@@ -2342,18 +2343,18 @@ void RenderGui(ImGuiIO& io)
                                 PredictingCPS = 6 * (config.RMultipleClickValue + 1);
                                 b_MCV = config.RMultipleClickValue;
                             }
-                            Text(config.UseChinese ? u8"&7å³é”®è¿ç‚¹CPSé¢„è®¡ä¸ºï¼š%d - %dCPS" : "&7The connected CPS is approximately:%d - %dCPS", PredictingCPS - 1, PredictingCPS + 1);
-                            AttachTooltip(config.UseChinese ? u8"æœ¬æ•°æ®ä»…ä¸ºé¢„æµ‹æ•°æ®ï¼Œä»…ä¾›å‚è€ƒ\nå®é™…CPSå—ç”¨æˆ·ç‚¹å‡»çš„CPSå½±å“ã€‚" : "This data is only for predictive purposes and is for reference only. \nActual CPS is affected by the CPS clicked by the user.");
+                            Text(config.UseChinese ? u8"&7ÓÒ¼üÁ¬µãCPSÔ¤¼ÆÎª£º%d - %dCPS" : "&7The connected CPS is approximately:%d - %dCPS", PredictingCPS - 1, PredictingCPS + 1);
+                            AttachTooltip(config.UseChinese ? u8"±¾Êı¾İ½öÎªÔ¤²âÊı¾İ£¬½ö¹©²Î¿¼\nÊµ¼ÊCPSÊÜÓÃ»§µã»÷µÄCPSÓ°Ïì¡£" : "This data is only for predictive purposes and is for reference only. \nActual CPS is affected by the CPS clicked by the user.");
                         }
 
                         if (config.LClickerMode & C_ASSISTMODE)
                         {
-                            Text(config.UseChinese ? u8"å·¦é”®è¾…åŠ©è¡¥å…¨æ•°" : "LClicker Assist Completion");
+                            Text(config.UseChinese ? u8"×ó¼ü¸¨Öú²¹È«Êı" : "LClicker Assist Completion");
                             SameLine();
                             SetNextItemWidth(300);
                             SetCursorPosX(300);
-                            SliderInt(u8"##LMultipleClickValue", &config.LMultipleClickValue, 1, 6, config.UseChinese ? u8"%dæ¬¡" : "%d times", ImGuiSliderFlags_AlwaysClamp);
-                            AttachTooltip(config.UseChinese ? u8"å½“ä½ ç‚¹å‡»é¼ æ ‡å·¦é”®æ—¶ï¼Œ\nä¼šè¿ç»­ç‚¹å‡»ä½ è®¾ç½®çš„æ¬¡æ•°ã€‚" : "When you click the left mouse button, \nIt will continuously click the number you set.");
+                            SliderInt(u8"##LMultipleClickValue", &config.LMultipleClickValue, 1, 6, config.UseChinese ? u8"%d´Î" : "%d times", ImGuiSliderFlags_AlwaysClamp);
+                            AttachTooltip(config.UseChinese ? u8"µ±Äãµã»÷Êó±ê×ó¼üÊ±£¬\n»áÁ¬Ğøµã»÷ÄãÉèÖÃµÄ´ÎÊı¡£" : "When you click the left mouse button, \nIt will continuously click the number you set.");
 
                             static int PredictingCPS = 0;
                             static int b_MCV = -1;
@@ -2362,35 +2363,35 @@ void RenderGui(ImGuiIO& io)
                                 PredictingCPS = 6 * (config.LMultipleClickValue + 1);
                                 b_MCV = config.LMultipleClickValue;
                             }
-                            Text(config.UseChinese ? u8"&7å·¦é”®è¿ç‚¹CPSé¢„è®¡ä¸ºï¼š%d - %dCPS" : "&7The connected CPS is approximately:%d - %dCPS", PredictingCPS - 1, PredictingCPS + 1);
-                            AttachTooltip(config.UseChinese ? u8"æœ¬æ•°æ®ä»…ä¸ºé¢„æµ‹æ•°æ®ï¼Œä»…ä¾›å‚è€ƒ\nå®é™…CPSå—ç”¨æˆ·ç‚¹å‡»çš„CPSå½±å“ã€‚" : "This data is only for predictive purposes and is for reference only. \nActual CPS is affected by the CPS clicked by the user.");
+                            Text(config.UseChinese ? u8"&7×ó¼üÁ¬µãCPSÔ¤¼ÆÎª£º%d - %dCPS" : "&7The connected CPS is approximately:%d - %dCPS", PredictingCPS - 1, PredictingCPS + 1);
+                            AttachTooltip(config.UseChinese ? u8"±¾Êı¾İ½öÎªÔ¤²âÊı¾İ£¬½ö¹©²Î¿¼\nÊµ¼ÊCPSÊÜÓÃ»§µã»÷µÄCPSÓ°Ïì¡£" : "This data is only for predictive purposes and is for reference only. \nActual CPS is affected by the CPS clicked by the user.");
                         }
 
-                        Text(config.UseChinese ? u8"è§¦å‘é˜€é—¨å€¼" : "Trigger Threshold");
+                        Text(config.UseChinese ? u8"´¥·¢·§ÃÅÖµ" : "Trigger Threshold");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
                         SliderInt(u8"##AssistModeCPSThreshold", &config.AssistModeCPSThreshold, 1, 16, u8"%dCPS", ImGuiSliderFlags_AlwaysClamp);
-                        AttachTooltip(config.UseChinese ? u8"å½“ä½ ç‚¹å‡»çš„CPSè¾¾åˆ°é¢„å®šå€¼æ—¶ï¼Œæ‰ä¼šè§¦å‘è¾…åŠ©ç‚¹å‡»\n&6è¯¥åŠŸèƒ½å¯æœ‰æ•ˆé™ä½è¯¯åˆ¤ã€‚" : "When the CPS reaches the prescribed value, The assist click will be triggered, \n&6which can effectively reduce the misjudgment.");
+                        AttachTooltip(config.UseChinese ? u8"µ±Äãµã»÷µÄCPS´ïµ½Ô¤¶¨ÖµÊ±£¬²Å»á´¥·¢¸¨Öúµã»÷\n&6¸Ã¹¦ÄÜ¿ÉÓĞĞ§½µµÍÎóÅĞ¡£" : "When the CPS reaches the prescribed value, The assist click will be triggered, \n&6which can effectively reduce the misjudgment.");
                     }
                 }
                 EndCard();
 
-                //-------------------------ç‰©å“æ å¼€å…³----------------------------
+                //-------------------------ÎïÆ·À¸¿ª¹Ø----------------------------
                 //DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"ç‰©å“æ å¼€å…³" : "Itembar Switch", ImVec2(0, 280), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"ÎïÆ·À¸¿ª¹Ø" : "Itembar Switch", ImVec2(0, 280), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (Toggle(config.UseChinese ? u8"ç‰©å“æ å¼€å…³" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags))
+                    if (Toggle(config.UseChinese ? u8"ÎïÆ·À¸¿ª¹Ø" : "Itembar Switch", &config.UseItembarSwitch, ToggleFlags))
                     {
                         config.EnableLeftClicker = true;
                         config.EnableRightClicker = true;
                     }
-                    AttachTooltip(config.UseChinese ? u8"å°†å¯¹åº”ç‰©å“æ ¼å­çš„æŒ‰é’®å…³é—­ï¼Œè¿ç‚¹å™¨å°±ä¼šåœ¨ä½ æ‰‹æ‹¿å¯¹åº”ç‰©å“æ—¶å…³é—­è¿ç‚¹ã€‚\nå…¶ä¸­çš„å¿«æ·é”®å¿…é¡»è®¾ç½®ï¼Œä¸»è¦ç”¨äºåˆ¤æ–­ç‰©å“æ ä½ç½®ï¼" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
+                    AttachTooltip(config.UseChinese ? u8"½«¶ÔÓ¦ÎïÆ·¸ñ×ÓµÄ°´Å¥¹Ø±Õ£¬Á¬µãÆ÷¾Í»áÔÚÄãÊÖÄÃ¶ÔÓ¦ÎïÆ·Ê±¹Ø±ÕÁ¬µã¡£\nÆäÖĞµÄ¿ì½İ¼ü±ØĞëÉèÖÃ£¬Ö÷ÒªÓÃÓÚÅĞ¶ÏÎïÆ·À¸Î»ÖÃ£¡" : "Turn off the button corresponding to the corresponding item slot\nin the item bar when you hold the corresponding item. \nThe clicker will close the click when you hold the corresponding item.\nThe shortcut key must be set, mainly used to \ndetermine the position of the item bar!");
 
 					BeginDisabled(!config.UseItembarSwitch);
                     {
-                        if (Button(config.UseChinese ? u8"å…¨éƒ¨å¯ç”¨" : "Enable All"))
+                        if (Button(config.UseChinese ? u8"È«²¿ÆôÓÃ" : "Enable All"))
                         {
                             for (unsigned int i = 0; i < 9; i++)
                             {
@@ -2399,7 +2400,7 @@ void RenderGui(ImGuiIO& io)
                             }
                         }
                         SameLine();
-                        if (Button(config.UseChinese ? u8"é‡ç½®å…¨éƒ¨CPS" : "Reset All CPS"))
+                        if (Button(config.UseChinese ? u8"ÖØÖÃÈ«²¿CPS" : "Reset All CPS"))
                         {
                             for (unsigned int i = 0; i < 9; i++)
                             {
@@ -2415,7 +2416,7 @@ void RenderGui(ImGuiIO& io)
                             for (unsigned int j = 0; j < 2; j++)
                             {
                                 PushID(j);
-                                const char* text = config.UseChinese ? (j == 0 ? u8"å·¦é”®è®¾ç½®" : u8"å³é”®è®¾ç½®") : (j == 0 ? "LMB Settings" : "RMB Settings");
+                                const char* text = config.UseChinese ? (j == 0 ? u8"×ó¼üÉèÖÃ" : u8"ÓÒ¼üÉèÖÃ") : (j == 0 ? "LMB Settings" : "RMB Settings");
                                 Text(text);
                                 SameLine();
                                 DrawSpiltLine(528 - CalcTextSize(text).x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
@@ -2437,7 +2438,7 @@ void RenderGui(ImGuiIO& io)
                                 for (unsigned int i = 0; i < 9; i++)
                                 {
                                     PushID(i);
-                                    // æ¯ä¸ªæ ¼å­çš„å·¦ä¾§Xåæ ‡
+                                    // Ã¿¸ö¸ñ×ÓµÄ×ó²àX×ø±ê
                                     const float PosX = pos1.x + (i * 60.0f);
                                     if (ItemBarPos == i)
                                     {
@@ -2451,7 +2452,7 @@ void RenderGui(ImGuiIO& io)
                                         SetCursorPos(pos2);
                                     }
 
-                                    // pos.yçš„å€¼æ˜¯æ ¼å­çš„é¡¶éƒ¨Yåæ ‡
+                                    // pos.yµÄÖµÊÇ¸ñ×ÓµÄ¶¥²¿Y×ø±ê
                                     SetCursorPos(ImVec2(PosX + 7, pos1.y + 28));
                                     Toggle("##ItembarToggle", &IsEnableClicker[i], ToggleFlags);
                                     SameLine(0, 20);
@@ -2464,8 +2465,8 @@ void RenderGui(ImGuiIO& io)
                                 {
                                     BeginDisabled(!config.UseItembarSwitch);
                                     {
-                                        Toggle(config.UseChinese ? u8"CPSåˆ‡æ¢" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos], ToggleFlags);
-                                        AttachTooltip(config.UseChinese ? u8"å¯ä»¥è®©æ¯ä¸€ä¸ªæ ¼å­å¯¹åº”ä¸åŒçš„CPS\nå¦‚æœä½¿ç”¨äº†CPSæ³¢åŠ¨ï¼Œ&dä¼šè‡ªåŠ¨è®¡ç®—æ³¢åŠ¨èŒƒå›´&fï¼Œä½ åªéœ€è¦è°ƒæ•´CPSå°±å¯ä»¥" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
+                                        Toggle(config.UseChinese ? u8"CPSÇĞ»»" : "CPS Switch", &IsEnablePresetCPS[ItemBarPos], ToggleFlags);
+                                        AttachTooltip(config.UseChinese ? u8"¿ÉÒÔÈÃÃ¿Ò»¸ö¸ñ×Ó¶ÔÓ¦²»Í¬µÄCPS\nÈç¹ûÊ¹ÓÃÁËCPS²¨¶¯£¬&d»á×Ô¶¯¼ÆËã²¨¶¯·¶Î§&f£¬ÄãÖ»ĞèÒªµ÷ÕûCPS¾Í¿ÉÒÔ" : "Each grid can correspond to a different CPS.\nIf CPS fluctuation is used, &dthe fluctuation range will be auto calculated,\n&fand you only need to adjust the CPS");
 
                                         BeginDisabled(!IsEnablePresetCPS[ItemBarPos] || config.UseBrutalMode);
                                         {
@@ -2489,30 +2490,30 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
 
-				BeginCard(config.UseChinese ? u8"ç‰©å“æ æŒ‰é”®è®¾ç½®" : "Itembar Key Settings", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+				BeginCard(config.UseChinese ? u8"ÎïÆ·À¸°´¼üÉèÖÃ" : "Itembar Key Settings", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
 				{
-                    AttachTooltip(config.UseChinese ? u8"&cè¯·ç¡®ä¿å¿«æ·é”®å’Œæ¸¸æˆä¸­çš„ä¸€è‡´ï¼\n&6å¦åˆ™å°†æ— æ³•åˆ¤æ–­ç‰©å“æ åˆ‡æ¢" : "&cPlease make sure the shortcut key is consistent with the game!\n&6Otherwise, it cannot determine the position of the item bar switch!");
+                    AttachTooltip(config.UseChinese ? u8"&cÇëÈ·±£¿ì½İ¼üºÍÓÎÏ·ÖĞµÄÒ»ÖÂ£¡\n&6·ñÔò½«ÎŞ·¨ÅĞ¶ÏÎïÆ·À¸ÇĞ»»" : "&cPlease make sure the shortcut key is consistent with the game!\n&6Otherwise, it cannot determine the position of the item bar switch!");
 
-                    // å‚è€ƒ ##ItembarChild æ ·å¼ï¼šç”¨ç‰©å“æ å›¾ç‰‡åŒ…è£… 9 ä¸ªå¿«æ·é”®ï¼ŒInputKey ç²¾ç¡®å¯¹é½æ¯ä¸ªæ ¼å­
+                    // ²Î¿¼ ##ItembarChild ÑùÊ½£ºÓÃÎïÆ·À¸Í¼Æ¬°ü×° 9 ¸ö¿ì½İ¼ü£¬InputKey ¾«È·¶ÔÆëÃ¿¸ö¸ñ×Ó
                     ImDrawList* DrawList = GetWindowDrawList();
-                    const ImVec2 pos1 = GetCursorPos();          // ç‰©å“æ å›¾ç‰‡å·¦ä¸Šè§’ï¼ˆç›¸å¯¹æœ¬ cardï¼‰
+                    const ImVec2 pos1 = GetCursorPos();          // ÎïÆ·À¸Í¼Æ¬×óÉÏ½Ç£¨Ïà¶Ô±¾ card£©
                     const ImVec2 ItembarSize(178 * 3, 19 * 3);   // (534, 57)
-                    const float SlotWidth = 60.0f;               // æ¯ä¸ªæ ¼å­çš„å®šä½å®½åº¦ï¼ˆä¸ ##ItembarChild ä¸€è‡´ï¼‰
+                    const float SlotWidth = 60.0f;               // Ã¿¸ö¸ñ×ÓµÄ¶¨Î»¿í¶È£¨Óë ##ItembarChild Ò»ÖÂ£©
 
-                    // ç”»ç‰©å“æ åº•å›¾
+                    // »­ÎïÆ·À¸µ×Í¼
                     DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pPointSampler);
                     Image((ImTextureID)ImageItembar, ItembarSize);
                     DrawList->AddCallback(SetSamplerCallback, (void*)MainGuiData.pLinearSampler);
 
-                    // 9 ä¸ªå¿«æ·é”®ï¼šInputKey ä¸­å¿ƒå¯¹é½æ ¼å­ä¸­å¿ƒã€‚
-                    // æ°´å¹³ï¼šæ ¼å­å®½ 60ã€InputKey å®½ 40 -> å·¦åç§» (60-40)/2=10ï¼Œä¸­å¿ƒ=PosX+30ï¼›
-                    // å‚ç›´ï¼šå›¾ç‰‡é«˜ 57ã€InputKey é«˜ 24 -> åç§» (57-24)/2=16ï¼Œä¸­å¿ƒä¸å›¾ç‰‡ä¸­å¿ƒå¯¹é½ã€‚
+                    // 9 ¸ö¿ì½İ¼ü£ºInputKey ÖĞĞÄ¶ÔÆë¸ñ×ÓÖĞĞÄ¡£
+                    // Ë®Æ½£º¸ñ×Ó¿í 60¡¢InputKey ¿í 40 -> ×óÆ«ÒÆ (60-40)/2=10£¬ÖĞĞÄ=PosX+30£»
+                    // ´¹Ö±£ºÍ¼Æ¬¸ß 57¡¢InputKey ¸ß 24 -> Æ«ÒÆ (57-24)/2=16£¬ÖĞĞÄÓëÍ¼Æ¬ÖĞĞÄ¶ÔÆë¡£
                     for (unsigned int i = 0; i < 9; i++)
                     {
                         PushID(i);
                         const float PosX = pos1.x + (i * SlotWidth);
 
-                        // é«˜äº®å½“å‰é€‰ä¸­çš„ç‰©å“æ æ ¼å­ï¼ˆä¸ ##ItembarChild ä¸€è‡´ï¼‰
+                        // ¸ßÁÁµ±Ç°Ñ¡ÖĞµÄÎïÆ·À¸¸ñ×Ó£¨Óë ##ItembarChild Ò»ÖÂ£©
                         if (ItemBarPos == i)
                         {
                             const ImVec2 cur = GetCursorPos();
@@ -2527,31 +2528,31 @@ void RenderGui(ImGuiIO& io)
 
                         SetCursorPos(ImVec2(PosX + 10, pos1.y + 24));
                         SetNextItemWidth(40);
-                        InputKey(u8"##item", &config.ItemBarKey.at(i), config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
+                        InputKey(u8"##item", &config.ItemBarKey.at(i), config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
                         PopID();
                     }
 				}
                 EndCard();
 
-                //-------------------------è·å–æ¸¸æˆçª—å£----------------------------
+                //-------------------------»ñÈ¡ÓÎÏ·´°¿Ú----------------------------
                 //DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
                 //SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"æ¸¸æˆçª—å£" : "Game Window", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"ÓÎÏ·´°¿Ú" : "Game Window", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    static string InfoText = config.UseChinese ? u8"æœªè·å–" : "Not Obtained";
+                    static string InfoText = config.UseChinese ? u8"Î´»ñÈ¡" : "Not Obtained";
                     static bool IsStartObtaining = false;
-                    static string GameWindowTitle = config.UseChinese ? u8"æœªçŸ¥" : "Unknow";
+                    static string GameWindowTitle = config.UseChinese ? u8"Î´Öª" : "Unknow";
 
                     BeginDisabled(IsStartObtaining);
                     {
-                        if (Button(config.UseChinese ? u8"è·å–" : "Choice", ImVec2(100, 40)))
+                        if (Button(config.UseChinese ? u8"»ñÈ¡" : "Choice", ImVec2(100, 40)))
                         {
                             GettingGameState = -1;
                             IsStartObtaining = true;
 
                             auto th = []()
                                 {
-                                    PrintLog("[Render] ç­‰å¾…ç”¨æˆ·é€‰æ‹©æ¸¸æˆçª—å£...", PL_INFO);
+                                    PrintLog("[Render] µÈ´ıÓÃ»§Ñ¡ÔñÓÎÏ·´°¿Ú...", PL_INFO);
                                     const HWND DesktopHwnd = GetDesktopWindow();
                                     while (!IsGCExit)
                                     {
@@ -2579,7 +2580,7 @@ void RenderGui(ImGuiIO& io)
 
                     if (GettingGameState == 0)
                     {
-                        InfoText = config.UseChinese ? u8"&aè·å–æˆåŠŸ" : "&aSuccessfully Obtained";
+                        InfoText = config.UseChinese ? u8"&a»ñÈ¡³É¹¦" : "&aSuccessfully Obtained";
                         IsStartObtaining = false;
 
                         char buf[MAX_BUF];
@@ -2592,89 +2593,89 @@ void RenderGui(ImGuiIO& io)
                     }
                     else if (GettingGameState == 1)
                     {
-                        InfoText = config.UseChinese ? u8"&cè·å–å¤±è´¥" : "&cFailed to obtain";
+                        InfoText = config.UseChinese ? u8"&c»ñÈ¡Ê§°Ü" : "&cFailed to obtain";
                         IsStartObtaining = false;
                         GettingGameState = -1;
                         GameHwnd = 0;
                     }
                     else if (IsStartObtaining)
-                        InfoText = config.UseChinese ? u8"æ­£åœ¨è·å–ä¸­ï¼Œè¯·ç‚¹å‡»æ¸¸æˆçª—å£ã€‚" : "Getting, please click the game window.";
-                    // é˜²æ­¢GameWindowTitleä¸­æœ‰æ ¼å¼åŒ–ç¬¦å·å¯¼è‡´ å´©æºƒ æˆ–è€… æ¼æ´
-                    Text(((config.UseChinese ? u8"çª—å£åç§°ï¼š" : "Window Name: ") + GameWindowTitle).c_str());
+                        InfoText = config.UseChinese ? u8"ÕıÔÚ»ñÈ¡ÖĞ£¬Çëµã»÷ÓÎÏ·´°¿Ú¡£" : "Getting, please click the game window.";
+                    // ·ÀÖ¹GameWindowTitleÖĞÓĞ¸ñÊ½»¯·ûºÅµ¼ÖÂ ±ÀÀ£ »òÕß Â©¶´
+                    Text(((config.UseChinese ? u8"´°¿ÚÃû³Æ£º" : "Window Name: ") + GameWindowTitle).c_str());
                 }
                 EndCard();
 
                 EndTabItem();
             }
 
-            //-------------------------é«˜çº§è®¾ç½®--------------------------
-            if (BeginTabItem((ICON_FA_GEAR + (config.UseChinese ? u8"é«˜çº§è®¾ç½®"s : "Advanced Setting"s)).c_str()))
+            //-------------------------¸ß¼¶ÉèÖÃ--------------------------
+            if (BeginTabItem((ICON_FA_GEAR + (config.UseChinese ? u8"¸ß¼¶ÉèÖÃ"s : "Advanced Setting"s)).c_str()))
             {
                 BeginCard("##Settings-2", ImVec2(-1, 222), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
-                    //-------------------------è¿ç‚¹é—´éš™----------------------------
+                    //-------------------------Á¬µã¼äÏ¶----------------------------
                     BeginChild("##Settings-2-1", ImVec2(326, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å³é”®è¿ç‚¹é—´éš™" : "RClicker Interval", &config.UseRClickTime, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"ÓÒ¼üÁ¬µã¼äÏ¶" : "RClicker Interval", &config.UseRClickTime, ToggleFlags);
                         BeginDisabled(!config.UseRClickTime);
                         {
-                            Text(config.UseChinese ? u8"ç‚¹å‡»æ—¶é•¿" : "Clicker Time");
-                            AttachTooltip(config.UseChinese ? u8"è¿ç‚¹çš„æ—¶é•¿ï¼Œå•ä½æ¯«ç§’" : "The duration of the click in milliseconds");
+                            Text(config.UseChinese ? u8"µã»÷Ê±³¤" : "Clicker Time");
+                            AttachTooltip(config.UseChinese ? u8"Á¬µãµÄÊ±³¤£¬µ¥Î»ºÁÃë" : "The duration of the click in milliseconds");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##RCTime", &config.RCTime, 10, 10000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##RCTime", &config.RCTime, 10, 10000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
 
-                            Text(config.UseChinese ? u8"åœæ­¢æ—¶é•¿" : "Stop Time");
-                            AttachTooltip(config.UseChinese ? u8"è¿ç‚¹åœæ­¢çš„æ—¶é•¿ï¼Œå•ä½æ¯«ç§’" : "The duration of the stop in milliseconds");
+                            Text(config.UseChinese ? u8"Í£Ö¹Ê±³¤" : "Stop Time");
+                            AttachTooltip(config.UseChinese ? u8"Á¬µãÍ£Ö¹µÄÊ±³¤£¬µ¥Î»ºÁÃë" : "The duration of the stop in milliseconds");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##RCSleep", &config.RCSleep, 10, 10000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##RCSleep", &config.RCSleep, 10, 10000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
 
-                        Toggle(config.UseChinese ? u8"å·¦é”®è¿ç‚¹é—´éš™" : "RClicker Interval", &config.UseLClickTime, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"×ó¼üÁ¬µã¼äÏ¶" : "RClicker Interval", &config.UseLClickTime, ToggleFlags);
                         BeginDisabled(!config.UseLClickTime);
                         {
-                            Text(config.UseChinese ? u8"è¿ç‚¹æ—¶é•¿" : "Clicker Time");
-                            AttachTooltip(config.UseChinese ? u8"è¿ç‚¹çš„æ—¶é•¿ï¼Œå•ä½æ¯«ç§’" : "The duration of the click in milliseconds");
+                            Text(config.UseChinese ? u8"Á¬µãÊ±³¤" : "Clicker Time");
+                            AttachTooltip(config.UseChinese ? u8"Á¬µãµÄÊ±³¤£¬µ¥Î»ºÁÃë" : "The duration of the click in milliseconds");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##LCTime", &config.LCTime, 10, 10000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##LCTime", &config.LCTime, 10, 10000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
 
-                            Text(config.UseChinese ? u8"åœæ­¢æ—¶é•¿" : "Stop Time");
-                            AttachTooltip(config.UseChinese ? u8"è¿ç‚¹åœæ­¢çš„æ—¶é•¿ï¼Œå•ä½æ¯«ç§’" : "The duration of the stop in milliseconds");
+                            Text(config.UseChinese ? u8"Í£Ö¹Ê±³¤" : "Stop Time");
+                            AttachTooltip(config.UseChinese ? u8"Á¬µãÍ£Ö¹µÄÊ±³¤£¬µ¥Î»ºÁÃë" : "The duration of the stop in milliseconds");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##LCSleep", &config.LCSleep, 10, 10000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##LCSleep", &config.LCSleep, 10, 10000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
 
                         if (config.LClickerMode & C_ASSISTMODE || config.RClickerMode & C_ASSISTMODE)
-                            Text(config.UseChinese ? u8"&cè¾…åŠ©æ¨¡å¼ä¸æ”¯æŒè¯¥åŠŸèƒ½" : "&cThe AssistMode does not support this function.");
+                            Text(config.UseChinese ? u8"&c¸¨ÖúÄ£Ê½²»Ö§³Ö¸Ã¹¦ÄÜ" : "&cThe AssistMode does not support this function.");
                     }
                     EndChild();
 
                     SameLine();
 
-                    //-------------------------ç©ºåˆ€æ¦‚ç‡----------------------------
+                    //-------------------------¿Õµ¶¸ÅÂÊ----------------------------
                     BeginChild("##Settings-2-2", ImVec2(326, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å³é”®ç©ºåˆ€æ¦‚ç‡" : "RClicker Empty Rate", &config.UseREmptyRate, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"ÓÒ¼ü¿Õµ¶¸ÅÂÊ" : "RClicker Empty Rate", &config.UseREmptyRate, ToggleFlags);
                         BeginDisabled(!config.UseREmptyRate);
                         {
-                            Text(config.UseChinese ? u8"å³é”®ç©ºåˆ€æ¦‚ç‡" : "RClicker Empty Rate");
+                            Text(config.UseChinese ? u8"ÓÒ¼ü¿Õµ¶¸ÅÂÊ" : "RClicker Empty Rate");
                             SameLine();
                             SetNextItemWidth(200);
                             SliderInt(u8"##UseREmptyRate", &config.REmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
 
-                        Toggle(config.UseChinese ? u8"å·¦é”®ç©ºåˆ€æ¦‚ç‡" : "LClicker Empty Rate", &config.UseLEmptyRate, ToggleFlags);
+                        Toggle(config.UseChinese ? u8"×ó¼ü¿Õµ¶¸ÅÂÊ" : "LClicker Empty Rate", &config.UseLEmptyRate, ToggleFlags);
                         BeginDisabled(!config.UseLEmptyRate);
                         {
-                            Text(config.UseChinese ? u8"å·¦é”®ç©ºåˆ€æ¦‚ç‡" : "LClicker Empty Rate");
+                            Text(config.UseChinese ? u8"×ó¼ü¿Õµ¶¸ÅÂÊ" : "LClicker Empty Rate");
                             SameLine();
                             SetNextItemWidth(200);
                             SliderInt(u8"##UseLEmptyRate", &config.LEmptyRateValue, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
@@ -2683,7 +2684,7 @@ void RenderGui(ImGuiIO& io)
 
                         BeginDisabled(!config.UseLEmptyRate && !config.UseREmptyRate);
                         {
-                            Text(config.UseChinese ? u8"éšæœºç”Ÿæˆåˆ†å¸ƒ" : "Random Distribution");
+                            Text(config.UseChinese ? u8"Ëæ»úÉú³É·Ö²¼" : "Random Distribution");
                             SetNextItemWidth(200);
                             SameLine();
                             if (BeginCombo("##erandomdist", RandomDistList[config.EmptyRate_RandomDist]))
@@ -2701,15 +2702,15 @@ void RenderGui(ImGuiIO& io)
                                 EndCombo();
                             }
 
-                            Text(config.UseChinese ? u8"éšæœºæ¨¡å¼" : "Random Mode");
-                            AttachTooltip(config.UseChinese ? u8"&7æ™®é€šéšæœºï¼šæŒ‰è®¾å®šæ¦‚ç‡å‡åŒ€éšæœºç©ºåˆ€\n&7ç–²åŠ³æ•ˆåº”ï¼šéšæ—¶é—´æ¨ç§»ç©ºåˆ€ç‡ä¸Šå‡ï¼ˆæ¨¡æ‹Ÿç–²åŠ³ï¼‰\n&7ä»¿ç”Ÿå¹½çµï¼šç–²åŠ³ + æ‰‹æŠ– + é©¬å°”å¯å¤«çº é”™ï¼ˆæ¨¡æ‹ŸçœŸäººï¼‰\n\n&6æ³¨æ„ï¼šç–²åŠ³/ä»¿ç”Ÿæ¨¡å¼ä¸‹ï¼Œå®é™…ç©ºåˆ€ç‡ä¼šéšæ—¶é—´åœ¨ 1%~40% ä¹‹é—´æµ®åŠ¨ï¼Œ\nå¯èƒ½åç¦»ä½ è®¾ç½®çš„æ¦‚ç‡ã€‚" : "Normal: uniform random by the set probability\nFatigue: error rate increases over time\nGhost: fatigue + hand shaking + Markov error correction (human-like)\n\nNote: in Fatigue/Ghost modes the actual empty rate floats between 1%~40% over time.");
+                            Text(config.UseChinese ? u8"Ëæ»úÄ£Ê½" : "Random Mode");
+                            AttachTooltip(config.UseChinese ? u8"&7ÆÕÍ¨Ëæ»ú£º°´Éè¶¨¸ÅÂÊ¾ùÔÈËæ»ú¿Õµ¶\n&7Æ£ÀÍĞ§Ó¦£ºËæÊ±¼äÍÆÒÆ¿Õµ¶ÂÊÉÏÉı£¨Ä£ÄâÆ£ÀÍ£©\n&7·ÂÉúÓÄÁé£ºÆ£ÀÍ + ÊÖ¶¶ + Âí¶û¿É·ò¾À´í£¨Ä£ÄâÕæÈË£©\n\n&6×¢Òâ£ºÆ£ÀÍ/·ÂÉúÄ£Ê½ÏÂ£¬Êµ¼Ê¿Õµ¶ÂÊ»áËæÊ±¼äÔÚ 1%~40% Ö®¼ä¸¡¶¯£¬\n¿ÉÄÜÆ«ÀëÄãÉèÖÃµÄ¸ÅÂÊ¡£" : "Normal: uniform random by the set probability\nFatigue: error rate increases over time\nGhost: fatigue + hand shaking + Markov error correction (human-like)\n\nNote: in Fatigue/Ghost modes the actual empty rate floats between 1%~40% over time.");
                             SetNextItemWidth(200);
                             SameLine();
                             if (BeginCombo("##erandommode", RandomBoolModeList[config.EmptyRate_RandomMode]))
                             {
-                                for (int n = 0; n < 3; n++)   // ä¿®å¤ï¼šç§»é™¤ STIFF åä»… 3 ç§æ¨¡å¼
+                                for (int n = 0; n < 3; n++)   // ĞŞ¸´£ºÒÆ³ı STIFF ºó½ö 3 ÖÖÄ£Ê½
                                 {
-                                    PushID(n + 100); // ä¸ä¸Šæ–¹åˆ†å¸ƒ combo çš„ PushID é”™å¼€ï¼Œé¿å… ID å†²çª
+                                    PushID(n + 100); // ÓëÉÏ·½·Ö²¼ combo µÄ PushID ´í¿ª£¬±ÜÃâ ID ³åÍ»
                                     const bool is_selected = (config.EmptyRate_RandomMode == n);
                                     if (Selectable(RandomBoolModeList[n], is_selected))
                                         config.EmptyRate_RandomMode = n;
@@ -2722,10 +2723,10 @@ void RenderGui(ImGuiIO& io)
 
 
                             static bool IsOpen = false;
-                            if (Button(config.UseChinese ? u8"éšæœºæ›²çº¿åˆ†å¸ƒ" : "Random Curve"))
+                            if (Button(config.UseChinese ? u8"Ëæ»úÇúÏß·Ö²¼" : "Random Curve"))
                                 IsOpen = !IsOpen;
 
-                            if (BeginPopupWindow(config.UseChinese ? u8"éšæœºæ›²çº¿åˆ†å¸ƒ" : "Random Curve", &IsOpen))
+                            if (BeginPopupWindow(config.UseChinese ? u8"Ëæ»úÇúÏß·Ö²¼" : "Random Curve", &IsOpen))
                             {
                                 static int PointsSize = 200;
                                 static vector<short> ClickDatas;
@@ -2735,11 +2736,11 @@ void RenderGui(ImGuiIO& io)
                                 static bool IsGenerating = false;
                                 static float auv = 0;
                                 static float ActualRate = 0;
-                                // ä¿®å¤ï¼šClickDatas/EmpytDatas ç­‰ç”± detach çº¿ç¨‹é‡å¡«ã€ä¸»çº¿ç¨‹æ¯å¸§ç»˜åˆ¶ï¼Œ
-                                // åŸä»£ç æ— é”ï¼Œçº¿ç¨‹ push_back æ‰©å®¹æ—¶ä¸»çº¿ç¨‹ data()/size() è®¿é—®å·²é‡Šæ”¾å†…å­˜ â†’ 0xC0000005ã€‚
+                                // ĞŞ¸´£ºClickDatas/EmpytDatas µÈÓÉ detach Ïß³ÌÖØÌî¡¢Ö÷Ïß³ÌÃ¿Ö¡»æÖÆ£¬
+                                // Ô­´úÂëÎŞËø£¬Ïß³Ì push_back À©ÈİÊ±Ö÷Ïß³Ì data()/size() ·ÃÎÊÒÑÊÍ·ÅÄÚ´æ ¡ú 0xC0000005¡£
                                 static mutex CurveMutex;
 
-                                Text(config.UseChinese ? u8"æ•°æ®ç‚¹æ•°é‡" : "Number of data points");
+                                Text(config.UseChinese ? u8"Êı¾İµãÊıÁ¿" : "Number of data points");
                                 SameLine();
                                 SetNextItemWidth(300);
                                 SetCursorPosX(300);
@@ -2755,15 +2756,15 @@ void RenderGui(ImGuiIO& io)
                                     IsInit = false;
                                 }
 
-                                Text(config.UseChinese ? u8"&7*æ³¨ï¼šæ©™è‰²æŸ±ä»£è¡¨å®é™…æœ‰ç‚¹å‡»ï¼Œç°è‰²ä»£è¡¨ç©ºåˆ€ï¼Œé»˜è®¤ä½¿ç”¨çš„æ˜¯å³é”®ç©ºåˆ€æ¦‚ç‡ã€‚" : "&7*Note: The orange bar represents the actual click, \nthe gray bar represents the empty click, \nthe default is to use the left key empty rate.");
-                                AttachTooltip(config.UseChinese ? u8"&6æ©™è‰²æŸ±ï¼šè¿™ä¸ªä½ç½®åœ¨å®é™…æƒ…å†µä¸­&aå·²ç‚¹å‡»&f\n&6ç°è‰²æŸ±ï¼šè¿™ä¸ªä½ç½®åœ¨å®é™…æƒ…å†µä¸­&cæ²¡æœ‰ç‚¹å‡»&f\nä½ å¯ä»¥ç†è§£ä¸ºï¼Œæ¯ä¸ªæ•°æ®ç‚¹ä»£è¡¨ä¸€ä¸ªç‚¹å‡»\né¢œè‰²ä»£è¡¨æ˜¯å¦ç©ºåˆ€ï¼Œç°è‰²ä¸ºç©ºåˆ€ã€‚" : "Orange bar: This position has been clicked in the actual situation\nGray bar: This position has not been clicked in the actual situation\nYou can understand it as each data point represents a click\nColor represents whether it is an empty click, gray means empty.");
+                                Text(config.UseChinese ? u8"&7*×¢£º³ÈÉ«Öù´ú±íÊµ¼ÊÓĞµã»÷£¬»ÒÉ«´ú±í¿Õµ¶£¬Ä¬ÈÏÊ¹ÓÃµÄÊÇÓÒ¼ü¿Õµ¶¸ÅÂÊ¡£" : "&7*Note: The orange bar represents the actual click, \nthe gray bar represents the empty click, \nthe default is to use the left key empty rate.");
+                                AttachTooltip(config.UseChinese ? u8"&6³ÈÉ«Öù£ºÕâ¸öÎ»ÖÃÔÚÊµ¼ÊÇé¿öÖĞ&aÒÑµã»÷&f\n&6»ÒÉ«Öù£ºÕâ¸öÎ»ÖÃÔÚÊµ¼ÊÇé¿öÖĞ&cÃ»ÓĞµã»÷&f\nÄã¿ÉÒÔÀí½âÎª£¬Ã¿¸öÊı¾İµã´ú±íÒ»¸öµã»÷\nÑÕÉ«´ú±íÊÇ·ñ¿Õµ¶£¬»ÒÉ«Îª¿Õµ¶¡£" : "Orange bar: This position has been clicked in the actual situation\nGray bar: This position has not been clicked in the actual situation\nYou can understand it as each data point represents a click\nColor represents whether it is an empty click, gray means empty.");
 
-                                if ((Button(config.UseChinese ? u8"åˆ·æ–°" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
+                                if ((Button(config.UseChinese ? u8"Ë¢ĞÂ" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
                                 {
                                     IsGenerating = true;
                                     thread FunThread([]()
                                     {
-                                        // å…ˆåœ¨å±€éƒ¨ä¸´æ—¶å®¹å™¨ä¸­ç”Ÿæˆï¼Œé¿å…é•¿æ—¶é—´æŒæœ‰é”
+                                        // ÏÈÔÚ¾Ö²¿ÁÙÊ±ÈİÆ÷ÖĞÉú³É£¬±ÜÃâ³¤Ê±¼ä³ÖÓĞËø
                                         vector<short> tmpClick;
                                         vector<short> tmpEmpty;
                                         tmpClick.reserve(PointsSize);
@@ -2771,17 +2772,17 @@ void RenderGui(ImGuiIO& io)
                                         float tmpDur = 0;
                                         int ClickCount = 0;
 
-                                        // è¡¥å…¨ï¼šé¢„è§ˆéœ€ä¸è¿ç‚¹å®é™…è¡Œä¸ºä¸€è‡´ï¼ˆéšæœºæ¨¡å¼ï¼šæ™®é€š/æé€Ÿ/ç–²åŠ³/ä»¿ç”Ÿï¼‰ï¼Œ
-                                        // æ”¹ç”¨ RandomBoolManagerï¼›rand() è¿”å› true=ç‚¹å‡»ï¼ˆä¸ MainClick.h çš„ rbm ç”¨æ³•ä¸€è‡´ï¼‰ã€‚
+                                        // ²¹È«£ºÔ¤ÀÀĞèÓëÁ¬µãÊµ¼ÊĞĞÎªÒ»ÖÂ£¨Ëæ»úÄ£Ê½£ºÆÕÍ¨/¼«ËÙ/Æ£ÀÍ/·ÂÉú£©£¬
+                                        // ¸ÄÓÃ RandomBoolManager£»rand() ·µ»Ø true=µã»÷£¨Óë MainClick.h µÄ rbm ÓÃ·¨Ò»ÖÂ£©¡£
                                         RandomBoolManager rbm;
                                         rbm.SetErrorRate(config.REmptyRateValue / 100.0f);
                                         rbm.SetMode((RandomBoolMode)config.EmptyRate_RandomMode);
                                         rbm.SetDistribution(config.EmptyRate_RandomDist);
 
-                                        // ä¿®å¤ï¼šé¢„è§ˆæ˜¯æ¯«ç§’çº§å¿«é€Ÿç”Ÿæˆï¼ŒçœŸå®æ—¶é—´å‡ ä¹ä¸æµé€ â†’ FATIGUE/BIONIC çš„
-                                        // ç–²åŠ³å› å­æ’â‰ˆ1.0ï¼Œå„æ¨¡å¼æ›²çº¿çœ‹èµ·æ¥ä¸€æ ·ï¼ˆå®é™…è¿ç‚¹ä¸­æŒ‰çœŸå®æ—¶é—´ç´¯ç§¯æ‰æœ‰æ•ˆï¼‰ã€‚
-                                        // ç”¨å³é”® CPS æ¨¡æ‹ŸçœŸå®ç‚¹å‡»èŠ‚å¥ï¼ˆæ¯æ¬¡ç‚¹å‡»æ¨è¿›ä¸€ä¸ªç‚¹å‡»é—´éš”ï¼‰ï¼Œ
-                                        // è®©"éšæ—¶é—´å¤±è¯¯ç‡ä¸Šå‡"åœ¨æ›²çº¿ä¸­å¯è§ï¼ˆå¦‚ 10CPS Ã— 2000 ç‚¹ â‰ˆ 3 åˆ†é’Ÿï¼Œç–²åŠ³å› å­å‡è‡³ ~1.5ï¼‰ã€‚
+                                        // ĞŞ¸´£ºÔ¤ÀÀÊÇºÁÃë¼¶¿ìËÙÉú³É£¬ÕæÊµÊ±¼ä¼¸ºõ²»Á÷ÊÅ ¡ú FATIGUE/BIONIC µÄ
+                                        // Æ£ÀÍÒò×Óºã¡Ö1.0£¬¸÷Ä£Ê½ÇúÏß¿´ÆğÀ´Ò»Ñù£¨Êµ¼ÊÁ¬µãÖĞ°´ÕæÊµÊ±¼äÀÛ»ı²ÅÓĞĞ§£©¡£
+                                        // ÓÃÓÒ¼ü CPS Ä£ÄâÕæÊµµã»÷½Ú×à£¨Ã¿´Îµã»÷ÍÆ½øÒ»¸öµã»÷¼ä¸ô£©£¬
+                                        // ÈÃ"ËæÊ±¼äÊ§ÎóÂÊÉÏÉı"ÔÚÇúÏßÖĞ¿É¼û£¨Èç 10CPS ¡Á 2000 µã ¡Ö 3 ·ÖÖÓ£¬Æ£ÀÍÒò×ÓÉıÖÁ ~1.5£©¡£
                                         const int SimCPS = max(config.RCPS, 1);
                                         const chrono::steady_clock::duration SimStep = chrono::milliseconds(1000 / SimCPS);
 
@@ -2789,8 +2790,8 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             auto start = chrono::high_resolution_clock::now();
 
-                                            rbm.AdvanceFatigueTime(SimStep);   // æ¨¡æ‹Ÿä¸€æ¬¡ç‚¹å‡»é—´éš”çš„æµé€
-                                            const bool data = rbm.rand();   // true=æœ‰ç‚¹å‡»ï¼ˆæ©™è‰²ï¼‰ï¼Œfalse=ç©ºåˆ€ï¼ˆç°è‰²ï¼‰
+                                            rbm.AdvanceFatigueTime(SimStep);   // Ä£ÄâÒ»´Îµã»÷¼ä¸ôµÄÁ÷ÊÅ
+                                            const bool data = rbm.rand();   // true=ÓĞµã»÷£¨³ÈÉ«£©£¬false=¿Õµ¶£¨»ÒÉ«£©
                                             tmpClick.push_back(data);
                                             tmpEmpty.push_back(!data);
 
@@ -2801,7 +2802,7 @@ void RenderGui(ImGuiIO& io)
                                                 ClickCount++;
                                         }
                                         {
-                                            // é”å†…ä¸€æ¬¡æ€§äº¤æ¢æ•°æ®ï¼Œä¸»çº¿ç¨‹ç»˜åˆ¶æœŸé—´èƒ½çœ‹åˆ°ä¸€è‡´çš„æ•°æ®
+                                            // ËøÄÚÒ»´ÎĞÔ½»»»Êı¾İ£¬Ö÷Ïß³Ì»æÖÆÆÚ¼äÄÜ¿´µ½Ò»ÖÂµÄÊı¾İ
                                             lock_guard lock(CurveMutex);
                                             ClickDatas.swap(tmpClick);
                                             EmpytDatas.swap(tmpEmpty);
@@ -2822,25 +2823,25 @@ void RenderGui(ImGuiIO& io)
                                     ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
                                     ImPlot::SetNextLineStyle((ImVec4)ImColor(254, 189, 57, 200), 0);
                                     {
-                                        // ç»˜åˆ¶æœŸé—´åŠ é”ï¼Œé˜²æ­¢åå°çº¿ç¨‹ swap å¯¼è‡´ data() æ‚¬å‚
+                                        // »æÖÆÆÚ¼ä¼ÓËø£¬·ÀÖ¹ºóÌ¨Ïß³Ì swap µ¼ÖÂ data() Ğü´¹
                                         lock_guard lock(CurveMutex);
-                                        ImPlot::PlotBars(config.UseChinese ? u8"å·²ç‚¹å‡»" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
+                                        ImPlot::PlotBars(config.UseChinese ? u8"ÒÑµã»÷" : "Clicked", ClickDatas.data(), ClickDatas.size(), 0.8);
                                     }
 
                                     ImPlot::SetNextMarkerStyle(-1, 1.5f, (ImVec4)ImColor(0, 0, 0, 0));
                                     ImPlot::SetNextLineStyle((ImVec4)ImColor(0, 106, 201, 200), 0);
                                     {
                                         lock_guard lock(CurveMutex);
-                                        ImPlot::PlotBars(config.UseChinese ? u8"ç©ºç‚¹å‡»" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
+                                        ImPlot::PlotBars(config.UseChinese ? u8"¿Õµã»÷" : "Empty Click", EmpytDatas.data(), EmpytDatas.size(), 0.8);
                                     }
                                     ImPlot::EndPlot();
                                 }
-                                Text(config.UseChinese ? u8"è€—æ—¶ï¼š%.6fæ¯«ç§’" : "Time: %.6f ms", GenDurationSum);
+                                Text(config.UseChinese ? u8"ºÄÊ±£º%.6fºÁÃë" : "Time: %.6f ms", GenDurationSum);
                                 SameLine();
-                                Text(config.UseChinese ? u8"å…± %d ä¸ªæ•°æ®ç‚¹" : "A total of %d data points", PointsSize);
+                                Text(config.UseChinese ? u8"¹² %d ¸öÊı¾İµã" : "A total of %d data points", PointsSize);
                                 SameLine();
-                                Text(config.UseChinese ? u8"å¹³å‡ç”¨æ—¶ï¼š%.6fæ¯«ç§’/æ•°æ®ç‚¹" : "Average time: %.6f ms/data point", auv);
-                                Text(config.UseChinese ? u8"å®é™…ç©ºåˆ€æ¦‚ç‡ï¼š%.3f%" : "Actual empty click: %.3f%", ActualRate);
+                                Text(config.UseChinese ? u8"Æ½¾ùÓÃÊ±£º%.6fºÁÃë/Êı¾İµã" : "Average time: %.6f ms/data point", auv);
+                                Text(config.UseChinese ? u8"Êµ¼Ê¿Õµ¶¸ÅÂÊ£º%.3f%" : "Actual empty click: %.3f%", ActualRate);
                                 EndPopupWindow();
                             }
                         }
@@ -2855,25 +2856,25 @@ void RenderGui(ImGuiIO& io)
                 SetCursorPosY(GetCursorPosY() + 10.0f);
                 BeginCard("##Settings-3", ImVec2(-1, -1), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    //-------------------------ä¸»å¾ªç¯å»¶è¿Ÿ----------------------------
-                    Text(config.UseChinese ? u8"ä¸»å¾ªç¯å»¶è¿Ÿ" : "Loop Delay");
-                    AttachTooltip(config.UseChinese ? u8"æ¯æ¬¡è½®è¯¢é—´éš”ï¼Œå•ä½æ¯«ç§’ï¼Œ\nå¤ªé«˜ä¼šå¯¼è‡´æœ‰å»¶è¿Ÿ(è®¾ç½®ä¸º1mså°±å‡ ä¹æ²¡æœ‰å»¶è¿Ÿ)\né€šå¸¸ä¸éœ€è¦è®¾ç½®ï¼Œåœ¨GCå ç”¨ç‡å¤§æ—¶ï¼Œè°ƒé«˜è¯¥æ•°å€¼ã€‚\nä¸ä¼šå°±ä¿æŒé»˜è®¤ã€‚" : "The interval between each polling, in milliseconds, \nToo high will cause delay (set to 1ms almost no delay)\nUsually do not need to set, increase this value when the GC occupancy is high. \nIt will not stay at the default value.");
+                    //-------------------------Ö÷Ñ­»·ÑÓ³Ù----------------------------
+                    Text(config.UseChinese ? u8"Ö÷Ñ­»·ÑÓ³Ù" : "Loop Delay");
+                    AttachTooltip(config.UseChinese ? u8"Ã¿´ÎÂÖÑ¯¼ä¸ô£¬µ¥Î»ºÁÃë£¬\nÌ«¸ß»áµ¼ÖÂÓĞÑÓ³Ù(ÉèÖÃÎª1ms¾Í¼¸ºõÃ»ÓĞÑÓ³Ù)\nÍ¨³£²»ĞèÒªÉèÖÃ£¬ÔÚGCÕ¼ÓÃÂÊ´óÊ±£¬µ÷¸ß¸ÃÊıÖµ¡£\n²»»á¾Í±£³ÖÄ¬ÈÏ¡£" : "The interval between each polling, in milliseconds, \nToo high will cause delay (set to 1ms almost no delay)\nUsually do not need to set, increase this value when the GC occupancy is high. \nIt will not stay at the default value.");
                     SameLine();
                     SetNextItemWidth(300);
                     SetCursorPosX(300);
-                    SliderInt(u8"##MainClickSleep", &config.MainClickSleep, 0, 50, config.UseChinese ? u8"%dæ¯«ç§’" : "%d ms", ImGuiSliderFlags_AlwaysClamp);
+                    SliderInt(u8"##MainClickSleep", &config.MainClickSleep, 0, 50, config.UseChinese ? u8"%dºÁÃë" : "%d ms", ImGuiSliderFlags_AlwaysClamp);
 
                     BeginDisabled(config.UseBEAdaptation);
                     {
-                        //-------------------------ç‚¹å‡»æ–¹å¼----------------------------
-                        Text(config.UseChinese ? u8"ç‚¹å‡»æ–¹å¼" : "Click Method");
+                        //-------------------------µã»÷·½Ê½----------------------------
+                        Text(config.UseChinese ? u8"µã»÷·½Ê½" : "Click Method");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
                         unordered_map<int, const char*> ClickMethodList = {
-                            { SC_MOUSE_EVENT,  config.UseChinese ? u8"Mouse Event - æ¨¡æ‹Ÿé¼ æ ‡æ¶ˆæ¯ç‚¹å‡»" : "Mouse Event - Simulate mouse message click" },
-                            { SC_POST_MESSAGE, config.UseChinese ? u8"Post Message - ä½¿ç”¨æ¶ˆæ¯é˜Ÿåˆ—ç‚¹å‡»" : "Post Message - Use message queue click"     },
-                            { SC_SEND_INPUT,   config.UseChinese ? u8"Send Input - ä½¿ç”¨æ¨¡æ‹Ÿé¼ æ ‡è¾“å…¥" : "Send Input - Use simulated mouse input"     }
+                            { SC_MOUSE_EVENT,  config.UseChinese ? u8"Mouse Event - Ä£ÄâÊó±êÏûÏ¢µã»÷" : "Mouse Event - Simulate mouse message click" },
+                            { SC_POST_MESSAGE, config.UseChinese ? u8"Post Message - Ê¹ÓÃÏûÏ¢¶ÓÁĞµã»÷" : "Post Message - Use message queue click"     },
+                            { SC_SEND_INPUT,   config.UseChinese ? u8"Send Input - Ê¹ÓÃÄ£ÄâÊó±êÊäÈë" : "Send Input - Use simulated mouse input"     }
                         };
                         if (BeginCombo("##ClickMethod", ClickMethodList[config.SimulateClickMode]))
                         {
@@ -2890,16 +2891,16 @@ void RenderGui(ImGuiIO& io)
                     }
                     EndDisabled();
                     if (config.UseBEAdaptation)
-                        Text(config.UseChinese ? u8"&cå¯ç”¨é€‚é…åŸºå²©ç‰ˆåï¼Œæ— æ³•æ›´æ”¹æ­¤é€‰é¡¹ã€‚" : "&cAfter enabling Bedrock Edition adaptation, this option cannot be changed.");
+                        Text(config.UseChinese ? u8"&cÆôÓÃÊÊÅä»ùÑÒ°æºó£¬ÎŞ·¨¸ü¸Ä´ËÑ¡Ïî¡£" : "&cAfter enabling Bedrock Edition adaptation, this option cannot be changed.");
 
-                    Text(config.UseChinese ? u8"è¯»å–æŒ‰é”®çŠ¶æ€æ–¹å¼" : "Read Key Status Method");
+                    Text(config.UseChinese ? u8"¶ÁÈ¡°´¼ü×´Ì¬·½Ê½" : "Read Key Status Method");
                     SameLine();
                     SetNextItemWidth(300);
                     SetCursorPosX(300);
                     unordered_map<int, const char*> ReadKeyStateModeList = {
-                        { GK_BOTH, config.UseChinese ? u8"è‡ªåŠ¨é€‰æ‹©"     : "Auto select"     },
-                        { GK_API , config.UseChinese ? u8"ä½¿ç”¨ç³»ç»ŸAPI"  : "Use system API"  },
-                        { GK_HOOK, config.UseChinese ? u8"ä½¿ç”¨ç³»ç»Ÿé’©å­" : "Use system hook" }
+                        { GK_BOTH, config.UseChinese ? u8"×Ô¶¯Ñ¡Ôñ"     : "Auto select"     },
+                        { GK_API , config.UseChinese ? u8"Ê¹ÓÃÏµÍ³API"  : "Use system API"  },
+                        { GK_HOOK, config.UseChinese ? u8"Ê¹ÓÃÏµÍ³¹³×Ó" : "Use system hook" }
                     };
                     if (BeginCombo("##ReadKeyStateMode", ReadKeyStateModeList[config.ReadKeyStateMode]))
                     {
@@ -2914,60 +2915,60 @@ void RenderGui(ImGuiIO& io)
                         EndCombo();
                     }
 
-                    Toggle(config.UseChinese ? u8"ä»…äººç±»æ“ä½œè§¦å‘" : "Human Only Trigger", &config.UseHumanOnlyTrigger, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"½öÈËÀà²Ù×÷´¥·¢" : "Human Only Trigger", &config.UseHumanOnlyTrigger, ToggleFlags);
                 }
                 EndCard();
 
-                //-------------------------è¿‡çƒ­é™é¢‘--------------------------
+                //-------------------------¹ıÈÈ½µÆµ--------------------------
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"è¿‡çƒ­é™é¢‘" : "Overheat Throttle", ImVec2(-1, 167), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"¹ıÈÈ½µÆµ" : "Overheat Throttle", ImVec2(-1, 167), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseOverheatThrottle, ToggleFlags);
-                    AttachTooltip(config.UseChinese ? u8"&6è¿‡çƒ­é™é¢‘ï¼šè¿ç‚¹æ—¶é—´è¿‡é•¿ä¼šå¯¼è‡´\"è¿‡çƒ­\"ï¼ŒCPS è‡ªåŠ¨ä¸‹é™ï¼Œæ¨¡æ‹ŸçœŸå®æ‰‹éƒ¨/ç¡¬ä»¶ç–²åŠ³ã€‚\n&cåœæ­¢è¿ç‚¹åè‡ªåŠ¨æ¢å¤ï¼Œä¸‹æ¬¡è¿ç‚¹é‡æ–°è®¡æ—¶" : "&6Overheat Throttle: Long continuous clicking causes \"overheating\" and the CPS automatically drops, simulating real hand/hardware fatigue.\n&cStops clicking and it recovers automatically; the next session restarts the timer");
+                    Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseOverheatThrottle, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"&6¹ıÈÈ½µÆµ£ºÁ¬µãÊ±¼ä¹ı³¤»áµ¼ÖÂ\"¹ıÈÈ\"£¬CPS ×Ô¶¯ÏÂ½µ£¬Ä£ÄâÕæÊµÊÖ²¿/Ó²¼şÆ£ÀÍ¡£\n&cÍ£Ö¹Á¬µãºó×Ô¶¯»Ö¸´£¬ÏÂ´ÎÁ¬µãÖØĞÂ¼ÆÊ±" : "&6Overheat Throttle: Long continuous clicking causes \"overheating\" and the CPS automatically drops, simulating real hand/hardware fatigue.\n&cStops clicking and it recovers automatically; the next session restarts the timer");
                     BeginDisabled(!config.UseOverheatThrottle);
                     {
-                        Text(config.UseChinese ? u8"CPSæœ€ä½é™åˆ¶" : "Min CPS");
-                        AttachTooltip(config.UseChinese ? u8"é™é¢‘å CPS ä¸ä¼šä½äºè¯¥å€¼ã€‚\nä¾‹å¦‚è®¾ç½®ä¸º 10ï¼Œåˆ™æ— è®ºè¿‡çƒ­å¤šä¹…ï¼ŒCPS æœ€ä½ä¿æŒ 10ã€‚" : "CPS never drops below this value.\nE.g. 10 means CPS stays at least 10 even after long overheating.");
+                        Text(config.UseChinese ? u8"CPS×îµÍÏŞÖÆ" : "Min CPS");
+                        AttachTooltip(config.UseChinese ? u8"½µÆµºó CPS ²»»áµÍÓÚ¸ÃÖµ¡£\nÀıÈçÉèÖÃÎª 10£¬ÔòÎŞÂÛ¹ıÈÈ¶à¾Ã£¬CPS ×îµÍ±£³Ö 10¡£" : "CPS never drops below this value.\nE.g. 10 means CPS stays at least 10 even after long overheating.");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
                         SliderInt(u8"##OverheatMinCPS", &config.Overheat_MinCPS, 1, 100, config.UseChinese ? u8"%d CPS" : "%d CPS", ImGuiSliderFlags_AlwaysClamp);
 
-                        Text(config.UseChinese ? u8"è¿‡çƒ­é€Ÿåº¦" : "Overheat Time");
-                        AttachTooltip(config.UseChinese ? u8"è¿ç‚¹æŒç»­å¤šå°‘ç§’åè¾¾åˆ°è¿‡çƒ­ç‚¹ã€‚\n&aåˆ°è¾¾è¿‡çƒ­ç‚¹ä¹‹åæ‰å¼€å§‹é™é¢‘ï¼Œä¹‹å‰ä¿æŒè®¾å®šçš„ CPSã€‚" : "How many seconds of continuous clicking to reach the overheat point.\n&aThrottling starts only AFTER reaching it; CPS stays normal before that.");
+                        Text(config.UseChinese ? u8"¹ıÈÈËÙ¶È" : "Overheat Time");
+                        AttachTooltip(config.UseChinese ? u8"Á¬µã³ÖĞø¶àÉÙÃëºó´ïµ½¹ıÈÈµã¡£\n&aµ½´ï¹ıÈÈµãÖ®ºó²Å¿ªÊ¼½µÆµ£¬Ö®Ç°±£³ÖÉè¶¨µÄ CPS¡£" : "How many seconds of continuous clicking to reach the overheat point.\n&aThrottling starts only AFTER reaching it; CPS stays normal before that.");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderFloat(u8"##OverheatTime", &config.Overheat_Time, 1.0f, 60.0f, config.UseChinese ? u8"%.1fç§’" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
+                        SliderFloat(u8"##OverheatTime", &config.Overheat_Time, 1.0f, 60.0f, config.UseChinese ? u8"%.1fÃë" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
 
-                        Text(config.UseChinese ? u8"é™é¢‘é€Ÿåº¦" : "Throttle Time");
-                        AttachTooltip(config.UseChinese ? u8"åˆ°è¾¾è¿‡çƒ­ç‚¹åï¼Œå¤šå°‘ç§’å†…ä»å½“å‰ CPS çº¿æ€§é™åˆ°æœ€ä½é™åˆ¶ã€‚\næ•°å€¼è¶Šå°é™é¢‘è¶Šå¿«ï¼Œè¶Šå¤§è¶Šå¹³ç¼“ã€‚" : "After reaching the overheat point, how many seconds to linearly drop from current CPS to the minimum limit.\nSmaller = faster throttle, larger = smoother.");
+                        Text(config.UseChinese ? u8"½µÆµËÙ¶È" : "Throttle Time");
+                        AttachTooltip(config.UseChinese ? u8"µ½´ï¹ıÈÈµãºó£¬¶àÉÙÃëÄÚ´Óµ±Ç° CPS ÏßĞÔ½µµ½×îµÍÏŞÖÆ¡£\nÊıÖµÔ½Ğ¡½µÆµÔ½¿ì£¬Ô½´óÔ½Æ½»º¡£" : "After reaching the overheat point, how many seconds to linearly drop from current CPS to the minimum limit.\nSmaller = faster throttle, larger = smoother.");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderFloat(u8"##OverheatThrottleTime", &config.Overheat_ThrottleTime, 1.0f, 60.0f, config.UseChinese ? u8"%.1fç§’" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
+                        SliderFloat(u8"##OverheatThrottleTime", &config.Overheat_ThrottleTime, 1.0f, 60.0f, config.UseChinese ? u8"%.1fÃë" : "%.1fs", ImGuiSliderFlags_AlwaysClamp);
                     }
                     EndDisabled();
                 }
                 EndCard();
 
-                //-------------------------å»¶è¿Ÿè§¦å‘--------------------------
+                //-------------------------ÑÓ³Ù´¥·¢--------------------------
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"è¿ç‚¹å»¶è¿Ÿè§¦å‘" : "Clicker Delay Trigger", ImVec2(-1, 109), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"Á¬µãÑÓ³Ù´¥·¢" : "Clicker Delay Trigger", ImVec2(-1, 109), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
                     BeginChild("##Settings-4-1", ImVec2(323, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseRStartClickerDelay, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"è®©ä½ è§¦å‘è¿ç‚¹æ—¶æœ‰å»¶è¿Ÿ\n&dé€šå¸¸ä¸ºé¼ æ ‡æ¨¡å¼ä½¿ç”¨" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
+                        Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseRStartClickerDelay, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"ÈÃÄã´¥·¢Á¬µãÊ±ÓĞÑÓ³Ù\n&dÍ¨³£ÎªÊó±êÄ£Ê½Ê¹ÓÃ" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
 
                         BeginDisabled(!config.UseRStartClickerDelay);
                         {
-                            Text(config.UseChinese ? u8"å»¶è¿Ÿæ—¶é•¿" : "Delay Time");
+                            Text(config.UseChinese ? u8"ÑÓ³ÙÊ±³¤" : "Delay Time");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##RStartClickerDelay", &config.RStartClickerDelay, config.UseFilterRSingleClick ? 140 : 5, 3000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##RStartClickerDelay", &config.RStartClickerDelay, config.UseFilterRSingleClick ? 140 : 5, 3000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
                     }
@@ -2977,51 +2978,51 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-4-2", ImVec2(328, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseLStartClickerDelay, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"è®©ä½ è§¦å‘è¿ç‚¹æ—¶æœ‰å»¶è¿Ÿ\n&dé€šå¸¸ä¸ºé¼ æ ‡æ¨¡å¼ä½¿ç”¨" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
+                        Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseLStartClickerDelay, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"ÈÃÄã´¥·¢Á¬µãÊ±ÓĞÑÓ³Ù\n&dÍ¨³£ÎªÊó±êÄ£Ê½Ê¹ÓÃ" : "Delay the trigger of the clicker\n&dUsually used in mouse mode");
 
                         BeginDisabled(!config.UseLStartClickerDelay);
                         {
-                            Text(config.UseChinese ? u8"å»¶è¿Ÿæ—¶é•¿" : "Delay Time");
+                            Text(config.UseChinese ? u8"ÑÓ³ÙÊ±³¤" : "Delay Time");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##LStartClickerDelay", &config.LStartClickerDelay, config.UseFilterLSingleClick ? 140 : 5, 3000, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##LStartClickerDelay", &config.LStartClickerDelay, config.UseFilterLSingleClick ? 140 : 5, 3000, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
                     }
                     EndChild();
 
                     if (config.RClickerMode & C_ASSISTMODE || config.LClickerMode & C_ASSISTMODE)
-                        Text(config.UseChinese ? u8"&cè¾…åŠ©æ¨¡å¼ä¸æ”¯æŒè¯¥åŠŸèƒ½" : "&cThe AssistMode does not support this function.");
+                        Text(config.UseChinese ? u8"&c¸¨ÖúÄ£Ê½²»Ö§³Ö¸Ã¹¦ÄÜ" : "&cThe AssistMode does not support this function.");
 
                     PopStyleColor();
                 }
                 EndCard();
 
-                //-------------------------æŒ‰ä¸‹é—´éš”--------------------------
+                //-------------------------°´ÏÂ¼ä¸ô--------------------------
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"ç‚¹å‡»æŒ‰ä¸‹é—´éš”" : "Click Press Interval", ImVec2(-1, 131), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"µã»÷°´ÏÂ¼ä¸ô" : "Click Press Interval", ImVec2(-1, 131), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
 
                     BeginChild("##Settings-5-1", ImVec2(328, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseRClickPressTime, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"åœ¨æ¯æ¬¡ç‚¹å‡»ä¹‹ä¸­ï¼ŒæŒ‰ä¸‹æŒ‰é”®çš„æŒç»­æ—¶é•¿ã€‚" : "The duration of the button press during each click.");
+                        Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseRClickPressTime, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"ÔÚÃ¿´Îµã»÷Ö®ÖĞ£¬°´ÏÂ°´¼üµÄ³ÖĞøÊ±³¤¡£" : "The duration of the button press during each click.");
 
                         BeginDisabled(!config.UseRClickPressTime);
                         {
-                            Toggle(config.UseChinese ? u8"åŠ¨æ€è®¾ç½®æŒ‰ä¸‹æ—¶é•¿&7ï¼ˆå»ºè®®ï¼‰" : "Dynamically set press duration &7(recommended)", &config.UseRAutoPressDuration, ToggleFlags);
-                            AttachTooltip(config.UseChinese ? u8"åŠ¨æ€çš„è®¾ç½®æŒ‰ä¸‹æ—¶é•¿\næ¥æ¨¡æ‹Ÿäººç±»ç‚¹å‡»çš„çš„æŒ‰ä¸‹é—´éš”\n&aé™¤éç‰¹æ®Šç”¨é€”ï¼Œå¦åˆ™å»ºè®®å¼€å¯ã€‚" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
+                            Toggle(config.UseChinese ? u8"¶¯Ì¬ÉèÖÃ°´ÏÂÊ±³¤&7£¨½¨Òé£©" : "Dynamically set press duration &7(recommended)", &config.UseRAutoPressDuration, ToggleFlags);
+                            AttachTooltip(config.UseChinese ? u8"¶¯Ì¬µÄÉèÖÃ°´ÏÂÊ±³¤\nÀ´Ä£ÄâÈËÀàµã»÷µÄµÄ°´ÏÂ¼ä¸ô\n&a³ı·ÇÌØÊâÓÃÍ¾£¬·ñÔò½¨Òé¿ªÆô¡£" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
                         }
                         EndDisabled();
 
                         BeginDisabled(!config.UseRClickPressTime || config.UseRAutoPressDuration);
                         {
-                            Text(config.UseChinese ? u8"æŒ‰ä½æŒç»­æ—¶é•¿" : "Press Duration");
+                            Text(config.UseChinese ? u8"°´×¡³ÖĞøÊ±³¤" : "Press Duration");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##PressDuration", &config.RPressDuration, 0, 500, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##PressDuration", &config.RPressDuration, 0, 500, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
                     }
@@ -3031,22 +3032,22 @@ void RenderGui(ImGuiIO& io)
 
                     BeginChild("##Settings-5-2", ImVec2(328, -1), false);
                     {
-                        Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseLClickPressTime, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"åœ¨æ¯æ¬¡ç‚¹å‡»ä¹‹ä¸­ï¼ŒæŒ‰ä¸‹æŒ‰é”®çš„æŒç»­æ—¶é•¿ã€‚" : "The duration of the button press during each click.");
+                        Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseLClickPressTime, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"ÔÚÃ¿´Îµã»÷Ö®ÖĞ£¬°´ÏÂ°´¼üµÄ³ÖĞøÊ±³¤¡£" : "The duration of the button press during each click.");
 
                         BeginDisabled(!config.UseLClickPressTime);
                         {
-                            Toggle(config.UseChinese ? u8"åŠ¨æ€è®¾ç½®æŒ‰ä¸‹æ—¶é•¿&7ï¼ˆå»ºè®®ï¼‰" : "Dynamically set press duration &7(recommended)", &config.UseLAutoPressDuration, ToggleFlags);
-                            AttachTooltip(config.UseChinese ? u8"åŠ¨æ€çš„è®¾ç½®æŒ‰ä¸‹æ—¶é•¿\næ¥æ¨¡æ‹Ÿäººç±»ç‚¹å‡»çš„çš„æŒ‰ä¸‹é—´éš”\n&aé™¤éç‰¹æ®Šç”¨é€”ï¼Œå¦åˆ™å»ºè®®å¼€å¯ã€‚" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
+                            Toggle(config.UseChinese ? u8"¶¯Ì¬ÉèÖÃ°´ÏÂÊ±³¤&7£¨½¨Òé£©" : "Dynamically set press duration &7(recommended)", &config.UseLAutoPressDuration, ToggleFlags);
+                            AttachTooltip(config.UseChinese ? u8"¶¯Ì¬µÄÉèÖÃ°´ÏÂÊ±³¤\nÀ´Ä£ÄâÈËÀàµã»÷µÄµÄ°´ÏÂ¼ä¸ô\n&a³ı·ÇÌØÊâÓÃÍ¾£¬·ñÔò½¨Òé¿ªÆô¡£" : "Dynamically set the press duration to \nsimulate the press interval of a human click.\n&aIt is recommended to turn on unless there is a special purpose.");
                         }
                         EndDisabled();
 
                         BeginDisabled(!config.UseLClickPressTime || config.UseLAutoPressDuration);
                         {
-                            Text(config.UseChinese ? u8"æŒ‰ä½æŒç»­æ—¶é•¿" : "Press Duration");
+                            Text(config.UseChinese ? u8"°´×¡³ÖĞøÊ±³¤" : "Press Duration");
                             SameLine();
                             SetNextItemWidth(220);
-                            SliderInt(u8"##PressDuration", &config.LPressDuration, 0, 500, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                            SliderInt(u8"##PressDuration", &config.LPressDuration, 0, 500, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
                         }
                         EndDisabled();
                     }
@@ -3056,41 +3057,41 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
 
-                //-------------------------é¼ æ ‡æŠ–åŠ¨--------------------------
+                //-------------------------Êó±ê¶¶¶¯--------------------------
 
                 SetCursorPosY(GetCursorPosY() + 10.0f);
-                BeginCard(config.UseChinese ? u8"é¼ æ ‡æŠ–åŠ¨" : "Mouse Shake", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"Êó±ê¶¶¶¯" : "Mouse Shake", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Toggle(config.UseChinese ? u8"å¯ç”¨" : "Enable", &config.UseMouseShake, ToggleFlags);
-                    AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œåœ¨è¿ç‚¹æ—¶ä¼šéšæœºæŠ–åŠ¨é¼ æ ‡ä½ç½®ã€‚" : "Turn on this function to randomly shake the mouse position during clicking.");
+                    Toggle(config.UseChinese ? u8"ÆôÓÃ" : "Enable", &config.UseMouseShake, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬ÔÚÁ¬µãÊ±»áËæ»ú¶¶¶¯Êó±êÎ»ÖÃ¡£" : "Turn on this function to randomly shake the mouse position during clicking.");
 
                     BeginDisabled(!config.UseMouseShake);
                     {
-                        Text(config.UseChinese ? u8"æŠ–åŠ¨èŒƒå›´" : "Shake Range");
+                        Text(config.UseChinese ? u8"¶¶¶¯·¶Î§" : "Shake Range");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderInt(u8"##MouseShakeRect", &config.MouseShakeRect, 1, 20, config.UseChinese ? u8"%dåƒç´ " : "%d px", ImGuiSliderFlags_AlwaysClamp);
-                        AttachTooltip(config.UseChinese ? u8"æŠ–åŠ¨èŒƒå›´çš„æ­£æ–¹å½¢è¾¹é•¿å¤§å°ï¼Œå»ºè®®ä¸è¦å¤ªå¤§ã€‚" : "The size of the shake rectangle, it is recommended not to be too large.");
+                        SliderInt(u8"##MouseShakeRect", &config.MouseShakeRect, 1, 20, config.UseChinese ? u8"%dÏñËØ" : "%d px", ImGuiSliderFlags_AlwaysClamp);
+                        AttachTooltip(config.UseChinese ? u8"¶¶¶¯·¶Î§µÄÕı·½ĞÎ±ß³¤´óĞ¡£¬½¨Òé²»ÒªÌ«´ó¡£" : "The size of the shake rectangle, it is recommended not to be too large.");
 
-                        Text(config.UseChinese ? u8"é¼ æ ‡ç§»åŠ¨é€Ÿåº¦" : "Mouse Move Speed");
+                        Text(config.UseChinese ? u8"Êó±êÒÆ¶¯ËÙ¶È" : "Mouse Move Speed");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderInt(u8"##MouseShakeSpeed", &config.MouseShakeSpeed, 100, 1000, config.UseChinese ? u8"%dåƒç´ /æ¯åˆ†é’Ÿ" : "%d px/minute", ImGuiSliderFlags_AlwaysClamp);
-                        AttachTooltip(config.UseChinese ? u8"åœ¨ä¸¤ç‚¹ä¹‹é—´è¿åŠ¨çš„é€Ÿåº¦ï¼Œä¹Ÿå°±æ˜¯æŠ–åŠ¨æ—¶çš„é€Ÿåº¦ã€‚" : "The speed at which the mouse moves between two points, which is the speed of the shake.");
+                        SliderInt(u8"##MouseShakeSpeed", &config.MouseShakeSpeed, 100, 1000, config.UseChinese ? u8"%dÏñËØ/Ã¿·ÖÖÓ" : "%d px/minute", ImGuiSliderFlags_AlwaysClamp);
+                        AttachTooltip(config.UseChinese ? u8"ÔÚÁ½µãÖ®¼äÔË¶¯µÄËÙ¶È£¬Ò²¾ÍÊÇ¶¶¶¯Ê±µÄËÙ¶È¡£" : "The speed at which the mouse moves between two points, which is the speed of the shake.");
 
-                        Toggle(config.UseChinese ? u8"éçº¿æ€§ç§»åŠ¨" : "Non-linear Move", &config.UseMSSmoothSpeed, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"ä½¿ç”¨éçº¿æ€§å‡½æ•°ï¼Œæ¥å®ç°ç¼“å†²ç§»åŠ¨çš„æ•ˆæœã€‚" : "Use a non-linear function to \nachieve the effect of buffer movement.");
+                        Toggle(config.UseChinese ? u8"·ÇÏßĞÔÒÆ¶¯" : "Non-linear Move", &config.UseMSSmoothSpeed, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"Ê¹ÓÃ·ÇÏßĞÔº¯Êı£¬À´ÊµÏÖ»º³åÒÆ¶¯µÄĞ§¹û¡£" : "Use a non-linear function to \nachieve the effect of buffer movement.");
                         SameLine();
 
-                        Toggle(config.UseChinese ? u8"åŸå§‹è¾“å…¥" : "Raw Input", &config.UseMouseShakeRawInput, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"æ¨¡æ‹Ÿé¼ æ ‡åŸå§‹è¾“å…¥ï¼Œé˜²æ­¢ç³»ç»Ÿå¯¹é¼ æ ‡åŠ é€Ÿåº¦\nå¯¼è‡´ç§»åŠ¨è·ç¦»ä¸ç²¾ç¡®ã€‚" : "Simulate the raw mouse input to prevent the system from \naccurately measuring the mouse acceleration.");
+                        Toggle(config.UseChinese ? u8"Ô­Ê¼ÊäÈë" : "Raw Input", &config.UseMouseShakeRawInput, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"Ä£ÄâÊó±êÔ­Ê¼ÊäÈë£¬·ÀÖ¹ÏµÍ³¶ÔÊó±ê¼ÓËÙ¶È\nµ¼ÖÂÒÆ¶¯¾àÀë²»¾«È·¡£" : "Simulate the raw mouse input to prevent the system from \naccurately measuring the mouse acceleration.");
 
-                        Toggle(config.UseChinese ? u8"é˜²æ­¢è§†è§’åç¦»" : "Prevent View Sliding", &config.UseMSPreventViewSliding, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"ä½¿ç”¨ç®—æ³•å®ç°åœ¨é¼ æ ‡æŠ–åŠ¨æ—¶ä¸ä¼šå‡ºç°è§†è§’åç¦»åŸå…ˆä½ç½®ã€‚" : "Use an algorithm to prevent the view from sliding during mouse shake.");
+                        Toggle(config.UseChinese ? u8"·ÀÖ¹ÊÓ½ÇÆ«Àë" : "Prevent View Sliding", &config.UseMSPreventViewSliding, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"Ê¹ÓÃËã·¨ÊµÏÖÔÚÊó±ê¶¶¶¯Ê±²»»á³öÏÖÊÓ½ÇÆ«ÀëÔ­ÏÈÎ»ÖÃ¡£" : "Use an algorithm to prevent the view from sliding during mouse shake.");
 
-                        Text(config.UseChinese ? u8"éšæœºç”Ÿæˆåˆ†å¸ƒ" : "Random Distribution");
+                        Text(config.UseChinese ? u8"Ëæ»úÉú³É·Ö²¼" : "Random Distribution");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
@@ -3107,13 +3108,13 @@ void RenderGui(ImGuiIO& io)
                             EndCombo();
                         }
 
-                        TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"ä¸ºäº†é˜²æ­¢è¯¯è§¦ï¼Œè¯¥åŠŸèƒ½æ— æ³•åœ¨GCçª—å£ä¸­ä½¿ç”¨ï¼\nè¯·åˆ‡æ¢åˆ°å…¶ä»–çª—å£è¯¥åŠŸèƒ½æ–¹å¯ç”Ÿæ•ˆã€‚" : "To prevent accidental triggering, this function cannot be used in the GC window!\nPlease switch to another window for this feature to take effect.");
+                        TextColored((ImVec4)ImColor(255, 214, 143, 255), config.UseChinese ? u8"ÎªÁË·ÀÖ¹Îó´¥£¬¸Ã¹¦ÄÜÎŞ·¨ÔÚGC´°¿ÚÖĞÊ¹ÓÃ£¡\nÇëÇĞ»»µ½ÆäËû´°¿Ú¸Ã¹¦ÄÜ·½¿ÉÉúĞ§¡£" : "To prevent accidental triggering, this function cannot be used in the GC window!\nPlease switch to another window for this feature to take effect.");
 
                         static bool IsOpen = false;
-                        if (Button(config.UseChinese ? u8"éšæœºæ›²çº¿åˆ†å¸ƒ" : "Random Curve"))
+                        if (Button(config.UseChinese ? u8"Ëæ»úÇúÏß·Ö²¼" : "Random Curve"))
                             IsOpen = !IsOpen;
 
-                        if (BeginPopupWindow(config.UseChinese ? u8"éšæœºæ›²çº¿åˆ†å¸ƒ" : "Random Curve", &IsOpen))
+                        if (BeginPopupWindow(config.UseChinese ? u8"Ëæ»úÇúÏß·Ö²¼" : "Random Curve", &IsOpen))
                         {
                             static int PointsSize = 200;
                             static vector<int> Points_x;
@@ -3123,11 +3124,11 @@ void RenderGui(ImGuiIO& io)
                             static bool IsInit = false;
                             static bool IsGenerating = false;
                             static float auv = 0;
-                            // ä¿®å¤ï¼šPoints_x/y/z ç”± detach çº¿ç¨‹é‡å¡«ã€ä¸»çº¿ç¨‹æ¯å¸§ç»˜åˆ¶ï¼Œ
-                            // åŸä»£ç æ— é”ï¼Œçº¿ç¨‹ push_back æ‰©å®¹æ—¶ä¸»çº¿ç¨‹ data() è®¿é—®å·²é‡Šæ”¾å†…å­˜ â†’ 0xC0000005ã€‚
+                            // ĞŞ¸´£ºPoints_x/y/z ÓÉ detach Ïß³ÌÖØÌî¡¢Ö÷Ïß³ÌÃ¿Ö¡»æÖÆ£¬
+                            // Ô­´úÂëÎŞËø£¬Ïß³Ì push_back À©ÈİÊ±Ö÷Ïß³Ì data() ·ÃÎÊÒÑÊÍ·ÅÄÚ´æ ¡ú 0xC0000005¡£
                             static mutex CurveMutex2;
 
-                            Text(config.UseChinese ? u8"æ•°æ®ç‚¹æ•°é‡" : "Number of data points");
+                            Text(config.UseChinese ? u8"Êı¾İµãÊıÁ¿" : "Number of data points");
                             SameLine();
                             SetNextItemWidth(300);
                             SetCursorPosX(300);
@@ -3141,12 +3142,12 @@ void RenderGui(ImGuiIO& io)
                                 IsInit = false;
                             }
 
-                            if ((Button(config.UseChinese ? u8"åˆ·æ–°" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
+                            if ((Button(config.UseChinese ? u8"Ë¢ĞÂ" : "Refresh", ImVec2(70, 30)) || !IsInit) && !IsGenerating)
                             {
                                 IsGenerating = true;
                                 thread FunThread([]()
                                     {
-                                        // å…ˆåœ¨å±€éƒ¨ä¸´æ—¶å®¹å™¨ä¸­ç”Ÿæˆï¼Œé¿å…é•¿æ—¶é—´æŒæœ‰é”
+                                        // ÏÈÔÚ¾Ö²¿ÁÙÊ±ÈİÆ÷ÖĞÉú³É£¬±ÜÃâ³¤Ê±¼ä³ÖÓĞËø
                                         vector<int> tmp_x;
                                         vector<int> tmp_y;
                                         vector<int> tmp_z;
@@ -3170,7 +3171,7 @@ void RenderGui(ImGuiIO& io)
                                             tmpDur += duration.count() / 1000.0;
                                         }
                                         {
-                                            // é”å†…ä¸€æ¬¡æ€§äº¤æ¢æ•°æ®
+                                            // ËøÄÚÒ»´ÎĞÔ½»»»Êı¾İ
                                             lock_guard lock(CurveMutex2);
                                             Points_x.swap(tmp_x);
                                             Points_y.swap(tmp_y);
@@ -3190,12 +3191,12 @@ void RenderGui(ImGuiIO& io)
                             {
                                 ImPlot3D::SetupBoxRotation(ImPlot3DQuat::FromElAz(44.5f, 21.4f), false);
                                 //ImPlot3D::SetupBoxScale(1.5f, 1.0f, 1.0f);
-                                ImPlot3D::SetupAxes("X", config.UseChinese ? u8"æ—¶é—´" : "Time", "Y");
+                                ImPlot3D::SetupAxes("X", config.UseChinese ? u8"Ê±¼ä" : "Time", "Y");
                                 ImPlot3D::SetupAxesLimits(-20, 20, 0, PointsSize, -20, 20, ImGuiCond_Always);
                                 {
-                                    // ç»˜åˆ¶æœŸé—´åŠ é”ï¼Œé˜²æ­¢åå°çº¿ç¨‹ swap å¯¼è‡´ data() æ‚¬å‚
+                                    // »æÖÆÆÚ¼ä¼ÓËø£¬·ÀÖ¹ºóÌ¨Ïß³Ì swap µ¼ÖÂ data() Ğü´¹
                                     lock_guard lock(CurveMutex2);
-                                    ImPlot3D::PlotLine(config.UseChinese ? u8"é¼ æ ‡ä½ç½®" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
+                                    ImPlot3D::PlotLine(config.UseChinese ? u8"Êó±êÎ»ÖÃ" : "Mouse position", Points_x.data(), Points_z.data(), Points_y.data(), Points_z.size());
                                 }
 
                                 ImPlot3D::EndPlot();
@@ -3211,9 +3212,9 @@ void RenderGui(ImGuiIO& io)
 
                                 {
                                     lock_guard lock(CurveMutex2);
-                                    ImPlot::PlotLine(config.UseChinese ? u8"é¼ æ ‡ä½ç½®" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
-                                    // ä¿®å¤ï¼šåŸä»£ç  &Points_y[PointsSize] åœ¨ PointsSize == size() æ—¶è¶Šç•Œè¯»ï¼ˆ0xC0000005 éšæ‚£ï¼‰ï¼Œ
-                                    // ä¸”æ»‘å—è¯­ä¹‰åº”ä¸º"å½“å‰æ—¶é—´ç‚¹"ï¼Œæ”¹ç”¨ PointsTime å¹¶æ”¶ç´§è¾¹ç•Œæ£€æŸ¥
+                                    ImPlot::PlotLine(config.UseChinese ? u8"Êó±êÎ»ÖÃ" : "Mouse position", Points_x.data(), Points_y.data(), Points_z.size());
+                                    // ĞŞ¸´£ºÔ­´úÂë &Points_y[PointsSize] ÔÚ PointsSize == size() Ê±Ô½½ç¶Á£¨0xC0000005 Òş»¼£©£¬
+                                    // ÇÒ»¬¿éÓïÒåÓ¦Îª"µ±Ç°Ê±¼äµã"£¬¸ÄÓÃ PointsTime ²¢ÊÕ½ô±ß½ç¼ì²é
                                     if (PointsTime >= 0 && PointsTime < static_cast<int>(Points_z.size()))
                                         ImPlot::PlotScatter("##PlotPoints", &Points_y[PointsTime], &Points_x[PointsTime], 1);
                                 }
@@ -3221,16 +3222,16 @@ void RenderGui(ImGuiIO& io)
                                 ImPlot::EndPlot();
                             }
 
-                            Text(config.UseChinese ? u8"æ—¶é—´ç‚¹" : "point of time");
+                            Text(config.UseChinese ? u8"Ê±¼äµã" : "point of time");
                             SameLine();
                             SetNextItemWidth(300);
                             SetCursorPosX(300);
                             SliderInt(u8"##randomplotmove", &PointsTime, -1, PointsSize, "%d", ImGuiSliderFlags_AlwaysClamp);
 
-                            Text(config.UseChinese ? u8"è€—æ—¶ï¼š%.6fæ¯«ç§’" : "Time: %.6f millisecond", GenDurationSum);
+                            Text(config.UseChinese ? u8"ºÄÊ±£º%.6fºÁÃë" : "Time: %.6f millisecond", GenDurationSum);
                             SameLine();
-                            Text(config.UseChinese ? u8"å…± %d ä¸ªæ•°æ®ç‚¹" : "A total of %d data points", PointsSize);
-                            Text(config.UseChinese ? u8"å¹³å‡ç”¨æ—¶ï¼š%.3fæ¯«ç§’/æ•°æ®ç‚¹" : "Average time: %.3f ms/data point", auv);
+                            Text(config.UseChinese ? u8"¹² %d ¸öÊı¾İµã" : "A total of %d data points", PointsSize);
+                            Text(config.UseChinese ? u8"Æ½¾ùÓÃÊ±£º%.3fºÁÃë/Êı¾İµã" : "Average time: %.3f ms/data point", auv);
                             EndPopupWindow();
                         }
                     }
@@ -3241,13 +3242,13 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
             /*
-            if (BeginTabItem(config.UseChinese ? u8"GUI(æ–°)" : "GUI(new)"))
+            if (BeginTabItem(config.UseChinese ? u8"GUI(ĞÂ)" : "GUI(new)"))
             {
                 if (GameHwnd == NULL)
-                    Text(config.UseChinese ? u8"&cè¯·å…ˆé€‰æ‹©æ¸¸æˆçª—å£" : "&cPlease select the game window first");
+                    Text(config.UseChinese ? u8"&cÇëÏÈÑ¡ÔñÓÎÏ·´°¿Ú" : "&cPlease select the game window first");
                 BeginDisabled(GameHwnd == NULL);
                 {
-                    if (Button(config.UseChinese ? u8"å¯åŠ¨" : "Start"))
+                    if (Button(config.UseChinese ? u8"Æô¶¯" : "Start"))
                     {
 
                     }
@@ -3257,35 +3258,35 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }*/
 
-            //-------------------------é¼ æ ‡å£°éŸ³--------------------------
-            if (BeginTabItem((ICON_FA_VOLUME_HIGH + (config.UseChinese ? u8"ç‚¹å‡»å£°éŸ³"s : "Click Sound"s)).c_str()))
+            //-------------------------Êó±êÉùÒô--------------------------
+            if (BeginTabItem((ICON_FA_VOLUME_HIGH + (config.UseChinese ? u8"µã»÷ÉùÒô"s : "Click Sound"s)).c_str()))
             {
                 auto ReloadSoundFile = []() {
-                    RenderTip(config.UseChinese ? u8"æ­£åœ¨é‡æ–°åŠ è½½å£°éŸ³..." : "Reloading sounds...", 4.0f, PT_INFO);
+                    RenderTip(config.UseChinese ? u8"ÕıÔÚÖØĞÂ¼ÓÔØÉùÒô..." : "Reloading sounds...", 4.0f, PT_INFO);
                     LoadSounds();
-                    RenderTip(config.UseChinese ? u8"é‡æ–°åŠ è½½æˆåŠŸï¼" : "Reloading success!", 3.0f, PT_INFO);
+                    RenderTip(config.UseChinese ? u8"ÖØĞÂ¼ÓÔØ³É¹¦£¡" : "Reloading success!", 3.0f, PT_INFO);
                 };
-                //-------------------------ç‚¹å‡»å£°éŸ³--------------------------
-                BeginCard(config.UseChinese ? u8"é¼ æ ‡å£°éŸ³" : "Mouse Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                //-------------------------µã»÷ÉùÒô--------------------------
+                BeginCard(config.UseChinese ? u8"Êó±êÉùÒô" : "Mouse Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     static int MouseType = []()->int {
                         if (MouseSoundList.empty())
                             return -1;
                         auto it = find(MouseSoundList.begin(), MouseSoundList.end(), config.MouseSoundType);
                         if (it == MouseSoundList.end())
-                            return 0;  // æˆ–è€… return -1ï¼Œçœ‹ä½ é»˜è®¤æƒ³æ˜¾ç¤ºç¬¬å‡ ä¸ª
+                            return 0;  // »òÕß return -1£¬¿´ÄãÄ¬ÈÏÏëÏÔÊ¾µÚ¼¸¸ö
                         return static_cast<int>(distance(MouseSoundList.begin(), it));
                     }();
-                    Toggle(config.UseChinese ? u8"å¯ç”¨é¼ æ ‡å£°éŸ³" : "Enable Mouse Sound", &config.UseMouseSound, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"ÆôÓÃÊó±êÉùÒô" : "Enable Mouse Sound", &config.UseMouseSound, ToggleFlags);
                     BeginDisabled(!config.UseMouseSound);
                     {
-                        Text(config.UseChinese ? u8"é¼ æ ‡å£°éŸ³ç±»å‹" : "Mouse Sound Type");
+                        Text(config.UseChinese ? u8"Êó±êÉùÒôÀàĞÍ" : "Mouse Sound Type");
                         if (BeginCombo("##MouseSoundType", config.MouseSoundType.c_str()))
                         {
                             int size = MouseSoundList.size();
                             for (int n = 0; n < size; n++)
                             {
-                                PushID(n); // é˜²æ­¢é¼ æ ‡å£°éŸ³çš„nameé‡å¤
+                                PushID(n); // ·ÀÖ¹Êó±êÉùÒôµÄnameÖØ¸´
                                 const bool isSelected = (MouseType == n);
                                 if (Selectable(MouseSoundList.at(n).c_str(), isSelected))
                                 {
@@ -3299,7 +3300,7 @@ void RenderGui(ImGuiIO& io)
                             EndCombo();
                         }
 
-                        Text(config.UseChinese ? u8"é¼ æ ‡ç‚¹å‡»éŸ³é‡" : "Mouse Click Volume");
+                        Text(config.UseChinese ? u8"Êó±êµã»÷ÒôÁ¿" : "Mouse Click Volume");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
@@ -3311,7 +3312,7 @@ void RenderGui(ImGuiIO& io)
 
                 SetCursorPosY(GetCursorPosY() + 10);
 
-                BeginCard(config.UseChinese ? u8"é”®ç›˜å£°éŸ³" : "Keybd Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"¼üÅÌÉùÒô" : "Keybd Sound", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     static int KeybdType = []()->int {
                         if (KeybdSoundList.empty())
@@ -3321,16 +3322,16 @@ void RenderGui(ImGuiIO& io)
                             return 0;
                         return static_cast<int>(distance(KeybdSoundList.begin(), it));
                         }();
-                    Toggle(config.UseChinese ? u8"å¯ç”¨é”®ç›˜å£°éŸ³" : "Enable Keybd Sound", &config.UseKeybdSound, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"ÆôÓÃ¼üÅÌÉùÒô" : "Enable Keybd Sound", &config.UseKeybdSound, ToggleFlags);
                     BeginDisabled(!config.UseKeybdSound);
                     {
-                        Text(config.UseChinese ? u8"é”®ç›˜å£°éŸ³ç±»å‹" : "Keybd Sound Type");
+                        Text(config.UseChinese ? u8"¼üÅÌÉùÒôÀàĞÍ" : "Keybd Sound Type");
                         if (BeginCombo("##KeybdSoundType", config.KeybdSoundType.c_str()))
                         {
                             int size = KeybdSoundList.size();
                             for (int n = 0; n < size; n++)
                             {
-                                PushID(n); // é˜²æ­¢é¼ æ ‡å£°éŸ³çš„nameé‡å¤
+                                PushID(n); // ·ÀÖ¹Êó±êÉùÒôµÄnameÖØ¸´
                                 const bool isSelected = (KeybdType == n);
                                 if (Selectable(KeybdSoundList.at(n).c_str(), isSelected))
                                 {
@@ -3346,22 +3347,22 @@ void RenderGui(ImGuiIO& io)
 
                         static bool AlreadDownload = _access(Tmp_KeySounds.c_str(), 0) == 0;
 
-                        // ä¸‹è½½æŒ‰é’®å†·å´
+                        // ÏÂÔØ°´Å¥ÀäÈ´
                         static ULONGLONG LastDownloadClick = 0;
                         BeginDisabled(GetTickCount64() - LastDownloadClick <= 3000);
                         {
                             if (Button(config.UseChinese ?
-                                (AlreadDownload ? u8"é‡æ–°ä¸‹è½½èµ„æº(30MB)" : u8"ä¸‹è½½å®˜æ–¹èµ„æº(30MB)") :
+                                (AlreadDownload ? u8"ÖØĞÂÏÂÔØ×ÊÔ´(30MB)" : u8"ÏÂÔØ¹Ù·½×ÊÔ´(30MB)") :
                                 (AlreadDownload ? "Redownload Sounds (30MB)" : "Download Sounds (30MB)"))
                                 )
                             {
                                 LastDownloadClick = GetTickCount64();
                                 auto dlth = []() {
-                                    DownloadKeybdSounds(); // ä¸‹è½½
+                                    DownloadKeybdSounds(); // ÏÂÔØ
 
-                                    RenderTip(config.UseChinese ? u8"æ­£åœ¨é‡æ–°åŠ è½½å£°éŸ³..." : "Reloading sounds...", 4.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"ÕıÔÚÖØĞÂ¼ÓÔØÉùÒô..." : "Reloading sounds...", 4.0f, PT_INFO);
                                     LoadSounds();
-                                    RenderTip(config.UseChinese ? u8"é‡æ–°åŠ è½½æˆåŠŸï¼" : "Reloading success!", 3.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"ÖØĞÂ¼ÓÔØ³É¹¦£¡" : "Reloading success!", 3.0f, PT_INFO);
                                     };
                                 thread th(dlth);
                                 th.detach();
@@ -3371,22 +3372,22 @@ void RenderGui(ImGuiIO& io)
 
                         SameLine();
 
-                        // mechvibes æŒ‰é’®å†·å´
+                        // mechvibes °´Å¥ÀäÈ´
                         static ULONGLONG LastMechvibesClick = 0;
                         BeginDisabled(GetTickCount64() - LastMechvibesClick <= 2000);
                         {
-                            if (Button(config.UseChinese ? u8"å‰å¾€mechvibesä¸‹è½½æ›´å¤šå£°éŸ³" : "Download more from mechvibes"))
+                            if (Button(config.UseChinese ? u8"Ç°ÍùmechvibesÏÂÔØ¸ü¶àÉùÒô" : "Download more from mechvibes"))
                             {
                                 LastMechvibesClick = GetTickCount64();
                                 ShellExecute(NULL, NULL, "https://mechvibes.com/sound-packs/", NULL, NULL, SW_SHOWNORMAL);
-                                RenderMessageBox(u8"åœ¨æ‰“å¼€çš„ç½‘é¡µåˆ—è¡¨ä¸­ï¼Œæ‰¾åˆ°æƒ³è¦çš„éŸ³è‰²\nç‚¹å‡»å·¦è¾¹çš„â€œLearn Moreâ€ï¼Œç„¶åç‚¹å‡»â€œDownloadâ€å°±å¯ä»¥ä¸‹è½½äº†ã€‚\n&6å¦‚ä½•å¯¼å…¥ï¼Ÿ\nç‚¹å‡»æ—è¾¹çš„â€œå¯¼å…¥æ–‡ä»¶â€æŒ‰é’®ç„¶åé€‰æ‹©ä½ åˆšåˆšä¸‹è½½çš„å‹ç¼©åŒ…ã€‚", config.UseChinese ? u8"å¯¼å…¥éŸ³è‰²æ•™ç¨‹" : "How to import sounds", MB_OK, false);
+                                RenderMessageBox(u8"ÔÚ´ò¿ªµÄÍøÒ³ÁĞ±íÖĞ£¬ÕÒµ½ÏëÒªµÄÒôÉ«\nµã»÷×ó±ßµÄ¡°Learn More¡±£¬È»ºóµã»÷¡°Download¡±¾Í¿ÉÒÔÏÂÔØÁË¡£\n&6ÈçºÎµ¼Èë£¿\nµã»÷ÅÔ±ßµÄ¡°µ¼ÈëÎÄ¼ş¡±°´Å¥È»ºóÑ¡ÔñÄã¸Õ¸ÕÏÂÔØµÄÑ¹Ëõ°ü¡£", config.UseChinese ? u8"µ¼ÈëÒôÉ«½Ì³Ì" : "How to import sounds", MB_OK, false);
                             }
                         }
                         EndDisabled();
 
                         SameLine();
 
-                        if (Button(config.UseChinese ? u8"å¯¼å…¥æ–‡ä»¶" : "Import File"))
+                        if (Button(config.UseChinese ? u8"µ¼ÈëÎÄ¼ş" : "Import File"))
                         {
                             static bool IsOpen = false;
                             if (!IsOpen)
@@ -3399,21 +3400,21 @@ void RenderGui(ImGuiIO& io)
                                         char szFileName[MAX_PATH]{};
                                         ZeroMemory(&ofn, sizeof(ofn));
                                         ofn.lStructSize = sizeof(ofn);
-                                        ofn.hwndOwner = NULL; // å¯ä»¥è®¾ç½®ä¸ºä½ çš„çª—å£å¥æŸ„
-                                        ofn.lpstrFilter = "Zipå‹ç¼©åŒ…\0*.zip\0\0";
+                                        ofn.hwndOwner = NULL; // ¿ÉÒÔÉèÖÃÎªÄãµÄ´°¿Ú¾ä±ú
+                                        ofn.lpstrFilter = "ZipÑ¹Ëõ°ü\0*.zip\0\0";
                                         ofn.lpstrFile = szFileName;
                                         ofn.nMaxFile = MAX_PATH;
                                         ofn.hwndOwner = GCHWND;
-                                        // è®¾ç½®å¯¹è¯æ¡†æ ‡å¿—ï¼Œä¾‹å¦‚æç¤ºè¦†ç›–ç­‰
+                                        // ÉèÖÃ¶Ô»°¿ò±êÖ¾£¬ÀıÈçÌáÊ¾¸²¸ÇµÈ
                                         ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-                                        ofn.lpstrDefExt = "ini"; // é»˜è®¤æ‰©å±•å
+                                        ofn.lpstrDefExt = "ini"; // Ä¬ÈÏÀ©Õ¹Ãû
                                         if (GetOpenFileName(&ofn))
                                         {
                                             const string OriginFile = szFileName;
                                             size_t LastSlash = OriginFile.find_last_of("\\/");
                                             string FileName = (LastSlash == string::npos) ? OriginFile : OriginFile.substr(LastSlash + 1);
 
-                                            // å»é™¤ ".zip" åç¼€ï¼ˆä¸åŒºåˆ†å¤§å°å†™ï¼Œå…ˆç»Ÿä¸€è½¬å°å†™æ¯”è¾ƒï¼‰
+                                            // È¥³ı ".zip" ºó×º£¨²»Çø·Ö´óĞ¡Ğ´£¬ÏÈÍ³Ò»×ªĞ¡Ğ´±È½Ï£©
                                             string BaseName = FileName;
                                             string ext = ".zip";
                                             if (BaseName.size() >= ext.size() &&
@@ -3422,7 +3423,7 @@ void RenderGui(ImGuiIO& io)
                                                 BaseName = BaseName.substr(0, BaseName.size() - ext.size());
                                             }
                                             string TargetDir = Sound_KeybdPath + "\\" + BaseName;
-                                            // è‹¥è¯¥ç›®å½•å·²å­˜åœ¨ï¼Œåˆ™æ·»åŠ  (1), (2) ...
+                                            // Èô¸ÃÄ¿Â¼ÒÑ´æÔÚ£¬ÔòÌí¼Ó (1), (2) ...
                                             string OriginalTarget = TargetDir;
                                             int counter = 1;
                                             while (GetFileAttributes(TargetDir.c_str()) != INVALID_FILE_ATTRIBUTES)
@@ -3434,10 +3435,10 @@ void RenderGui(ImGuiIO& io)
                                                 UnZipFile(OriginFile.c_str(), TargetDir.c_str());
                                             else
                                             {
-                                                PrintLog("[File] æ— æ³•åˆ›å»ºç›®å½• " + TargetDir, PL_ERROR);
-                                                RenderTip(config.UseChinese ? u8"æ— æ³•åˆ›å»ºç›®å½• " : "Failed to create directory " + TargetDir, 3.0f, PT_ERROR);
+                                                PrintLog("[File] ÎŞ·¨´´½¨Ä¿Â¼ " + TargetDir, PL_ERROR);
+                                                RenderTip(config.UseChinese ? u8"ÎŞ·¨´´½¨Ä¿Â¼ " : "Failed to create directory " + TargetDir, 3.0f, PT_ERROR);
                                             }
-                                            RenderTip(config.UseChinese ? u8"å¯¼å…¥æˆåŠŸï¼" : "Import success!", 3.0f, PT_INFO);
+                                            RenderTip(config.UseChinese ? u8"µ¼Èë³É¹¦£¡" : "Import success!", 3.0f, PT_INFO);
 
                                             ReloadSoundFile();
 
@@ -3450,7 +3451,7 @@ void RenderGui(ImGuiIO& io)
                             }
                         }
 
-                        Text(config.UseChinese ? u8"é”®ç›˜ç‚¹å‡»éŸ³é‡" : "Keybd Click Volume");
+                        Text(config.UseChinese ? u8"¼üÅÌµã»÷ÒôÁ¿" : "Keybd Click Volume");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
@@ -3462,18 +3463,18 @@ void RenderGui(ImGuiIO& io)
 
                 SetCursorPosY(GetCursorPosY() + 10);
 
-                BeginCard(config.UseChinese ? u8"æ‚é¡¹" : "Othre", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"ÔÓÏî" : "Othre", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     BeginDisabled(!(config.UseMouseSound || config.UseKeybdSound));
                     {
                         DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
-                        Text(config.UseChinese ? u8"å¾ªç¯æ£€æµ‹å»¶è¿Ÿ" : "Loop Detection Delay");
+                        Text(config.UseChinese ? u8"Ñ­»·¼ì²âÑÓ³Ù" : "Loop Detection Delay");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderInt(u8"##MouseSoundSleep", &config.MouseSoundSleep, 0, 50, u8"%dæ¯«ç§’", ImGuiSliderFlags_AlwaysClamp);
+                        SliderInt(u8"##MouseSoundSleep", &config.MouseSoundSleep, 0, 50, u8"%dºÁÃë", ImGuiSliderFlags_AlwaysClamp);
 
-                        Text(config.UseChinese ? u8"æ‚å£°éŸ³é‡" : "Noise Volume");
+                        Text(config.UseChinese ? u8"ÔÓÉùÒôÁ¿" : "Noise Volume");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
@@ -3481,11 +3482,11 @@ void RenderGui(ImGuiIO& io)
                     }
                     EndDisabled();
 
-                    // é‡è½½å£°éŸ³æ–‡ä»¶ æŒ‰é’®å†·å´
+                    // ÖØÔØÉùÒôÎÄ¼ş °´Å¥ÀäÈ´
                     static ULONGLONG LastReloadClick = 0;
                     BeginDisabled(GetTickCount64() - LastReloadClick <= 3000);
                     {
-                        if (Button(config.UseChinese ? u8"é‡è½½å£°éŸ³æ–‡ä»¶" : "Reload Sound Files"))
+                        if (Button(config.UseChinese ? u8"ÖØÔØÉùÒôÎÄ¼ş" : "Reload Sound Files"))
                         {
                             LastReloadClick = GetTickCount64();
                             thread th(ReloadSoundFile);
@@ -3499,16 +3500,16 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
 
-            //-------------------------è¿ç‚¹æ§åˆ¶--------------------------
-            if (BeginTabItem((ICON_FA_CIRCLE_PLAY + (config.UseChinese ? u8"è¿ç‚¹æ§åˆ¶"s : "Click Control"s)).c_str()))
+            //-------------------------Á¬µã¿ØÖÆ--------------------------
+            if (BeginTabItem((ICON_FA_CIRCLE_PLAY + (config.UseChinese ? u8"Á¬µã¿ØÖÆ"s : "Click Control"s)).c_str()))
             {
-                //-------------------------GUIæ£€æµ‹&å…¶ä»–--------------------------
+                //-------------------------GUI¼ì²â&ÆäËû--------------------------
                 SetCursorPosY(GetCursorPosY() + 10.0f);
 
                 BeginCard("##CCtrlSettings-1", ImVec2(235, 174), ImGuiChildFlags_Borders);
                 {
-                    Toggle(config.UseChinese ? u8"GUIæ£€æµ‹" : "GUI Detect", & config.UseGUIDetection, ToggleFlags);
-                    AttachTooltip(config.UseChinese ? u8"&aå¼€å¯è¯¥åŠŸèƒ½å\n&fæ‰“å¼€GUIæ—¶ï¼Œä¼šè‡ªåŠ¨å…³é—­è¿ç‚¹\n&då‰ææ¡ä»¶ï¼š&6å¼€å¯å…è®¸æ§åˆ¶è¿ç‚¹å¼€å…³" : "&aTurn on this function\n&fWhen the GUI is opened, the clicker will be automatically closed\n&dPrerequisite: &6Turn on the function of allowing control of clicker switch");
+                    Toggle(config.UseChinese ? u8"GUI¼ì²â" : "GUI Detect", & config.UseGUIDetection, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"&a¿ªÆô¸Ã¹¦ÄÜºó\n&f´ò¿ªGUIÊ±£¬»á×Ô¶¯¹Ø±ÕÁ¬µã\n&dÇ°ÌáÌõ¼ş£º&6¿ªÆôÔÊĞí¿ØÖÆÁ¬µã¿ª¹Ø" : "&aTurn on this function\n&fWhen the GUI is opened, the clicker will be automatically closed\n&dPrerequisite: &6Turn on the function of allowing control of clicker switch");
                 }
                 EndCard();
 
@@ -3516,28 +3517,28 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard("##CCtrlSettings-2", ImVec2(215, 174), ImGuiChildFlags_Borders);
                 {
-                    //-------------------------ä»…ç§»åŠ¨è§¦å‘è¿ç‚¹--------------------------
+                    //-------------------------½öÒÆ¶¯´¥·¢Á¬µã--------------------------
 
-                    Toggle(config.UseChinese ? u8"ä»…ç§»åŠ¨è§¦å‘å³é”®è¿ç‚¹" : " Only Moving Trig RC", &config.UseROnlyMoveClicker, ToggleFlags);
-                    AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œè¿ç‚¹å™¨åªä¼šåœ¨ä½ ç§»åŠ¨é¼ æ ‡æ—¶è§¦å‘è¿ç‚¹ã€‚" : "Turn on this function to trigger the clicker only when you move the mouse.");
+                    Toggle(config.UseChinese ? u8"½öÒÆ¶¯´¥·¢ÓÒ¼üÁ¬µã" : " Only Moving Trig RC", &config.UseROnlyMoveClicker, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Á¬µãÆ÷Ö»»áÔÚÄãÒÆ¶¯Êó±êÊ±´¥·¢Á¬µã¡£" : "Turn on this function to trigger the clicker only when you move the mouse.");
 
-                    Toggle(config.UseChinese ? u8"ä»…ç§»åŠ¨è§¦å‘å·¦é”®è¿ç‚¹" : " Only Moving Trig LC", &config.UseLOnlyMoveClicker, ToggleFlags);
-                    AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œè¿ç‚¹å™¨åªä¼šåœ¨ä½ ç§»åŠ¨é¼ æ ‡æ—¶è§¦å‘è¿ç‚¹ã€‚" : "Turn on this function to trigger the clicker only when you move the mouse.");
+                    Toggle(config.UseChinese ? u8"½öÒÆ¶¯´¥·¢×ó¼üÁ¬µã" : " Only Moving Trig LC", &config.UseLOnlyMoveClicker, ToggleFlags);
+                    AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Á¬µãÆ÷Ö»»áÔÚÄãÒÆ¶¯Êó±êÊ±´¥·¢Á¬µã¡£" : "Turn on this function to trigger the clicker only when you move the mouse.");
 
-                    //-------------------------ä»…è·³è·ƒè§¦å‘è¿ç‚¹--------------------------
+                    //-------------------------½öÌøÔ¾´¥·¢Á¬µã--------------------------
                     DrawSpiltLine(800, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
 
                     BeginDisabled(config.UseROnlyMoveClicker);
                     {
-                        Toggle(config.UseChinese ? u8"ä»…è·³è·ƒè§¦å‘å³é”®è¿ç‚¹" : "Only Jump On RC", &config.UseROnlyJumpClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œåªæœ‰ä½ è·³è·ƒæ—¶æ‰èƒ½è¿ç‚¹ã€‚\nå¦‚æœä½ å·²ç»å¼€å¯äº† &6ä»…ç§»åŠ¨è§¦å‘å³é”®è¿ç‚¹ &fåŠŸèƒ½ï¼Œåˆ™è¯¥åŠŸèƒ½æ— æ•ˆã€‚\nå› ä¸ºå·²ç»åŒ…å«æ­¤åŠŸèƒ½ã€‚" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
+                        Toggle(config.UseChinese ? u8"½öÌøÔ¾´¥·¢ÓÒ¼üÁ¬µã" : "Only Jump On RC", &config.UseROnlyJumpClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Ö»ÓĞÄãÌøÔ¾Ê±²ÅÄÜÁ¬µã¡£\nÈç¹ûÄãÒÑ¾­¿ªÆôÁË &6½öÒÆ¶¯´¥·¢ÓÒ¼üÁ¬µã &f¹¦ÄÜ£¬Ôò¸Ã¹¦ÄÜÎŞĞ§¡£\nÒòÎªÒÑ¾­°üº¬´Ë¹¦ÄÜ¡£" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
                     }
                     EndDisabled();
 
                     BeginDisabled(config.UseLOnlyMoveClicker);
                     {
-                        Toggle(config.UseChinese ? u8"ä»…è·³è·ƒè§¦å‘å·¦é”®è¿ç‚¹" : " Only Jump On LC", &config.UseLOnlyJumpClicker, ToggleFlags);
-                        AttachTooltip(config.UseChinese ? u8"å¼€å¯åï¼Œåªæœ‰ä½ è·³è·ƒæ—¶æ‰èƒ½è¿ç‚¹ã€‚\nå¦‚æœä½ å·²ç»å¼€å¯äº† &6ä»…ç§»åŠ¨è§¦å‘å³é”®è¿ç‚¹ &fåŠŸèƒ½ï¼Œåˆ™è¯¥åŠŸèƒ½æ— æ•ˆã€‚\nå› ä¸ºå·²ç»åŒ…å«æ­¤åŠŸèƒ½ã€‚" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
+                        Toggle(config.UseChinese ? u8"½öÌøÔ¾´¥·¢×ó¼üÁ¬µã" : " Only Jump On LC", &config.UseLOnlyJumpClicker, ToggleFlags);
+                        AttachTooltip(config.UseChinese ? u8"¿ªÆôºó£¬Ö»ÓĞÄãÌøÔ¾Ê±²ÅÄÜÁ¬µã¡£\nÈç¹ûÄãÒÑ¾­¿ªÆôÁË &6½öÒÆ¶¯´¥·¢ÓÒ¼üÁ¬µã &f¹¦ÄÜ£¬Ôò¸Ã¹¦ÄÜÎŞĞ§¡£\nÒòÎªÒÑ¾­°üº¬´Ë¹¦ÄÜ¡£" : "After activation, you can only connect when jumping. \nIf you have turned on the function of &6[Only move to trigger right clicker]&f, this function is invalid. \nBecause it already contains this function.");
                     }
                     EndDisabled();
                 }
@@ -3547,18 +3548,18 @@ void RenderGui(ImGuiIO& io)
 
                 BeginCard("##CCtrlSettings-3", ImVec2(215, 174), ImGuiChildFlags_Borders);
                 {
-                    Toggle(config.UseChinese ? u8"ä»…é™æ¸¸æˆå†…è¿ç‚¹" : "In-game clicker only", & config.UseInGameOnlyClicker, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"½öÏŞÓÎÏ·ÄÚÁ¬µã" : "In-game clicker only", & config.UseInGameOnlyClicker, ToggleFlags);
                     if (GameHwnd == NULL)
-                        Text(config.UseChinese ? u8"&eè¯·å…ˆè·å–æ¸¸æˆçª—å£" : "&ePlease choose game window first");
+                        Text(config.UseChinese ? u8"&eÇëÏÈ»ñÈ¡ÓÎÏ·´°¿Ú" : "&ePlease choose game window first");
                     else if (!config.AllowSetLClicker || config.AllowSetRClicker)
-                        Text(config.UseChinese ? u8"&eè¯·æ‰“å¼€ å…è®¸æ§åˆ¶è¿ç‚¹å¼€å…³" : "&ePlease enable \"Allow Control Clicker\"");
+                        Text(config.UseChinese ? u8"&eÇë´ò¿ª ÔÊĞí¿ØÖÆÁ¬µã¿ª¹Ø" : "&ePlease enable \"Allow Control Clicker\"");
 
-                    Toggle(config.UseChinese ? u8"åœæ­¢ç§»åŠ¨æ—¶å…³é—­è¿ç‚¹" : "Stop Click On Stop Move", &config.UseDisableMoveOnStopMove, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"Í£Ö¹ÒÆ¶¯Ê±¹Ø±ÕÁ¬µã" : "Stop Click On Stop Move", &config.UseDisableMoveOnStopMove, ToggleFlags);
                 }
                 EndCard();
 
-                //-------------------------å¿«é€Ÿåˆ‡æ¢CPS--------------------------
-                BeginCard(config.UseChinese ? u8"å¿«é€Ÿåˆ‡æ¢CPS" : "Quick Switch CPS", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                //-------------------------¿ìËÙÇĞ»»CPS--------------------------
+                BeginCard(config.UseChinese ? u8"¿ìËÙÇĞ»»CPS" : "Quick Switch CPS", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     bool IsSelectable = false;
                     static vector<int> ListContainer;
@@ -3582,29 +3583,29 @@ void RenderGui(ImGuiIO& io)
                             QuickSwitchIndex = (IsSelectable) ? i : QuickSwitchIndex;
 
                             SameLine(0, 10);
-                            Text(config.UseChinese ? u8"å³é”®CPSï¼š%d" : "RCPS: %d", config.RQuickSwitch[i]);
+                            Text(config.UseChinese ? u8"ÓÒ¼üCPS£º%d" : "RCPS: %d", config.RQuickSwitch[i]);
                             SameLine(0, 10);
-                            Text(config.UseChinese ? u8"å·¦é”®CPSï¼š%d" : "LCPS: %d", config.LQuickSwitch[i]);
+                            Text(config.UseChinese ? u8"×ó¼üCPS£º%d" : "LCPS: %d", config.LQuickSwitch[i]);
                             SameLine(0, 10);
-                            Text(config.UseChinese ? u8"å¿«æ·é”®" : "Shortcut");
+                            Text(config.UseChinese ? u8"¿ì½İ¼ü" : "Shortcut");
                             SameLine();
                             SetNextItemWidth(150);
-                            InputKey(("##QuickSwitchKey" + to_string(i)).c_str(), &config.QuickSwitchKey[i], config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
+                            InputKey(("##QuickSwitchKey" + to_string(i)).c_str(), &config.QuickSwitchKey[i], config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
 
                             SameLine(0, 10);
 
-                            if (Button(config.UseChinese ? u8"è®¾ç½®" : "Settings"))
+                            if (Button(config.UseChinese ? u8"ÉèÖÃ" : "Settings"))
                                 OpenPopup("ToolbarPopup");
 
-                            // å®šä¹‰å¼¹å‡ºçª—å£çš„ä½ç½® - è®©å®ƒå‡ºç°åœ¨æŒ‰é’®æ—è¾¹
-                            SetNextWindowPos(GetItemRectMin(), ImGuiCond_Appearing, ImVec2(0, 1)); // å¯¹é½åˆ°æŒ‰é’®å·¦ä¸Šè§’
+                            // ¶¨Òåµ¯³ö´°¿ÚµÄÎ»ÖÃ - ÈÃËü³öÏÖÔÚ°´Å¥ÅÔ±ß
+                            SetNextWindowPos(GetItemRectMin(), ImGuiCond_Appearing, ImVec2(0, 1)); // ¶ÔÆëµ½°´Å¥×óÉÏ½Ç
                             if (BeginPopup("ToolbarPopup"))
                             {
-                                Text(config.UseChinese ? u8"å³é”®CPS" : "RCPS");
+                                Text(config.UseChinese ? u8"ÓÒ¼üCPS" : "RCPS");
                                 SameLine();
                                 SliderInt(u8"##QuickSwitchRCPS", &config.RQuickSwitch[i], MIN_CPS, MAX_CPS, "%d%", ImGuiSliderFlags_AlwaysClamp);
 
-                                Text(config.UseChinese ? u8"å·¦é”®CPS" : "LCPS");
+                                Text(config.UseChinese ? u8"×ó¼üCPS" : "LCPS");
                                 SameLine();
                                 SliderInt(u8"##QuickSwitchLCPS", &config.LQuickSwitch[i], MIN_CPS, MAX_CPS, "%d%", ImGuiSliderFlags_AlwaysClamp);
 
@@ -3651,32 +3652,32 @@ void RenderGui(ImGuiIO& io)
                 EndTabItem();
             }
             
-            if (BeginTabItem((ICON_FA_PALETTE + (config.UseChinese ? u8"ä¸ªæ€§åŒ–"s : "Custom"s)).c_str()))
+            if (BeginTabItem((ICON_FA_PALETTE + (config.UseChinese ? u8"¸öĞÔ»¯"s : "Custom"s)).c_str()))
             {
-                BeginCard(config.UseChinese ? u8"èƒŒæ™¯å›¾ç‰‡" : "Background Image", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"±³¾°Í¼Æ¬" : "Background Image", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Text(config.UseChinese ? u8"èƒŒæ™¯åç§»" : "Background Offset");
+                    Text(config.UseChinese ? u8"±³¾°Æ«ÒÆ" : "Background Offset");
                     {
-                        Text(config.UseChinese ? u8"Xåæ ‡" : "X Coordinate");
+                        Text(config.UseChinese ? u8"X×ø±ê" : "X Coordinate");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderInt(u8"##BgOffsetX", &BgOffsetX, -100, 100, config.UseChinese ? u8"%dåƒç´ " : "%dpx", ImGuiSliderFlags_AlwaysClamp);
+                        SliderInt(u8"##BgOffsetX", &BgOffsetX, -100, 100, config.UseChinese ? u8"%dÏñËØ" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
 
-                        Text(config.UseChinese ? u8"Yåæ ‡" : "Y Coordinate");
+                        Text(config.UseChinese ? u8"Y×ø±ê" : "Y Coordinate");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
-                        SliderInt(u8"##BgOffsetY", &BgOffsetY, -100, 100, config.UseChinese ? u8"%dåƒç´ " : "%dpx", ImGuiSliderFlags_AlwaysClamp);
+                        SliderInt(u8"##BgOffsetY", &BgOffsetY, -100, 100, config.UseChinese ? u8"%dÏñËØ" : "%dpx", ImGuiSliderFlags_AlwaysClamp);
                     }
 
-                    Text(config.UseChinese ? u8"èƒŒæ™¯äº®åº¦" : "Y Coordinate");
+                    Text(config.UseChinese ? u8"±³¾°ÁÁ¶È" : "Y Coordinate");
                     SameLine();
                     SetNextItemWidth(300);
                     SetCursorPosX(300);
                     SliderInt(u8"##BgLightness", &BgLightness, 0, 100, u8"%d %", ImGuiSliderFlags_AlwaysClamp);
 
-                    Text(config.UseChinese ? u8"èƒŒæ™¯ç¼©æ”¾" : "Background Scale");
+                    Text(config.UseChinese ? u8"±³¾°Ëõ·Å" : "Background Scale");
                     SameLine();
                     SetNextItemWidth(300);
                     SetCursorPosX(300);
@@ -3688,7 +3689,7 @@ void RenderGui(ImGuiIO& io)
                     PushStyleColor(ImGuiCol_SliderGrab, GetColorU32(ImGuiCol_SliderGrab, bk_alph));
                     PushStyleColor(ImGuiCol_SliderGrabActive, GetColorU32(ImGuiCol_SliderGrabActive, bk_alph));
                     {
-                        Text(config.UseChinese ? u8"GUIé€æ˜åº¦" : "GUI Transparency");
+                        Text(config.UseChinese ? u8"GUIÍ¸Ã÷¶È" : "GUI Transparency");
                         SameLine();
                         SetNextItemWidth(300);
                         SetCursorPosX(300);
@@ -3698,11 +3699,11 @@ void RenderGui(ImGuiIO& io)
                     }
                     PopStyleColor(4);
 
-                    Toggle(config.UseChinese ? u8"è‡ªåŠ¨è°ƒæ•´å›¾ç‰‡å¤§å°" : "Auto Image Size", &BgAutoResize, ToggleFlags);
+                    Toggle(config.UseChinese ? u8"×Ô¶¯µ÷ÕûÍ¼Æ¬´óĞ¡" : "Auto Image Size", &BgAutoResize, ToggleFlags);
 
-                    Text(config.UseChinese ? u8"èƒŒæ™¯å›¾ç‰‡ï¼š" : "Background Image: ");
+                    Text(config.UseChinese ? u8"±³¾°Í¼Æ¬£º" : "Background Image: ");
                     SameLine();
-                    if (Button(config.UseChinese ? u8"é€‰æ‹©æ–‡ä»¶" : "Select File"))
+                    if (Button(config.UseChinese ? u8"Ñ¡ÔñÎÄ¼ş" : "Select File"))
                     {
                         static bool IsOpen = false;
                         if (!IsOpen)
@@ -3714,17 +3715,17 @@ void RenderGui(ImGuiIO& io)
                                 char szFileName[MAX_PATH]{};
                                 ZeroMemory(&ofn, sizeof(ofn));
                                 ofn.lStructSize = sizeof(ofn);
-                                ofn.hwndOwner = NULL; // å¯ä»¥è®¾ç½®ä¸ºä½ çš„çª—å£å¥æŸ„
-                                ofn.lpstrFilter = "å›¾ç‰‡æ–‡ä»¶\0*.png;*.bmp;*.jpg\0\0";
+                                ofn.hwndOwner = NULL; // ¿ÉÒÔÉèÖÃÎªÄãµÄ´°¿Ú¾ä±ú
+                                ofn.lpstrFilter = "Í¼Æ¬ÎÄ¼ş\0*.png;*.bmp;*.jpg\0\0";
                                 ofn.lpstrFile = szFileName;
                                 ofn.nMaxFile = MAX_PATH;
                                 ofn.hwndOwner = GCHWND;
-                                // è®¾ç½®å¯¹è¯æ¡†æ ‡å¿—ï¼Œä¾‹å¦‚æç¤ºè¦†ç›–ç­‰
+                                // ÉèÖÃ¶Ô»°¿ò±êÖ¾£¬ÀıÈçÌáÊ¾¸²¸ÇµÈ
                                 ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-                                ofn.lpstrDefExt = "ini"; // é»˜è®¤æ‰©å±•å
+                                ofn.lpstrDefExt = "ini"; // Ä¬ÈÏÀ©Õ¹Ãû
                                 if (GetOpenFileName(&ofn))
                                 CopyFile(szFileName, Pics_Background.c_str(), false);
-                                PrintLog("[File] å¤åˆ¶æ–‡ä»¶ "s + szFileName + " åˆ° " + Pics_Background, PL_INFO);
+                                PrintLog("[File] ¸´ÖÆÎÄ¼ş "s + szFileName + " µ½ " + Pics_Background, PL_INFO);
                                 IsBgImageRefresh = true;
                                 IsOpen = false;
                             });
@@ -3742,12 +3743,12 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Script:
         {
-            TabsText((ICON_FA_CODE + (config.UseChinese ? u8"è„šæœ¬"s : "Scripts"s)).c_str());
+            TabsText((ICON_FA_CODE + (config.UseChinese ? u8"½Å±¾"s : "Scripts"s)).c_str());
             
             {
-                //-------------------------è·å–è„šæœ¬--------------------------
-                static int ScriptSettingsSelected = -1; // -1ä¸ºæ²¡æœ‰æ‰“å¼€ä»»ä½•è®¾ç½®
-                static bool IsWillGotoShopTab = false; // ç”¨äºè°ƒæ•´åˆ°å…¶ä»–tab
+                //-------------------------»ñÈ¡½Å±¾--------------------------
+                static int ScriptSettingsSelected = -1; // -1ÎªÃ»ÓĞ´ò¿ªÈÎºÎÉèÖÃ
+                static bool IsWillGotoShopTab = false; // ÓÃÓÚµ÷Õûµ½ÆäËûtab
 
                 static auto NothingsHereFunc = []()
                 {
@@ -3757,16 +3758,16 @@ void RenderGui(ImGuiIO& io)
                     const ImVec2 BoxPos((WindowSize.x - BoxSize.x) / 2, (WindowSize.y - BoxSize.y) / 2);
 
                     static Texture2D iamge_texture = LoadTextureFromFile(Pics_Empyt);
-                    const string Title = config.UseChinese ? u8"&bè¿™é‡Œä»€ä¹ˆéƒ½æ²¡æœ‰" : "&bThere's nothing here";
+                    const string Title = config.UseChinese ? u8"&bÕâÀïÊ²Ã´¶¼Ã»ÓĞ" : "&bThere's nothing here";
                     const ImVec2 TitleSize = CalcTextSize(Title.c_str());
                     const ImVec2 ImageSize(32, 32);
                     const float TitleYOffset = 12;
                     const ImVec2 ImagePos((BoxSize.x - TitleSize.x - ImageSize.x) / 2, TitleYOffset);
-                    const ImVec2 TitlePos(ImagePos.x + ImageSize.x + 10, TitleYOffset + ((ImageSize.y - TitleSize.y) / 2)); // 10æ˜¯padding
+                    const ImVec2 TitlePos(ImagePos.x + ImageSize.x + 10, TitleYOffset + ((ImageSize.y - TitleSize.y) / 2)); // 10ÊÇpadding
 
                     const ImVec2 LinePos(20, TitlePos.y + TitleSize.y + 16);
                     const float LineLength = BoxSize.x - LinePos.x - 20;
-                    const string Info = config.UseChinese ? u8"ä½ å¯ä»¥å°†è„šæœ¬æ–‡ä»¶æ‹–å…¥è¿›æ¥ã€‚" : "You can drop the script file into here.";
+                    const string Info = config.UseChinese ? u8"Äã¿ÉÒÔ½«½Å±¾ÎÄ¼şÍÏÈë½øÀ´¡£" : "You can drop the script file into here.";
                     const ImVec2 InfoSize = CalcTextSize(Info.c_str());
                     const ImVec2 InfoPos((BoxSize.x - InfoSize.x) / 2, LinePos.y + 16);
 
@@ -3792,10 +3793,10 @@ void RenderGui(ImGuiIO& io)
                         Text(Info.c_str());
 
                         SetCursorPos(ButtonPos);
-                        if (Button(config.UseChinese ? u8"è®ºå›" : "Forum", ButtonSize))
+                        if (Button(config.UseChinese ? u8"ÂÛÌ³" : "Forum", ButtonSize))
                             ShellExecute(NULL, NULL, "https://bbs.mcgc.top/t/script", NULL, NULL, SW_SHOWNORMAL);
                         SameLine(0, 20);
-                        if (Button(config.UseChinese ? u8"å‰å¾€ä¸‹è½½" : "Download", ButtonSize))
+                        if (Button(config.UseChinese ? u8"Ç°ÍùÏÂÔØ" : "Download", ButtonSize))
                             IsWillGotoShopTab = true;
                     }
                     EndChild();
@@ -3807,12 +3808,12 @@ void RenderGui(ImGuiIO& io)
                 static bool IsNeedRefushShopList = false;
                 static bool IsShopTab = false;
                 static bool IsShopListLoaded = false;
-                bool IsScriptCreatorTab = false; // åˆ‡æ¢åˆ°å¯¹åº”tabæ—¶ï¼Œæ‰è®¾ç½®ä¸ºtrueï¼Œæ‰€ä»¥ä¸ç”¨static
+                bool IsScriptCreatorTab = false; // ÇĞ»»µ½¶ÔÓ¦tabÊ±£¬²ÅÉèÖÃÎªtrue£¬ËùÒÔ²»ÓÃstatic
                 const ImVec2 pos = GetCursorPos();
                 if (BeginTabBar("##Script"))
                 {
-                    // shopæ”¾å‰é¢ç›¸å½“äºå…ˆåˆ·æ–°shopï¼Œé˜²æ­¢å¯ç”¨åˆ—è¡¨å…ˆåŠ è½½å¯¼è‡´æ£€æŸ¥æ›´æ–°å¤±è´¥
-                    if (BeginTabItem((ICON_FA_STORE + (config.UseChinese ? u8"è„šæœ¬å•†åœº"s : "Shop"s)).c_str(), NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
+                    // shop·ÅÇ°ÃæÏàµ±ÓÚÏÈË¢ĞÂshop£¬·ÀÖ¹¿ÉÓÃÁĞ±íÏÈ¼ÓÔØµ¼ÖÂ¼ì²é¸üĞÂÊ§°Ü
+                    if (BeginTabItem((ICON_FA_STORE + (config.UseChinese ? u8"½Å±¾ÉÌ³¡"s : "Shop"s)).c_str(), NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
                     {
                         IsShopTab = true;
                         static bool IsInit = false;
@@ -3823,22 +3824,22 @@ void RenderGui(ImGuiIO& io)
                             IsInit = true;
                         }
                         IsWillGotoShopTab = false;
-                        //-------------------------è„šæœ¬å›¾ç‰‡å’Œä¿¡æ¯--------------------------
+                        //-------------------------½Å±¾Í¼Æ¬ºÍĞÅÏ¢--------------------------
                         const ImVec2 pos = GetCursorPos();
                         static int CurrentPaper = 1;
                         static int TotalPaper = 1;
                         int count = 0;
 
-                        static bool IsRefushSuccess = false; // ä»£æ›¿ç¹æ‚çš„mutex
+                        static bool IsRefushSuccess = false; // ´úÌæ·±ÔÓµÄmutex
                         static bool IsRefushList = true;
                         if (IsRefushList || IsNeedRefushShopList)
                         {
                             thread FuncThread([&]()
                             {
-                                // ä¿®å¤ï¼šåŸä»£ç åœ¨ detach çº¿ç¨‹ä¸­æ— é” clear/é‡å¡« ScriptData::ShopListï¼Œ
-                                // ä¸ä¸»çº¿ç¨‹éå†ã€CheckUpdateScriptFromShopï¼ˆå¦ä¸€ detach çº¿ç¨‹ï¼‰å¹¶å‘ï¼Œ
-                                // vector æ‰©å®¹ -> è¿­ä»£å™¨å¤±æ•ˆ -> 0xC0000005ã€‚
-                                // æ”¹ä¸ºå…ˆåœ¨ä¸´æ—¶åˆ—è¡¨å¡«å……ï¼Œé”å†…ä¸€æ¬¡æ€§ swapã€‚
+                                // ĞŞ¸´£ºÔ­´úÂëÔÚ detach Ïß³ÌÖĞÎŞËø clear/ÖØÌî ScriptData::ShopList£¬
+                                // ÓëÖ÷Ïß³Ì±éÀú¡¢CheckUpdateScriptFromShop£¨ÁíÒ» detach Ïß³Ì£©²¢·¢£¬
+                                // vector À©Èİ -> µü´úÆ÷Ê§Ğ§ -> 0xC0000005¡£
+                                // ¸ÄÎªÏÈÔÚÁÙÊ±ÁĞ±íÌî³ä£¬ËøÄÚÒ»´ÎĞÔ swap¡£
                                 vector<ScriptInfo> tmpList;
                                 const int papers = RefushScriptShopList(tmpList, CurrentPaper, false, IsScriptUseGitee);
                                 {
@@ -3854,22 +3855,22 @@ void RenderGui(ImGuiIO& io)
                             IsNeedRefushShopList = false;
                         }
 
-                        static const char* SourceNames[] = { config.UseChinese ? u8"ç¨³å®šä»“åº“æº" : "Stable Repo Source", config.UseChinese ? u8"å®˜æ–¹ä¸‹è½½æº" : "Official Source" };
+                        static const char* SourceNames[] = { config.UseChinese ? u8"ÎÈ¶¨²Ö¿âÔ´" : "Stable Repo Source", config.UseChinese ? u8"¹Ù·½ÏÂÔØÔ´" : "Official Source" };
                         static int SourceIndex = 1;
-                        Text(config.UseChinese ? u8"ä¸‹è½½æº" : "Source");
+                        Text(config.UseChinese ? u8"ÏÂÔØÔ´" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
                         if (Combo("##ScriptMarketSourceCombo", &SourceIndex, SourceNames, IM_ARRAYSIZE(SourceNames)))
                         {
                             IsRefushList = true;
                             IsNeedRefushShopList = true;
-                            IsRefushSuccess = false; // è§¦å‘åˆ·æ–°åŠ¨ç”»
+                            IsRefushSuccess = false; // ´¥·¢Ë¢ĞÂ¶¯»­
                         }
                         IsScriptUseGitee = (SourceIndex == 0);
 
                         if (IsRefushSuccess)
                         {
-                            // ä¿®å¤ï¼šéå†æœŸé—´åŠ è¯»é”ï¼Œé˜²æ­¢åˆ·æ–°çº¿ç¨‹ swap å¯¼è‡´è¿­ä»£å™¨/å…ƒç´ å¼•ç”¨å¤±æ•ˆ
+                            // ĞŞ¸´£º±éÀúÆÚ¼ä¼Ó¶ÁËø£¬·ÀÖ¹Ë¢ĞÂÏß³Ì swap µ¼ÖÂµü´úÆ÷/ÔªËØÒıÓÃÊ§Ğ§
                             shared_lock shopLock(ScriptData::ShopListMtx);
                             for (const ScriptInfo& script : ScriptData::ShopList)
                             {
@@ -3883,14 +3884,14 @@ void RenderGui(ImGuiIO& io)
                                     DisableAnimation(true);
                                     PopStyleColor(); // ImGuiCol_ChildBg
 
-                                    // è„šæœ¬å›¾ç‰‡
+                                    // ½Å±¾Í¼Æ¬
                                     {
                                         Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                         SetCursorPos(ImVec2(4.0f, 4.0f));
                                         ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
                                     }
 
-                                    // æ ‡é¢˜å’Œä¿¡æ¯æ–‡å­—
+                                    // ±êÌâºÍĞÅÏ¢ÎÄ×Ö
                                     {
                                         const char* TitleText = script.title.c_str();
                                         const float TitleHeight = CalcTextSize(TitleText).y;
@@ -3906,17 +3907,17 @@ void RenderGui(ImGuiIO& io)
                                     const float WindowWidth = regionMax.x - regionMin.x;
                                     const float WindowHeight = regionMax.y - regionMin.y;
 
-                                    // ç‰ˆæœ¬å·æ–‡æœ¬
+                                    // °æ±¾ºÅÎÄ±¾
                                     {
-                                        const string text = ((config.UseChinese ? u8"ç‰ˆæœ¬:" : "Version:") + to_string(script.ver));
+                                        const string text = ((config.UseChinese ? u8"°æ±¾:" : "Version:") + to_string(script.ver));
                                         float TextWidth = CalcTextSize(text.c_str()).x;
                                         SetCursorPos(ImVec2(WindowWidth - TextWidth - 6.0f, 4));
                                         TextColored((ImVec4)ImColor(150, 150, 150, 255), text.c_str());
                                     }
-                                    // æŒ‰é’®å’Œå…¶ä»–çš„
+                                    // °´Å¥ºÍÆäËûµÄ
                                     {
                                         const bool HasLinkButton = !script.link.empty();
-                                        const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"æ•™ç¨‹ç½‘ç«™"s : "Web Guide"s));
+                                        const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"½Ì³ÌÍøÕ¾"s : "Web Guide"s));
                                         const float LinkButtonWidth = CalcTextSize(LinkButtonText.c_str()).x + 16;
                                         const float ImageButtonWidth = 32.0f;
                                         const float spacing = 6.0f;
@@ -3926,13 +3927,13 @@ void RenderGui(ImGuiIO& io)
                                             BeginPosX -= LinkButtonWidth + spacing;
                                         SetCursorPosX(BeginPosX);
 
-                                        // æ•™ç¨‹é“¾æ¥æŒ‰é’®
+                                        // ½Ì³ÌÁ´½Ó°´Å¥
                                         if (HasLinkButton)
                                         {
                                             SetCursorPosY(WindowHeight - 32);
                                             if (Button(LinkButtonText.c_str(), ImVec2(LinkButtonWidth, 32)))
                                             {
-                                                // å€¼æ•è·ï¼šscript æ˜¯ for å¾ªç¯å…ƒç´ å¼•ç”¨ï¼Œçº¿ç¨‹æ‰§è¡Œæ—¶å…ƒç´ å¯èƒ½å·²å¤±æ•ˆ
+                                                // Öµ²¶»ñ£ºscript ÊÇ for Ñ­»·ÔªËØÒıÓÃ£¬Ïß³ÌÖ´ĞĞÊ±ÔªËØ¿ÉÄÜÒÑÊ§Ğ§
                                                 thread th([scriptCopy = script]()
                                                 {
                                                     ShellExecute(NULL, NULL, scriptCopy.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
@@ -3942,7 +3943,7 @@ void RenderGui(ImGuiIO& io)
                                             SameLine(0, spacing);
                                         }
 
-                                        // ä¸‹è½½æŒ‰é’® - ImageButtonWidthä¹Ÿæ˜¯hightï¼Œå› ä¸ºæ˜¯æ­£æ–¹å½¢ï¼Œæ‰€ä»¥ w = h
+                                        // ÏÂÔØ°´Å¥ - ImageButtonWidthÒ²ÊÇhight£¬ÒòÎªÊÇÕı·½ĞÎ£¬ËùÒÔ w = h
                                         SetCursorPosY(WindowHeight - ImageButtonWidth);
                                         static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Download);
                                         if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
@@ -3956,18 +3957,18 @@ void RenderGui(ImGuiIO& io)
                                                         const string target = ScriptPath + "\\" + scriptCopy.name + ".zip";
                                                         if (!CopyFile(filename.c_str(), target.c_str(), false))
                                                         {
-                                                            // ä¿®å¤ï¼šæ‰“å°å…·ä½“é”™è¯¯ç ï¼ˆå¦‚ ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUNDï¼‰ä¾¿äºå®šä½ç¼–ç /è·¯å¾„é—®é¢˜
-                                                            PrintLog("[ScriptMarket] è„šæœ¬ä¸‹è½½å¤±è´¥ï¼š" + filename + "ï¼Œé”™è¯¯ï¼š" + to_string(GetLastError()), PL_ERROR);
-                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"ä¸‹è½½å¤±è´¥") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
+                                                            // ĞŞ¸´£º´òÓ¡¾ßÌå´íÎóÂë£¨Èç ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND£©±ãÓÚ¶¨Î»±àÂë/Â·¾¶ÎÊÌâ
+                                                            PrintLog("[ScriptMarket] ½Å±¾ÏÂÔØÊ§°Ü£º" + filename + "£¬´íÎó£º" + to_string(GetLastError()), PL_ERROR);
+                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"ÏÂÔØÊ§°Ü") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                         }
                                                         else
                                                             IsDownloadSuccess = true;
                                                     }
                                                     else
                                                     {
-                                                        // ä¿®å¤ï¼šå¸‚åœºæºè„šæœ¬åä¸º UTF-8ï¼ˆå¯èƒ½å«ä¸­æ–‡ï¼Œå¦‚"æˆ‘çš„åˆ€é™„"ï¼‰ï¼Œ
-                                                        // ç›´æ¥æ‹¼è¿›çª„å­—ç¬¦è·¯å¾„ä¼šè¢« Windows æŒ‰ GBK è§£é‡Š â†’ ä¹±ç æ–‡ä»¶ + é”™è¯¯ 1113ã€‚
-                                                        // æ”¹ç”¨ä¸‹è½½é“¾æ¥æœ«å°¾çš„ ID ä½œä¸º ASCII æ–‡ä»¶åï¼ˆæ˜¾ç¤ºåä»ç”±è§£å‹å info.ini çš„ title æä¾›ï¼‰ã€‚
+                                                        // ĞŞ¸´£ºÊĞ³¡Ô´½Å±¾ÃûÎª UTF-8£¨¿ÉÄÜº¬ÖĞÎÄ£¬Èç"ÎÒµÄµ¶¸½"£©£¬
+                                                        // Ö±½ÓÆ´½øÕ­×Ö·ûÂ·¾¶»á±» Windows °´ GBK ½âÊÍ ¡ú ÂÒÂëÎÄ¼ş + ´íÎó 1113¡£
+                                                        // ¸ÄÓÃÏÂÔØÁ´½ÓÄ©Î²µÄ ID ×÷Îª ASCII ÎÄ¼şÃû£¨ÏÔÊ¾ÃûÈÔÓÉ½âÑ¹ºó info.ini µÄ title Ìá¹©£©¡£
                                                         string id = scriptCopy.file.substr(scriptCopy.file.find_last_of('/') + 1);
                                                         if (id.empty())
                                                             id = "script";
@@ -3976,17 +3977,17 @@ void RenderGui(ImGuiIO& io)
                                                         const string target = ScriptPath + "\\download_" + id + ".zip";
                                                         if (!DownloadURLFilesRetry(scriptCopy.file, target))
                                                         {
-                                                            PrintLog("[ScriptMarket] è„šæœ¬ä¸‹è½½å¤±è´¥ï¼ŒURLï¼š" + scriptCopy.file, PL_ERROR);
-                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"ä¸‹è½½å¤±è´¥") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
+                                                            PrintLog("[ScriptMarket] ½Å±¾ÏÂÔØÊ§°Ü£¬URL£º" + scriptCopy.file, PL_ERROR);
+                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"ÏÂÔØÊ§°Ü") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                         }
                                                         else
                                                             IsDownloadSuccess = true;
                                                     }
-                                                    // ä¿®å¤ï¼šåŸä»£ç æ­¤å¤„æ— æ¡ä»¶å¼¹"ä¸‹è½½æˆåŠŸ"ï¼Œå³ä½¿ä¸Šé¢ä¸‹è½½å¤±è´¥ä¹Ÿä¼šåŒæ—¶å¼¹"å¤±è´¥+æˆåŠŸ"ä¸¤ä¸ªæç¤ºã€‚
-                                                    // æ”¹ä¸ºä»…åœ¨æˆåŠŸæ—¶æç¤ºã€‚
+                                                    // ĞŞ¸´£ºÔ­´úÂë´Ë´¦ÎŞÌõ¼şµ¯"ÏÂÔØ³É¹¦"£¬¼´Ê¹ÉÏÃæÏÂÔØÊ§°ÜÒ²»áÍ¬Ê±µ¯"Ê§°Ü+³É¹¦"Á½¸öÌáÊ¾¡£
+                                                    // ¸ÄÎª½öÔÚ³É¹¦Ê±ÌáÊ¾¡£
                                                     if (IsDownloadSuccess)
-                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"ä¸‹è½½æˆåŠŸ") : (scriptCopy.title + " Download Success"), 2.0f, PT_INFO);
-                                                    RefushScriptList(); // åˆ·æ–°
+                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"ÏÂÔØ³É¹¦") : (scriptCopy.title + " Download Success"), 2.0f, PT_INFO);
+                                                    RefushScriptList(); // Ë¢ĞÂ
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4002,7 +4003,7 @@ void RenderGui(ImGuiIO& io)
 
                             BeginDisabled(CurrentPaper <= 1);
                             {
-                                if (Button(config.UseChinese ? u8"ä¸Šä¸€é¡µ" : "Back"))
+                                if (Button(config.UseChinese ? u8"ÉÏÒ»Ò³" : "Back"))
                                 {
                                     CurrentPaper--;
                                     IsRefushList = true;
@@ -4012,12 +4013,12 @@ void RenderGui(ImGuiIO& io)
                             EndDisabled();
 
                             SameLine();
-                            Text(config.UseChinese ? u8"ç¬¬ %d/%d é¡µ" : "Page %d/%d", CurrentPaper, TotalPaper);
+                            Text(config.UseChinese ? u8"µÚ %d/%d Ò³" : "Page %d/%d", CurrentPaper, TotalPaper);
                             SameLine();
 
                             BeginDisabled(CurrentPaper >= TotalPaper);
                             {
-                                if (Button(config.UseChinese ? u8"ä¸‹ä¸€é¡µ" : "Next"))
+                                if (Button(config.UseChinese ? u8"ÏÂÒ»Ò³" : "Next"))
                                 {
                                     CurrentPaper++;
                                     IsRefushList = true;
@@ -4031,23 +4032,23 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem((ICON_FA_CIRCLE_CHECK + (config.UseChinese ? u8"å¯ç”¨"s : "Available"s)).c_str()))
+                    if (BeginTabItem((ICON_FA_CIRCLE_CHECK + (config.UseChinese ? u8"¿ÉÓÃ"s : "Available"s)).c_str()))
                     {
                         IsShopTab = false;
                         static bool IsCheckUpdate = false;
                         if (!IsCheckUpdate && IsShopListLoaded)
                         {
-                            // ä¿®å¤ï¼šlambda æ— éœ€æ•è·ä»»ä½•å±€éƒ¨å˜é‡ï¼ˆåªè®¿é—®å…¨å±€ ScriptData::Avaiable ä¸å…¨å±€å‡½æ•°ï¼‰ï¼Œ
-                            // ç©ºæ•è·åˆ—è¡¨é¿å…æœªæ¥è¯¯ç”¨æ‚¬å‚å¼•ç”¨
+                            // ĞŞ¸´£ºlambda ÎŞĞè²¶»ñÈÎºÎ¾Ö²¿±äÁ¿£¨Ö»·ÃÎÊÈ«¾Ö ScriptData::Avaiable ÓëÈ«¾Öº¯Êı£©£¬
+                            // ¿Õ²¶»ñÁĞ±í±ÜÃâÎ´À´ÎóÓÃĞü´¹ÒıÓÃ
                             thread FuncThread([]() 
                             {
-                                // å†™å…¥é”
+                                // Ğ´ÈëËø
                                 {
                                     lock_guard write_lock(ScriptData::AvaiableMtx);
                                     for (ScriptInfo& script : ScriptData::Avaiable)
                                         CheckUpdateScriptFromShop(script);
                                 }
-                                // åŒæ­¥æ£€æµ‹å·²å®‰è£…åˆ—è¡¨ï¼Œä½¿å·²å®‰è£…é¡µä¹Ÿèƒ½æ˜¾ç¤ºæ›´æ–°æŒ‰é’®
+                                // Í¬²½¼ì²âÒÑ°²×°ÁĞ±í£¬Ê¹ÒÑ°²×°Ò³Ò²ÄÜÏÔÊ¾¸üĞÂ°´Å¥
                                 {
                                     lock_guard write_lock2(ScriptData::InstalledMtx);
                                     for (ScriptInfo& script : ScriptData::Installed)
@@ -4058,25 +4059,25 @@ void RenderGui(ImGuiIO& io)
                             IsCheckUpdate = true;
                         }
 
-                        // è¯»å–é”
+                        // ¶ÁÈ¡Ëø
                         shared_lock read_lock(ScriptData::AvaiableMtx);
 
                         const int TotalScript = ScriptData::Avaiable.size();
                         if (TotalScript == 0)
                             NothingsHereFunc();
-                        //-------------------------è„šæœ¬å›¾ç‰‡å’Œä¿¡æ¯--------------------------
+                        //-------------------------½Å±¾Í¼Æ¬ºÍĞÅÏ¢--------------------------
                         const ImVec2 pos = GetCursorPos();
                         const int PaperSize = 10;
                         const int TotalPaper = (TotalScript + PaperSize - 1) / PaperSize;
                         static int CurrentPaper = 1;
 
-                        // æ˜¾ç¤ºå†…ç½®æ–‡æ¡£çš„è„šæœ¬IDï¼Œè´Ÿæ•°ä¸ºä¸æ˜¾ç¤ºï¼ˆæˆ–è€…æ˜¯æ— ï¼‰
+                        // ÏÔÊ¾ÄÚÖÃÎÄµµµÄ½Å±¾ID£¬¸ºÊıÎª²»ÏÔÊ¾£¨»òÕßÊÇÎŞ£©
                         int ShowDocsScriptID = -1;
-                        // æ–‡æ¡£å†…å®¹
+                        // ÎÄµµÄÚÈİ
                         string DocsText;
 
                         const int MaxCount = min(PaperSize * CurrentPaper, TotalScript);
-                        for (int count = (CurrentPaper - 1) * PaperSize; count < MaxCount; count++) // countä¸èƒ½ç­‰äºMaxCountï¼Œä¸ç„¶ä¼šå‡ºç°ç¿»é¡µåé‡å¤å‡ºç°
+                        for (int count = (CurrentPaper - 1) * PaperSize; count < MaxCount; count++) // count²»ÄÜµÈÓÚMaxCount£¬²»È»»á³öÏÖ·­Ò³ºóÖØ¸´³öÏÖ
                         {
                             ScriptInfo& script = ScriptData::Avaiable[count];
                             PushStyleColor(ImGuiCol_ChildBg, GetColorU32(GuiColor[ImGuiCol_FrameBg]));
@@ -4089,14 +4090,14 @@ void RenderGui(ImGuiIO& io)
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
 
-                                // è„šæœ¬å›¾ç‰‡
+                                // ½Å±¾Í¼Æ¬
                                 {
                                     Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                     SetCursorPos(ImVec2(4.0f, 4.0f));
                                     ImageRounded((ImTextureID)iamge_texture, ImVec2(64, 64), 4.0f);
                                 }
 
-                                // æ ‡é¢˜ã€ä¿¡æ¯æ–‡å­—ã€æƒé™æ˜¾ç¤ºã€æ›´æ–°æŒ‰é’®
+                                // ±êÌâ¡¢ĞÅÏ¢ÎÄ×Ö¡¢È¨ÏŞÏÔÊ¾¡¢¸üĞÂ°´Å¥
                                 {
                                     const char* TitleText = script.title.c_str();
                                     const float TitleHeight = CalcTextSize(TitleText).y;
@@ -4106,8 +4107,8 @@ void RenderGui(ImGuiIO& io)
                                     SameLine();
                                     Text(ICON_FA_CIRCLE_INFO);
                                     AttachTooltip((script.RestrictedFuncsStr.length() > 0) ? 
-                                        (((config.UseChinese ? u8"è„šæœ¬è¯·æ±‚çš„æƒé™ï¼š\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) : 
-                                        (config.UseChinese ? u8"&7æ— é£é™©" : "&7No Risks"));
+                                        (((config.UseChinese ? u8"½Å±¾ÇëÇóµÄÈ¨ÏŞ£º\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) : 
+                                        (config.UseChinese ? u8"&7ÎŞ·çÏÕ" : "&7No Risks"));
 
                                     SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
                                     TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
@@ -4115,15 +4116,15 @@ void RenderGui(ImGuiIO& io)
                                     if (script.IsHasUpdate)
                                     {
                                         SameLine();
-                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"æ›´æ–°"s : "Update"s)).c_str(), ImVec2(60, 32)))
+                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"¸üĞÂ"s : "Update"s)).c_str(), ImVec2(60, 32)))
                                         {
-                                            thread FuncThread([ScriptCopy = script]() // å€¼æ•è·ï¼Œé¿å… script å¼•ç”¨éš for å¾ªç¯/å¹¶å‘åˆ é™¤å¤±æ•ˆ
+                                            thread FuncThread([ScriptCopy = script]() // Öµ²¶»ñ£¬±ÜÃâ script ÒıÓÃËæ for Ñ­»·/²¢·¢É¾³ıÊ§Ğ§
                                                 {
                                                     if (UpdateScriptFromShop(ScriptCopy))
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"æ›´æ–°æˆåŠŸ") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"¸üĞÂ³É¹¦") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
                                                     else
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"æ›´æ–°å¤±è´¥") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
-                                                    RefushScriptList(); // åˆ·æ–°
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"¸üĞÂÊ§°Ü") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
+                                                    RefushScriptList(); // Ë¢ĞÂ
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4135,21 +4136,21 @@ void RenderGui(ImGuiIO& io)
                                 const float WindowWidth = regionMax.x - regionMin.x;
                                 const float WindowHeight = regionMax.y - regionMin.y;
 
-                                // ç‰ˆæœ¬å·æ–‡æœ¬
+                                // °æ±¾ºÅÎÄ±¾
                                 {
-                                    const string text = ((config.UseChinese ? u8"ç‰ˆæœ¬:" : "Version:") + to_string(script.ver));
+                                    const string text = ((config.UseChinese ? u8"°æ±¾:" : "Version:") + to_string(script.ver));
                                     const float TextWidth = CalcTextSize(text.c_str()).x;
                                     const float PosX = WindowWidth - TextWidth;
                                     SetCursorPos(ImVec2(PosX, 4));
                                     TextColored((ImVec4)ImColor(150, 150, 150, 255), text.c_str());
                                 }
 
-                                // æŒ‰é’®å’Œå…¶ä»–çš„
+                                // °´Å¥ºÍÆäËûµÄ
                                 {
                                     const bool HasLinkButton = !script.link.empty();
                                     const bool HasDocsButton = !script.docs.empty();
-                                    const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"æ•™ç¨‹ç½‘ç«™"s : "Web Guide"s));
-                                    const string DocsButtonText = (ICON_FA_FILE_WORD + (config.UseChinese ? u8"æ–‡æ¡£"s : "Docs"s));
+                                    const string LinkButtonText = (ICON_FA_EARTH_AFRICA + (config.UseChinese ? u8"½Ì³ÌÍøÕ¾"s : "Web Guide"s));
+                                    const string DocsButtonText = (ICON_FA_FILE_WORD + (config.UseChinese ? u8"ÎÄµµ"s : "Docs"s));
                                     const float LinkButtonWidth = CalcTextSize(LinkButtonText.c_str()).x + 16;
                                     const float DocsButtonWidth = CalcTextSize(DocsButtonText.c_str()).x + 16;
                                     const float ImageButtonWidth = 32.0f;
@@ -4164,13 +4165,13 @@ void RenderGui(ImGuiIO& io)
 
                                     if (!script.IsInstalled)
                                     {
-                                        // æ•™ç¨‹ç½‘ç«™æŒ‰é’®
+                                        // ½Ì³ÌÍøÕ¾°´Å¥
                                         if (HasLinkButton)
                                         {
                                             SetCursorPosY(WindowHeight - ImageButtonWidth);
                                             if (Button(LinkButtonText.c_str(), ImVec2(LinkButtonWidth, 32)))
                                             {
-                                                // å€¼æ•è·ï¼šscript æ˜¯ for å¾ªç¯å…ƒç´ å¼•ç”¨ï¼Œçº¿ç¨‹æ‰§è¡Œæ—¶å…ƒç´ å¯èƒ½å·²å¤±æ•ˆ
+                                                // Öµ²¶»ñ£ºscript ÊÇ for Ñ­»·ÔªËØÒıÓÃ£¬Ïß³ÌÖ´ĞĞÊ±ÔªËØ¿ÉÄÜÒÑÊ§Ğ§
                                                 thread th([scriptCopy = script]()
                                                 {
                                                     ShellExecute(NULL, NULL, scriptCopy.link.c_str(), NULL, NULL, SW_SHOWNORMAL);
@@ -4180,7 +4181,7 @@ void RenderGui(ImGuiIO& io)
                                             SameLine(0, spacing);
                                         }
 
-                                        // æ–‡æ¡£æ˜¾ç¤ºæŒ‰é’®
+                                        // ÎÄµµÏÔÊ¾°´Å¥
                                         if (HasDocsButton)
                                         {
                                             SetCursorPosY(WindowHeight - 32);
@@ -4192,7 +4193,7 @@ void RenderGui(ImGuiIO& io)
                                                     ifstream file(path);
                                                     if (!file.is_open())
                                                     {
-                                                        PrintLog("[Script] æ— æ³•æ‰“å¼€æ–‡æ¡£æ–‡ä»¶ï¼š" + path, PL_ERROR);
+                                                        PrintLog("[Script] ÎŞ·¨´ò¿ªÎÄµµÎÄ¼ş£º" + path, PL_ERROR);
                                                         return;
                                                     }
                                                     ostringstream ss;
@@ -4205,17 +4206,17 @@ void RenderGui(ImGuiIO& io)
                                             SameLine(0, spacing);
                                         }
 
-                                        // å®‰è£… - ImageButtonWidthä¹Ÿæ˜¯hightï¼Œå› ä¸ºæ˜¯æ­£æ–¹å½¢ï¼Œæ‰€ä»¥ w = h
+                                        // °²×° - ImageButtonWidthÒ²ÊÇhight£¬ÒòÎªÊÇÕı·½ĞÎ£¬ËùÒÔ w = h
                                         SetCursorPosY(WindowHeight - ImageButtonWidth);
                                         static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Add);
                                         if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                         {
-                                            ScriptInfo ScriptCopy = script; // æ‹·è´æ—¶ä»æŒæœ‰ read_lockï¼Œå¼•ç”¨æœ‰æ•ˆ
+                                            ScriptInfo ScriptCopy = script; // ¿½±´Ê±ÈÔ³ÖÓĞ read_lock£¬ÒıÓÃÓĞĞ§
                                             thread FuncThread([ScriptCopy]() mutable
                                                 {
                                                     const HANDLE hThread = nullptr;
                                                     ScriptCopy.hThread = hThread;
-                                                    // åˆ›å»º ScriptState æ¡ç›®ï¼ˆä¾›"å¯ç”¨"å¼€å…³/å¯åŠ¨æŒ‰é”®ä½¿ç”¨ï¼ŒIsRunning=falseï¼‰
+                                                    // ´´½¨ ScriptState ÌõÄ¿£¨¹©"ÆôÓÃ"¿ª¹Ø/Æô¶¯°´¼üÊ¹ÓÃ£¬IsRunning=false£©
                                                     {
                                                         lock_guard lock(ScriptData::StatesMtx);
                                                         ScriptData::States[ScriptCopy.file];
@@ -4241,7 +4242,7 @@ void RenderGui(ImGuiIO& io)
                                                         ScriptData::States[ScriptCopy.file].IsRunning = true;
                                                     }
                                                     {
-                                                        // ä¿å­˜çº¿ç¨‹å¥æŸ„ï¼Œåˆ é™¤è„šæœ¬æ—¶æ‰èƒ½æ­£ç¡®ç»ˆæ­¢çº¿ç¨‹
+                                                        // ±£´æÏß³Ì¾ä±ú£¬É¾³ı½Å±¾Ê±²ÅÄÜÕıÈ·ÖÕÖ¹Ïß³Ì
                                                         const HANDLE hThread = StartScript(ScriptCopy.file);
                                                         if (hThread != NULL)
                                                         {
@@ -4261,7 +4262,7 @@ void RenderGui(ImGuiIO& io)
                                         }
                                         SameLine(0, spacing);
 
-                                        // åˆ é™¤æ–‡ä»¶ - ImageButtonWidthä¹Ÿæ˜¯hightï¼Œå› ä¸ºæ˜¯æ­£æ–¹å½¢ï¼Œæ‰€ä»¥ w = h
+                                        // É¾³ıÎÄ¼ş - ImageButtonWidthÒ²ÊÇhight£¬ÒòÎªÊÇÕı·½ĞÎ£¬ËùÒÔ w = h
                                         SetCursorPosY(WindowHeight - ImageButtonWidth);
                                         static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
                                         if (ImageButton("script_delete", (ImTextureID)image_texture2, ImVec2(ImageButtonWidth, ImageButtonWidth)))
@@ -4270,9 +4271,9 @@ void RenderGui(ImGuiIO& io)
                                             {
                                                 DeleteDirectoryRecursively(ScriptTemp + "\\" + scriptCopy.name);
                                                 DelFile(ScriptPath + "\\" + scriptCopy.name + ".zip");
-                                                // ä¿®å¤ï¼šåŸä»£ç æ— é” eraseï¼Œä¸ä¸»çº¿ç¨‹ï¼ˆæŒè¯»é”éå† ScriptData::Avaiableï¼‰å¹¶å‘ â†’ å´©æºƒã€‚
-                                                // å†™å…¥å¿…é¡»åŠ å†™é”ï¼ˆä¸»çº¿ç¨‹é‡Šæ”¾è¯»é”åæœ¬çº¿ç¨‹æ‰èƒ½æ‰§è¡Œï¼‰ï¼›
-                                                // åŒæ—¶ä¸ç”¨å¤–éƒ¨æ•è·çš„æ—§ç´¢å¼• countï¼Œæ”¹ä¸ºæŒ‰åç§°æŸ¥æ‰¾ååˆ é™¤ã€‚
+                                                // ĞŞ¸´£ºÔ­´úÂëÎŞËø erase£¬ÓëÖ÷Ïß³Ì£¨³Ö¶ÁËø±éÀú ScriptData::Avaiable£©²¢·¢ ¡ú ±ÀÀ£¡£
+                                                // Ğ´Èë±ØĞë¼ÓĞ´Ëø£¨Ö÷Ïß³ÌÊÍ·Å¶ÁËøºó±¾Ïß³Ì²ÅÄÜÖ´ĞĞ£©£»
+                                                // Í¬Ê±²»ÓÃÍâ²¿²¶»ñµÄ¾ÉË÷Òı count£¬¸ÄÎª°´Ãû³Æ²éÕÒºóÉ¾³ı¡£
                                                 {
                                                     lock_guard lock(ScriptData::AvaiableMtx);
                                                     for (auto it = ScriptData::Avaiable.begin(); it != ScriptData::Avaiable.end(); ++it)
@@ -4291,8 +4292,8 @@ void RenderGui(ImGuiIO& io)
                                     }
                                     else
                                     {
-                                        // å·²å®‰è£…çŠ¶æ€æ–‡å­—
-                                        const char* InstalledText = config.UseChinese ? u8"å·²å®‰è£…" : "Installed";
+                                        // ÒÑ°²×°×´Ì¬ÎÄ×Ö
+                                        const char* InstalledText = config.UseChinese ? u8"ÒÑ°²×°" : "Installed";
                                         const ImVec2 TextSize = CalcTextSize(InstalledText);
                                         SetCursorPos(ImVec2(GetWindowWidth() - TextSize.x - 12.0f * 3, (GetWindowHeight() - TextSize.y) / 2));
                                         Text(InstalledText);
@@ -4308,7 +4309,7 @@ void RenderGui(ImGuiIO& io)
                         {
                             ScriptInfo& script = ScriptData::Avaiable[ShowDocsScriptID];
 
-                            if (BeginPopupWindow(config.UseChinese ? u8"è„šæœ¬æ–‡æ¡£" : "Script Document"))
+                            if (BeginPopupWindow(config.UseChinese ? u8"½Å±¾ÎÄµµ" : "Script Document"))
                             {
                                 TextUnformatted(DocsText.c_str());
                                 EndPopupWindow();
@@ -4317,18 +4318,18 @@ void RenderGui(ImGuiIO& io)
 
                         BeginDisabled(CurrentPaper <= 1);
                         {
-                            if (Button(config.UseChinese ? u8"ä¸Šä¸€é¡µ" : "Back"))
+                            if (Button(config.UseChinese ? u8"ÉÏÒ»Ò³" : "Back"))
                                 CurrentPaper--;
                         }
                         EndDisabled();
 
                         SameLine();
-                        Text(config.UseChinese ? u8"ç¬¬ %d/%d é¡µ" : "Page %d/%d", CurrentPaper, TotalPaper);
+                        Text(config.UseChinese ? u8"µÚ %d/%d Ò³" : "Page %d/%d", CurrentPaper, TotalPaper);
                         SameLine();
 
                         BeginDisabled(CurrentPaper >= TotalPaper);
                         {
-                            if (Button(config.UseChinese ? u8"ä¸‹ä¸€é¡µ" : "Next"))
+                            if (Button(config.UseChinese ? u8"ÏÂÒ»Ò³" : "Next"))
                                 CurrentPaper++;
                         }
                         EndDisabled();
@@ -4336,10 +4337,10 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem((ICON_FA_BOLT + (config.UseChinese ? u8"å·²å®‰è£…"s : "Installed"s)).c_str()))
+                    if (BeginTabItem((ICON_FA_BOLT + (config.UseChinese ? u8"ÒÑ°²×°"s : "Installed"s)).c_str()))
                     {
                         IsShopTab = false;
-                        // è¯»å–é”ï¼ˆæå‰åˆ° size() æ£€æŸ¥ä¹‹å‰ï¼ŒåŸä»£ç åœ¨é”å¤–è¯» size() ä¸å®‰è£…çº¿ç¨‹ push_back å¹¶å‘ â†’ æ•°æ®ç«äº‰ï¼‰
+                        // ¶ÁÈ¡Ëø£¨ÌáÇ°µ½ size() ¼ì²éÖ®Ç°£¬Ô­´úÂëÔÚËøÍâ¶Á size() Óë°²×°Ïß³Ì push_back ²¢·¢ ¡ú Êı¾İ¾ºÕù£©
                         shared_lock read_lock(ScriptData::InstalledMtx);
                         if (ScriptData::Installed.size() == 0)
                             NothingsHereFunc();
@@ -4356,7 +4357,7 @@ void RenderGui(ImGuiIO& io)
                                 DisableAnimation(true);
                                 PopStyleColor(); // ImGuiCol_ChildBg
 
-                                // è„šæœ¬å›¾ç‰‡
+                                // ½Å±¾Í¼Æ¬
                                 {
                                     Texture2D iamge_texture = LoadTextureFromFile(script.texture, false);
                                     SetCursorPos(ImVec2(4.0f, 4.0f));
@@ -4368,7 +4369,7 @@ void RenderGui(ImGuiIO& io)
                                 const float WindowWidth = regionMax.x - regionMin.x;
                                 const float WindowHeight = regionMax.y - regionMin.y;
 
-                                // æ ‡é¢˜ã€ä¿¡æ¯æ–‡å­—ã€æƒé™æ˜¾ç¤ºã€æ›´æ–°æŒ‰é’®
+                                // ±êÌâ¡¢ĞÅÏ¢ÎÄ×Ö¡¢È¨ÏŞÏÔÊ¾¡¢¸üĞÂ°´Å¥
                                 {
                                     const char* TitleText = script.title.c_str();
                                     const float TitleHeight = CalcTextSize(TitleText).y;
@@ -4378,8 +4379,8 @@ void RenderGui(ImGuiIO& io)
                                     SameLine();
                                     Text(ICON_FA_CIRCLE_INFO);
                                     AttachTooltip((script.RestrictedFuncsStr.length() > 0) ?
-                                        (((config.UseChinese ? u8"è„šæœ¬è¯·æ±‚çš„æƒé™ï¼š\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) :
-                                        (config.UseChinese ? u8"&7æ— é£é™©" : "&7No Risks"));
+                                        (((config.UseChinese ? u8"½Å±¾ÇëÇóµÄÈ¨ÏŞ£º\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) :
+                                        (config.UseChinese ? u8"&7ÎŞ·çÏÕ" : "&7No Risks"));
 
                                     SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
                                     TextColored((ImVec4)ImColor(165, 165, 165, 255), script.info.c_str());
@@ -4387,15 +4388,15 @@ void RenderGui(ImGuiIO& io)
                                     if (script.IsHasUpdate)
                                     {
                                         SameLine();
-                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"æ›´æ–°"s : "Update"s)).c_str(), ImVec2(60, 32)))
+                                        if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"¸üĞÂ"s : "Update"s)).c_str(), ImVec2(60, 32)))
                                         {
-                                            thread FuncThread([ScriptCopy = script]() // å€¼æ•è·ï¼Œé¿å… script å¼•ç”¨éš for å¾ªç¯/å¹¶å‘åˆ é™¤å¤±æ•ˆ
+                                            thread FuncThread([ScriptCopy = script]() // Öµ²¶»ñ£¬±ÜÃâ script ÒıÓÃËæ for Ñ­»·/²¢·¢É¾³ıÊ§Ğ§
                                                 {
                                                     if (UpdateScriptFromShop(ScriptCopy))
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"æ›´æ–°æˆåŠŸ") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"¸üĞÂ³É¹¦") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
                                                     else
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"æ›´æ–°å¤±è´¥") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
-                                                    RefushScriptList(); // åˆ·æ–°
+                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"¸üĞÂÊ§°Ü") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
+                                                    RefushScriptList(); // Ë¢ĞÂ
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4407,31 +4408,31 @@ void RenderGui(ImGuiIO& io)
                                     const float InputKeyWidth = 80.0f;
                                     const float spacing = 6.0f;
 
-                                    float BeginPosX = WindowWidth - ((ImageButtonWidth + spacing) * 2) - (InputKeyWidth + spacing) - (40.0f + spacing); // 40.0fæ˜¯toggle
+                                    float BeginPosX = WindowWidth - ((ImageButtonWidth + spacing) * 2) - (InputKeyWidth + spacing) - (40.0f + spacing); // 40.0fÊÇtoggle
                                     SetCursorPosX(BeginPosX);
 
-                                    // å¯åŠ¨æŒ‰é”®
+                                    // Æô¶¯°´¼ü
                                     SetNextItemWidth(InputKeyWidth);
                                     {
-                                        // å†™å…¥é”
+                                        // Ğ´ÈëËø
                                         lock_guard lock(ScriptData::StatesMtx);
-                                        // find æ›¿ä»£ operator[]ï¼Œé¿å…è„šæœ¬å·²åˆ é™¤åä»è¢«æœ¬å¾ªç¯å¤æ´»åƒµå°¸ ScriptState æ¡ç›®
+                                        // find Ìæ´ú operator[]£¬±ÜÃâ½Å±¾ÒÑÉ¾³ıºóÈÔ±»±¾Ñ­»·¸´»î½©Ê¬ ScriptState ÌõÄ¿
                                         auto st = ScriptData::States.find(script.file);
                                         if (st != ScriptData::States.end())
                                         {
                                             SetCursorPosY(WindowHeight - 26.0f);
-                                            InputKey("##script_key", &st->second.key, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
+                                            InputKey("##script_key", &st->second.key, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
                                         }
                                     }
                                     SameLine(0, spacing);
 
-                                    // å¯ç”¨å¼€å…³ï¼šå…³é—­ -> IsSuspend = true -> è„šæœ¬çº¿ç¨‹å®‰å…¨ç¡çœ ï¼ˆåœæ­¢è¿è¡Œï¼‰
-                                    // ä¿®å¤ï¼šåˆ é™¤è‡ªåŠ¨å¯åŠ¨åï¼Œå¼€å…³ä»"å…³é—­"æ‹¨åˆ°"å¼€å¯"ä¸”è„šæœ¬çº¿ç¨‹æœªè¿è¡Œæ—¶ï¼Œæ‰‹åŠ¨å¯åŠ¨è„šæœ¬çº¿ç¨‹
+                                    // ÆôÓÃ¿ª¹Ø£º¹Ø±Õ -> IsSuspend = true -> ½Å±¾Ïß³Ì°²È«Ë¯Ãß£¨Í£Ö¹ÔËĞĞ£©
+                                    // ĞŞ¸´£ºÉ¾³ı×Ô¶¯Æô¶¯ºó£¬¿ª¹Ø´Ó"¹Ø±Õ"²¦µ½"¿ªÆô"ÇÒ½Å±¾Ïß³ÌÎ´ÔËĞĞÊ±£¬ÊÖ¶¯Æô¶¯½Å±¾Ïß³Ì
                                     SetCursorPosY(WindowHeight - 24.0f);
                                     {
-                                        // å†™å…¥é”
+                                        // Ğ´ÈëËø
                                         lock_guard lock(ScriptData::StatesMtx);
-                                        // find æ›¿ä»£ operator[]ï¼Œé¿å…è„šæœ¬å·²åˆ é™¤åä»è¢«æœ¬å¾ªç¯å¤æ´»åƒµå°¸ ScriptState æ¡ç›®
+                                        // find Ìæ´ú operator[]£¬±ÜÃâ½Å±¾ÒÑÉ¾³ıºóÈÔ±»±¾Ñ­»·¸´»î½©Ê¬ ScriptState ÌõÄ¿
                                         auto st = ScriptData::States.find(script.file);
                                         if (st != ScriptData::States.end())
                                         {
@@ -4439,13 +4440,13 @@ void RenderGui(ImGuiIO& io)
                                             if (Toggle("##script_enable", &IsEnable, ToggleFlags))
                                             {
                                                 st->second.IsSuspend = !IsEnable;
-                                                // å¼€å¯æ—¶è‹¥è„šæœ¬çº¿ç¨‹å°šæœªè¿è¡Œï¼ˆå«æ­£åœ¨å¯åŠ¨ä¸­ï¼‰ï¼Œå¯åŠ¨å®ƒï¼Œç®—æ˜¯å¢å¼ºå¥å£®äº†å§
+                                                // ¿ªÆôÊ±Èô½Å±¾Ïß³ÌÉĞÎ´ÔËĞĞ£¨º¬ÕıÔÚÆô¶¯ÖĞ£©£¬Æô¶¯Ëü£¬ËãÊÇÔöÇ¿½¡×³ÁË°É
                                                 if (IsEnable && !st->second.IsRunning)
                                                 {
-                                                    st->second.IsRunning = true; // ä¹è§‚ç½®ä½ï¼Œé˜²æ­¢é‡å¤å¯åŠ¨
+                                                    st->second.IsRunning = true; // ÀÖ¹ÛÖÃÎ»£¬·ÀÖ¹ÖØ¸´Æô¶¯
                                                     thread th([file = script.file]()
                                                     {
-                                                        // ä¿å­˜çº¿ç¨‹å¥æŸ„ï¼Œåˆ é™¤è„šæœ¬æ—¶æ‰èƒ½æ­£ç¡®ç»ˆæ­¢çº¿ç¨‹
+                                                        // ±£´æÏß³Ì¾ä±ú£¬É¾³ı½Å±¾Ê±²ÅÄÜÕıÈ·ÖÕÖ¹Ïß³Ì
                                                         const HANDLE hThread = StartScript(file);
                                                         if (hThread != NULL)
                                                         {
@@ -4476,16 +4477,16 @@ void RenderGui(ImGuiIO& io)
                                             }
                                         }
                                     }
-                                    AttachTooltip(config.UseChinese ? u8"å…³é—­åï¼šè„šæœ¬åœæ­¢è¿è¡Œ\nå¼€å¯æ—¶ï¼šè‹¥è„šæœ¬æœªè¿è¡Œåˆ™å¯åŠ¨è„šæœ¬" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
+                                    AttachTooltip(config.UseChinese ? u8"¹Ø±Õºó£º½Å±¾Í£Ö¹ÔËĞĞ\n¿ªÆôÊ±£ºÈô½Å±¾Î´ÔËĞĞÔòÆô¶¯½Å±¾" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
                                     SameLine(0, spacing);
 
-                                    // è„šæœ¬è®¾ç½®æŒ‰é”® - ImageButtonWidthä¹Ÿæ˜¯hightï¼Œå› ä¸ºæ˜¯æ­£æ–¹å½¢ï¼Œæ‰€ä»¥ w = h
+                                    // ½Å±¾ÉèÖÃ°´¼ü - ImageButtonWidthÒ²ÊÇhight£¬ÒòÎªÊÇÕı·½ĞÎ£¬ËùÒÔ w = h
                                     SetCursorPosY(WindowHeight - ImageButtonWidth);
                                     static const Texture2D image_texture1 = LoadTextureFromFile(Pics_FunSetting);
                                     if (ImageButton("##script_settings", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                     {
                                         ScriptSettingsSelected = count;
-                                        // æ‰“å¼€è®¾ç½®æ—¶æš‚åœè„šæœ¬ï¼Œé¿å…è„šæœ¬ä¸è®¾ç½®ç•Œé¢å¹¶å‘æ“ä½œ
+                                        // ´ò¿ªÉèÖÃÊ±ÔİÍ£½Å±¾£¬±ÜÃâ½Å±¾ÓëÉèÖÃ½çÃæ²¢·¢²Ù×÷
                                         lock_guard lock(ScriptData::StatesMtx);
                                         auto st = ScriptData::States.find(script.file);
                                         if (st != ScriptData::States.end())
@@ -4493,7 +4494,7 @@ void RenderGui(ImGuiIO& io)
                                     }
                                     SameLine(0, spacing);
 
-                                    // åˆ é™¤è„šæœ¬ - ImageButtonWidthä¹Ÿæ˜¯hightï¼Œå› ä¸ºæ˜¯æ­£æ–¹å½¢ï¼Œæ‰€ä»¥ w = h
+                                    // É¾³ı½Å±¾ - ImageButtonWidthÒ²ÊÇhight£¬ÒòÎªÊÇÕı·½ĞÎ£¬ËùÒÔ w = h
                                     SetCursorPosY(WindowHeight - ImageButtonWidth);
                                     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
                                     if (ImageButton("##script_delete", (ImTextureID)image_texture2, ImVec2(ImageButtonWidth, ImageButtonWidth)))
@@ -4504,10 +4505,10 @@ void RenderGui(ImGuiIO& io)
                                             string errormsg;
                                             ScriptSettingsSelected = -1;
                                             {
-                                                // ä¿®å¤ï¼šåŸä»£ç ç”¨ shared_lockï¼ˆè¯»é”ï¼‰å´ä¿®æ”¹ s.IsInstalled å¹¶è°ƒç”¨
-                                                // CloseScriptThreadï¼ˆä¼šå†™ s.hThreadï¼‰â†’ è¯»é”å†…å†™çš„æ•°æ®ç«äº‰ã€‚æ”¹ä¸ºå†™é”ã€‚
+                                                // ĞŞ¸´£ºÔ­´úÂëÓÃ shared_lock£¨¶ÁËø£©È´ĞŞ¸Ä s.IsInstalled ²¢µ÷ÓÃ
+                                                // CloseScriptThread£¨»áĞ´ s.hThread£©¡ú ¶ÁËøÄÚĞ´µÄÊı¾İ¾ºÕù¡£¸ÄÎªĞ´Ëø¡£
                                                 lock_guard lock(ScriptData::AvaiableMtx);
-                                                // å°†å¯ç”¨è„šæœ¬åˆ—è¡¨çš„IsInstalledæ”¹ä¸ºfalse
+                                                // ½«¿ÉÓÃ½Å±¾ÁĞ±íµÄIsInstalled¸ÄÎªfalse
                                                 for (ScriptInfo& s : ScriptData::Avaiable)
                                                 {
                                                     if (s.file == script.file)
@@ -4520,7 +4521,7 @@ void RenderGui(ImGuiIO& io)
                                             }
                                             const string file = script.file;
                                             {
-                                                // ä¿®å¤ï¼šåŸä»£ç  LuaStates.find åœ¨é”å¤–æ‰§è¡Œï¼Œä¸ä¸‹æ–¹é”å†… erase å¹¶å‘ â†’ ç«äº‰ã€‚ç§»å…¥é”å†…ã€‚
+                                                // ĞŞ¸´£ºÔ­´úÂë LuaStates.find ÔÚËøÍâÖ´ĞĞ£¬ÓëÏÂ·½ËøÄÚ erase ²¢·¢ ¡ú ¾ºÕù¡£ÒÆÈëËøÄÚ¡£
                                                 lock_guard lock(LuaStatesMtx);
                                                 auto it = LuaStates.find(file);
                                                 if (it != LuaStates.end())
@@ -4529,11 +4530,11 @@ void RenderGui(ImGuiIO& io)
                                                     LuaStates.erase(it);
                                                 }
                                             }
-                                            PrintLog("[Script] å·²åˆ é™¤è„šæœ¬ï¼š" + script.file, PL_INFO);
+                                            PrintLog("[Script] ÒÑÉ¾³ı½Å±¾£º" + script.file, PL_INFO);
                                             {
-                                                // ä¿®å¤ï¼šåŸä»£ç åœ¨ä¸»çº¿ç¨‹ read_lock.unlock() å erase ScriptData::Installed å†é‡é”ï¼Œ
-                                                // é‡é”å range-for è¿­ä»£å™¨å¤±æ•ˆ -> å´©æºƒã€‚æ”¹ä¸ºåœ¨æ­¤ detach çº¿ç¨‹å†…æŒ‰ file æŸ¥æ‰¾åˆ é™¤
-                                                // ï¼ˆç‹¬ç«‹åŠ é”ã€ä¸åµŒå¥—ï¼Œé¿å…ä¸ ClearScriptCache çš„é”åºå½¢æˆç¯ï¼‰ã€‚
+                                                // ĞŞ¸´£ºÔ­´úÂëÔÚÖ÷Ïß³Ì read_lock.unlock() ºó erase ScriptData::Installed ÔÙÖØËø£¬
+                                                // ÖØËøºó range-for µü´úÆ÷Ê§Ğ§ -> ±ÀÀ£¡£¸ÄÎªÔÚ´Ë detach Ïß³ÌÄÚ°´ file ²éÕÒÉ¾³ı
+                                                // £¨¶ÀÁ¢¼ÓËø¡¢²»Ç¶Ì×£¬±ÜÃâÓë ClearScriptCache µÄËøĞòĞÎ³É»·£©¡£
                                                 lock_guard lock(ScriptData::InstalledMtx);
                                                 for (auto it = ScriptData::Installed.begin(); it != ScriptData::Installed.end(); ++it)
                                                 {
@@ -4559,7 +4560,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem((ICON_FA_CODE + (config.UseChinese ? u8"è„šæœ¬å¼€å‘"s : "Script Creator"s)).c_str(), NULL))
+                    if (BeginTabItem((ICON_FA_CODE + (config.UseChinese ? u8"½Å±¾¿ª·¢"s : "Script Creator"s)).c_str(), NULL))
                     {
                         IsScriptCreatorTab = true;
 
@@ -4573,7 +4574,7 @@ void RenderGui(ImGuiIO& io)
                                 ScriptEditor::editor.SetText(config.UseChinese ? ScriptEditor::DefaultScriptCodeChinese : ScriptEditor::DefaultScriptCodeEnglish);
                                 IsInit1 = true;
                             }
-                            // ä¿®å¤ï¼šCodeContext ç”± detach çº¿ç¨‹å†™å…¥ã€ä¸»çº¿ç¨‹è¯»å–/clearï¼ŒåŸä»£ç æ— é” â†’ ç«äº‰ã€‚
+                            // ĞŞ¸´£ºCodeContext ÓÉ detach Ïß³ÌĞ´Èë¡¢Ö÷Ïß³Ì¶ÁÈ¡/clear£¬Ô­´úÂëÎŞËø ¡ú ¾ºÕù¡£
                             static string CodeContext = "null";
                             static mutex CodeContextMutex;
                             auto func = [&]()
@@ -4602,7 +4603,7 @@ void RenderGui(ImGuiIO& io)
                                 if (CodeContext != "null")
                                 {
                                     const string code = CodeContext;
-                                    CodeContext.clear(); // é‡Šæ”¾å†…å­˜
+                                    CodeContext.clear(); // ÊÍ·ÅÄÚ´æ
                                     if (!code.empty())
                                         ScriptEditor::editor.SetText(StringToUTF8(code));
                                     IsInit2 = true;
@@ -4617,10 +4618,10 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem((ICON_FA_TRIANGLE_EXCLAMATION + (config.UseChinese ? u8"æŠ¥é”™è®°å½•"s : "Errors"s)).c_str(), NULL))
+                    if (BeginTabItem((ICON_FA_TRIANGLE_EXCLAMATION + (config.UseChinese ? u8"±¨´í¼ÇÂ¼"s : "Errors"s)).c_str(), NULL))
                     {
-                        IsScriptCreatorTab = true; // ä¹Ÿç®—
-                        // æ‹·è´ä¸€ä»½è®°å½•ï¼Œé¿å…æŒé”æœŸé—´è¿›è¡Œæ¸²æŸ“
+                        IsScriptCreatorTab = true; // Ò²Ëã
+                        // ¿½±´Ò»·İ¼ÇÂ¼£¬±ÜÃâ³ÖËøÆÚ¼ä½øĞĞäÖÈ¾
                         vector<ScriptErrorRecord> errorRecords;
                         {
                             shared_lock lock(ScriptData::ErrorRecordsMtx);
@@ -4628,9 +4629,9 @@ void RenderGui(ImGuiIO& io)
                         }
                         if (errorRecords.empty())
                         {
-                            // ç©ºçŠ¶æ€ï¼šå±…ä¸­æç¤ºï¼Œé¿å…ä½¿ç”¨"æ— è„šæœ¬"çš„å¼•å¯¼å¼¹çª—
+                            // ¿Õ×´Ì¬£º¾ÓÖĞÌáÊ¾£¬±ÜÃâÊ¹ÓÃ"ÎŞ½Å±¾"µÄÒıµ¼µ¯´°
                             const ImVec2 WindowSize = GetWindowSize();
-                            const string emptyText = config.UseChinese ? u8"æš‚æ— æŠ¥é”™è®°å½•" : "No error records";
+                            const string emptyText = config.UseChinese ? u8"ÔİÎŞ±¨´í¼ÇÂ¼" : "No error records";
                             const ImVec2 TextSize = CalcTextSize(emptyText.c_str());
                             const ImVec2 TextPos((WindowSize.x - TextSize.x) / 2, (WindowSize.y - TextSize.y) / 2);
                             SetCursorPos(TextPos);
@@ -4642,12 +4643,12 @@ void RenderGui(ImGuiIO& io)
                         {
                             BeginChild("##script_error_list", ImVec2(0, 0), true);
                             {
-                                // æœ€æ–°çš„æŠ¥é”™æ’åœ¨æœ€å‰é¢
+                                // ×îĞÂµÄ±¨´íÅÅÔÚ×îÇ°Ãæ
                                 for (int i = (int)errorRecords.size() - 1; i >= 0; i--)
                                 {
                                     const ScriptErrorRecord& record = errorRecords[i];
                                     PushID(i);
-                                    // ä»å®Œæ•´è·¯å¾„ä¸­å–å‡ºæ–‡ä»¶åä½œä¸ºæ ‡é¢˜
+                                    // ´ÓÍêÕûÂ·¾¶ÖĞÈ¡³öÎÄ¼şÃû×÷Îª±êÌâ
                                     string shortName = record.file;
                                     const size_t splitPos = shortName.find_last_of("\\/");
                                     if (splitPos != string::npos)
@@ -4656,8 +4657,8 @@ void RenderGui(ImGuiIO& io)
                                     if (CollapsingHeader(header.c_str()))
                                     {
                                         AttachTooltip(record.file.c_str());
-                                        Text(((config.UseChinese ? u8"è„šæœ¬è·¯å¾„ï¼š"s : "Path: "s) + record.file).c_str());
-                                        Text(((config.UseChinese ? u8"æŠ¥é”™æ—¶é—´ï¼š"s : "Time: "s) + record.time).c_str());
+                                        Text(((config.UseChinese ? u8"½Å±¾Â·¾¶£º"s : "Path: "s) + record.file).c_str());
+                                        Text(((config.UseChinese ? u8"±¨´íÊ±¼ä£º"s : "Time: "s) + record.time).c_str());
                                         string detail = record.message;
                                         InputTextMultiline(("##script_error_detail_" + to_string(i)).c_str(), &detail, ImVec2(-1, 160), ImGuiInputTextFlags_ReadOnly);
                                         DrawSpiltLine(GetContentRegionAvail().x, GuiColor[ImGuiCol_FrameBgHovered], 4.0f, 20);
@@ -4678,21 +4679,21 @@ void RenderGui(ImGuiIO& io)
                 {
                     static bool IsRunning = false;
                     static HANDLE ThreadHandle = nullptr;
-                    static int StartKey = VK_END; // ç”¨äºæŒä¹…åŒ–æŒ‰é”®ä¿¡æ¯ï¼Œé˜²æ­¢æ¯æ¬¡å¯åŠ¨éƒ½è¦è®¾ç½®
+                    static int StartKey = VK_END; // ÓÃÓÚ³Ö¾Ã»¯°´¼üĞÅÏ¢£¬·ÀÖ¹Ã¿´ÎÆô¶¯¶¼ÒªÉèÖÃ
                     
                     const float PosX = GetCursorPosX();
                     SetCursorPosY(pos.y - 22);
-                    Text(config.UseChinese ? u8"å¯åŠ¨æŒ‰é”®" : "Start Key");
+                    Text(config.UseChinese ? u8"Æô¶¯°´¼ü" : "Start Key");
 
                     SetCursorPos(ImVec2(PosX, pos.y - 2));
                     SetNextItemWidth(100);
                     {
-                        // ä¿®å¤ï¼šåŸä»£ç  ScriptData::States.count(ScriptTestFile) åœ¨é”å¤–æ‰§è¡Œï¼ˆä¸ ScriptKeyControlThread
-                        // çš„éå†ã€StartScript çº¿ç¨‹çš„æ’å…¥å¹¶å‘ â†’ map ç»“æ„ç«äº‰ï¼‰ã€‚ç§»å…¥å†™é”å†…ã€‚
-                        // å†™å…¥é”
+                        // ĞŞ¸´£ºÔ­´úÂë ScriptData::States.count(ScriptTestFile) ÔÚËøÍâÖ´ĞĞ£¨Óë ScriptKeyControlThread
+                        // µÄ±éÀú¡¢StartScript Ïß³ÌµÄ²åÈë²¢·¢ ¡ú map ½á¹¹¾ºÕù£©¡£ÒÆÈëĞ´ËøÄÚ¡£
+                        // Ğ´ÈëËø
                         lock_guard lock(ScriptData::StatesMtx);
                         const bool IsNoState = !IsRunning || (ScriptData::States.count(ScriptTestFile) == 0);
-                        InputKey("##script_tset_key", &StartKey, config.UseChinese ? u8"è¯·æŒ‰ä¸‹æŒ‰é”®" : "Press a key");
+                        InputKey("##script_tset_key", &StartKey, config.UseChinese ? u8"Çë°´ÏÂ°´¼ü" : "Press a key");
                     }
 
                     SameLine();
@@ -4701,29 +4702,29 @@ void RenderGui(ImGuiIO& io)
                     if (!IsRunning)
                     {
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Run);
-                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"è¿è¡Œ" : "Run", ImVec2(80, 40)))
+                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"ÔËĞĞ" : "Run", ImVec2(80, 40)))
                         {
                             auto func = [&](const string& code)
                                 {
                                     ofstream file(ScriptTestFile, ios::out | ios::trunc);
                                     if (!file.is_open())
                                     {
-                                        PrintLog("[Script] æ— æ³•æ‰“å¼€æˆ–è€…åˆ›å»ºæ–‡ä»¶ï¼š" + ScriptTestFile, PL_ERROR);
-                                        RenderTip(config.UseChinese ? u8"æ— æ³•æ‰“å¼€æˆ–è€…åˆ›å»ºæ–‡ä»¶\næ—¥å¿—å·²è®°å½•è¯¦ç»†ä¿¡æ¯" : "Unable to open or create file.\nThe log has recorded detailed info.", 5.0f, PT_ERROR);
+                                        PrintLog("[Script] ÎŞ·¨´ò¿ª»òÕß´´½¨ÎÄ¼ş£º" + ScriptTestFile, PL_ERROR);
+                                        RenderTip(config.UseChinese ? u8"ÎŞ·¨´ò¿ª»òÕß´´½¨ÎÄ¼ş\nÈÕÖ¾ÒÑ¼ÇÂ¼ÏêÏ¸ĞÅÏ¢" : "Unable to open or create file.\nThe log has recorded detailed info.", 5.0f, PT_ERROR);
                                         return;
                                     }
                                     file.clear();
                                     file << UTF8ToString(code, true);
-                                    file.close(); // ä¸è¦å¿˜è®°
+                                    file.close(); // ²»ÒªÍü¼Ç
 
-                                    ThreadHandle = StartScript(ScriptTestFile); // è‡ªåŠ¨åˆ›å»ºstateåœ¨ScriptStatesä¸­
+                                    ThreadHandle = StartScript(ScriptTestFile); // ×Ô¶¯´´½¨stateÔÚScriptStatesÖĞ
                                     {
-                                        // ä¿®å¤ï¼šåŸä»£ç åœ¨ detach çº¿ç¨‹ä¸­æ— é” operator[] æ’å…¥/ä¿®æ”¹ ScriptData::Statesï¼Œ
-                                        // ä¸ ScriptKeyControlThread çš„éå†å¹¶å‘ â†’ map ç»“æ„ç«äº‰ã€‚åŠ å†™é”ã€‚
+                                        // ĞŞ¸´£ºÔ­´úÂëÔÚ detach Ïß³ÌÖĞÎŞËø operator[] ²åÈë/ĞŞ¸Ä ScriptData::States£¬
+                                        // Óë ScriptKeyControlThread µÄ±éÀú²¢·¢ ¡ú map ½á¹¹¾ºÕù¡£¼ÓĞ´Ëø¡£
                                         lock_guard lock(ScriptData::StatesMtx);
-                                        ScriptData::States[ScriptTestFile].key = StartKey;  // è®¾ç½®é»˜è®¤å¯åŠ¨æŒ‰é”®ä¸ºEndï¼Œæ–¹ä¾¿ä¸€ç‚¹ï¼Œä¸€å®šè¦åœ¨StartScriptä¹‹åèµ‹å€¼ï¼ˆå› ä¸ºå¦‚æœåœ¨StartScriptä¹‹å‰ï¼Œä¼šå¯¼è‡´ScriptStates[file]è¢«åˆ›å»ºï¼Œå¯¼è‡´ScriptStatesä¸åˆå§‹åŒ–ï¼‰
+                                        ScriptData::States[ScriptTestFile].key = StartKey;  // ÉèÖÃÄ¬ÈÏÆô¶¯°´¼üÎªEnd£¬·½±ãÒ»µã£¬Ò»¶¨ÒªÔÚStartScriptÖ®ºó¸³Öµ£¨ÒòÎªÈç¹ûÔÚStartScriptÖ®Ç°£¬»áµ¼ÖÂScriptStates[file]±»´´½¨£¬µ¼ÖÂScriptStates²»³õÊ¼»¯£©
                                     }
-                                    RenderTip(config.UseChinese ? u8"è„šæœ¬å¼€å§‹è¿è¡Œ" : "Script starts running", 3.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"½Å±¾¿ªÊ¼ÔËĞĞ" : "Script starts running", 3.0f, PT_INFO);
                                     IsRunning = true;
                                 };
                             thread th(func, ScriptEditor::editor.GetText());
@@ -4733,14 +4734,14 @@ void RenderGui(ImGuiIO& io)
                     else
                     {
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Stop);
-                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"åœæ­¢" : "Stop", ImVec2(80, 40)))
+                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"Í£Ö¹" : "Stop", ImVec2(80, 40)))
                         {
                             auto func = [=]()
                                 {
                                     ScriptInfo temp;
                                     temp.hThread = ThreadHandle;
                                     CloseScriptThread(ScriptTestFile, temp);
-                                    RenderTip(config.UseChinese ? u8"è„šæœ¬å·²åœæ­¢è¿è¡Œ" : "The script has stopped.", 3.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"½Å±¾ÒÑÍ£Ö¹ÔËĞĞ" : "The script has stopped.", 3.0f, PT_INFO);
                                     IsRunning = false;
                                 };
                             thread th(func);
@@ -4754,10 +4755,10 @@ void RenderGui(ImGuiIO& io)
                     BeginDisabled(!IsRunning);
                     {
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Setting);
-                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"è„šæœ¬é…ç½®" : "Script Cfg", ImVec2(100, 40)))
+                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"½Å±¾ÅäÖÃ" : "Script Cfg", ImVec2(100, 40)))
                         {
                             ScriptSettingsSelected = 999999999;
-                            // å†™å…¥é”
+                            // Ğ´ÈëËø
                             lock_guard lock(ScriptData::StatesMtx);
                             ScriptData::States[ScriptTestFile].IsSuspend = true;
                         }
@@ -4767,7 +4768,7 @@ void RenderGui(ImGuiIO& io)
                 else
                 {
                     static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Refresh);
-                    if (ImageButton(config.UseChinese ? u8"åˆ·æ–°" : "Refresh", (ImTextureID)image_texture1, ImVec2(32, 32)))
+                    if (ImageButton(config.UseChinese ? u8"Ë¢ĞÂ" : "Refresh", (ImTextureID)image_texture1, ImVec2(32, 32)))
                     {
                         if (IsShopTab)
                             IsNeedRefushShopList = true;
@@ -4781,7 +4782,7 @@ void RenderGui(ImGuiIO& io)
                     SameLine();
 
                     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Book);
-                    if (ImageButton(config.UseChinese ? u8"è„šæœ¬æ–‡æ¡£" : "Script Doc", (ImTextureID)image_texture2, ImVec2(32, 32)))
+                    if (ImageButton(config.UseChinese ? u8"½Å±¾ÎÄµµ" : "Script Doc", (ImTextureID)image_texture2, ImVec2(32, 32)))
                     {
 #ifdef USE_IN_MICROSOFT
                         ShellExecute(NULL, NULL, "https://bbs.mcgc.top/d/214", NULL, NULL, SW_SHOWNORMAL);
@@ -4794,7 +4795,7 @@ void RenderGui(ImGuiIO& io)
 
                     static bool IsClearing = false;
                     static const Texture2D image_texture3 = LoadTextureFromFile(Pics_ClearCache);
-                    if (ImageButton(config.UseChinese ? u8"æ¸…é™¤ç¼“å­˜" : "Clear Cache", (ImTextureID)image_texture3, ImVec2(32, 32)))
+                    if (ImageButton(config.UseChinese ? u8"Çå³ı»º´æ" : "Clear Cache", (ImTextureID)image_texture3, ImVec2(32, 32)))
                     {
                         if (!IsClearing)
                         {
@@ -4807,9 +4808,9 @@ void RenderGui(ImGuiIO& io)
                             IsClearing = true;
                         }
                     }
-                    AttachTooltip(config.UseChinese ? u8"æ¸…é™¤è„šæœ¬ç¼“å­˜ï¼Œé‡æ–°åŠ è½½æ‰€æœ‰è„šæœ¬\nå¦‚æœä½ æ˜¯è„šæœ¬å¼€å‘è€…ï¼Œæ¯æ¬¡ä¿®æ”¹å®Œè„šæœ¬éƒ½è¦æ¸…é™¤ç¼“å­˜\nå¦åˆ™ä¼šå¯¼è‡´ä¿®æ”¹ä¸èµ·ä½œç”¨ã€‚\n&cç›®å‰å› ä¸ºBUGï¼Œå¯èƒ½ä¼šå¯¼è‡´GCå´©æºƒ" : "Clear script cache and reload all scripts. \nIf you are a script developer, \nyou need to clear the cache every time you modify the script. \nOtherwise, the modification will not take effect.\n&cCurrently, due to a BUG, the GC may crash.");
+                    AttachTooltip(config.UseChinese ? u8"Çå³ı½Å±¾»º´æ£¬ÖØĞÂ¼ÓÔØËùÓĞ½Å±¾\nÈç¹ûÄãÊÇ½Å±¾¿ª·¢Õß£¬Ã¿´ÎĞŞ¸ÄÍê½Å±¾¶¼ÒªÇå³ı»º´æ\n·ñÔò»áµ¼ÖÂĞŞ¸Ä²»Æğ×÷ÓÃ¡£\n&cÄ¿Ç°ÒòÎªBUG£¬¿ÉÄÜ»áµ¼ÖÂGC±ÀÀ£" : "Clear script cache and reload all scripts. \nIf you are a script developer, \nyou need to clear the cache every time you modify the script. \nOtherwise, the modification will not take effect.\n&cCurrently, due to a BUG, the GC may crash.");
                 }
-                //-----------------------è„šæœ¬è®¾ç½®GUI---------------------------
+                //-----------------------½Å±¾ÉèÖÃGUI---------------------------
 
                 if (ScriptSettingsSelected > -1)
                 {
@@ -4817,10 +4818,10 @@ void RenderGui(ImGuiIO& io)
                     ScriptInfo script;
                     if (!IsTestScript)
                     {
-                        // è¯»å–é”
+                        // ¶ÁÈ¡Ëø
                         shared_lock lock(ScriptData::InstalledMtx);
-                        // ä¿®å¤ï¼šScriptSelected æ˜¯æ‰“å¼€è®¾ç½®æ—¶çš„åˆ—è¡¨ç´¢å¼•ï¼Œè‹¥æœŸé—´è„šæœ¬è¢«åˆ é™¤ï¼ˆåˆ—è¡¨å˜çŸ­ï¼‰
-                        // ä¼šè¶Šç•Œè®¿é—® â†’ å´©æºƒã€‚åŠ è¾¹ç•Œæ£€æŸ¥ï¼Œè¶Šç•Œåˆ™å…³é—­è®¾ç½®ã€‚
+                        // ĞŞ¸´£ºScriptSelected ÊÇ´ò¿ªÉèÖÃÊ±µÄÁĞ±íË÷Òı£¬ÈôÆÚ¼ä½Å±¾±»É¾³ı£¨ÁĞ±í±ä¶Ì£©
+                        // »áÔ½½ç·ÃÎÊ ¡ú ±ÀÀ£¡£¼Ó±ß½ç¼ì²é£¬Ô½½çÔò¹Ø±ÕÉèÖÃ¡£
                         if (ScriptSettingsSelected >= (int)ScriptData::Installed.size())
                             ScriptSettingsSelected = -114514;
                         else
@@ -4828,7 +4829,7 @@ void RenderGui(ImGuiIO& io)
                     }
                     if (IsTestScript || ScriptSettingsSelected > -1)
                     {
-                        const string title = IsTestScript ? (config.UseChinese ? u8"æµ‹è¯•è„šæœ¬è®¾ç½®" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"è®¾ç½®" : "Settings"));
+                        const string title = IsTestScript ? (config.UseChinese ? u8"²âÊÔ½Å±¾ÉèÖÃ" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"ÉèÖÃ" : "Settings"));
                         const string& filename = IsTestScript ? ScriptTestFile : script.file;
 
                         static bool IsOpened = true;
@@ -4841,23 +4842,23 @@ void RenderGui(ImGuiIO& io)
                             EndPopupWindow();
                         }
 
-                        // æ˜¯å¦å…³é—­æˆ–è€…å´©æºƒ
+                        // ÊÇ·ñ¹Ø±Õ»òÕß±ÀÀ£
                         if (!ret || !RunState)
                         {
-                            IsOpened = true; // é‡ç½®æ‰“å¼€çŠ¶æ€
+                            IsOpened = true; // ÖØÖÃ´ò¿ª×´Ì¬
                             ScriptSettingsSelected = -114514;
                             thread FuncThread(SaveScriptConfig, filename);
                             FuncThread.detach();
                             {
-                                // å†™å…¥é”
+                                // Ğ´ÈëËø
                                 lock_guard lock2(ScriptData::StatesMtx);
-                                // find æ›¿ä»£ operator[] -- è„šæœ¬å¯èƒ½åœ¨å¼¹çª—æœŸé—´è¢«åˆ é™¤ï¼Œ
-                                // operator[] ä¼šæ’å…¥åƒµå°¸ ScriptState æ¡ç›®
+                                // find Ìæ´ú operator[] -- ½Å±¾¿ÉÄÜÔÚµ¯´°ÆÚ¼ä±»É¾³ı£¬
+                                // operator[] »á²åÈë½©Ê¬ ScriptState ÌõÄ¿
                                 auto st = ScriptData::States.find(filename);
                                 if (st != ScriptData::States.end())
                                     st->second.IsSuspend = false;
                             }
-                            PrintLog("[Script] å·²ä¿å­˜è„šæœ¬é…ç½®ï¼š" + filename, PL_INFO);
+                            PrintLog("[Script] ÒÑ±£´æ½Å±¾ÅäÖÃ£º" + filename, PL_INFO);
                         }
                     }
                 }
@@ -4865,26 +4866,26 @@ void RenderGui(ImGuiIO& io)
 
             break;
         }
-        case Tab::Other://-----------------------å…¶ä»–---------------------------
+        case Tab::Other://-----------------------ÆäËû---------------------------
         {
-            TabsText((ICON_FA_BARS_PROGRESS + (config.UseChinese ? u8"å…¶ä»–"s : "Other"s)).c_str());
+            TabsText((ICON_FA_BARS_PROGRESS + (config.UseChinese ? u8"ÆäËû"s : "Other"s)).c_str());
 
             BeginTabBar("##Other");
             
             static int IsOpenLnagPaper = -1;
-            if (IsOpenLnagPaper == 1)// è¿™ä¸ªå‡½æ•°å‘Šè¯‰ImGuiï¼Œä¸‹ä¸€ä¸ªè¦ç»˜åˆ¶çš„æ ‡ç­¾é¡¹åº”è¯¥å¤„äºæ‰“å¼€/æ¿€æ´»çŠ¶æ€
+            if (IsOpenLnagPaper == 1)// Õâ¸öº¯Êı¸æËßImGui£¬ÏÂÒ»¸öÒª»æÖÆµÄ±êÇ©ÏîÓ¦¸Ã´¦ÓÚ´ò¿ª/¼¤»î×´Ì¬
                 ImGui::SetNextItemOpen(true);
-            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"è½¯ä»¶è®¾ç½®"s : "Software Setings"s)).c_str(), NULL))
+            if (BeginTabItem((ICON_FA_SLIDERS + (config.UseChinese ? u8"Èí¼şÉèÖÃ"s : "Software Setings"s)).c_str(), NULL))
             {
-                //-----------------------è¯­è¨€è®¾ç½®---------------------------
+                //-----------------------ÓïÑÔÉèÖÃ---------------------------
                 {
-                    const static array<const char*, 2> LanguageList = { u8"ä¸­æ–‡", "English" };
+                    const static array<const char*, 2> LanguageList = { u8"ÖĞÎÄ", "English" };
                     static int LanguageSelected = 0;
 
-                    if (IsOpenLnagPaper != 0) // é‡ç½®æ¿€æ´»çŠ¶æ€
+                    if (IsOpenLnagPaper != 0) // ÖØÖÃ¼¤»î×´Ì¬
                         IsOpenLnagPaper = -1;
 
-                    Text(config.UseChinese ? u8"è¯­è¨€" : "Language");
+                    Text(config.UseChinese ? u8"ÓïÑÔ" : "Language");
                     SameLine();
                     SetNextItemWidth(150);
                     if (BeginCombo("##Language", LanguageList[LanguageSelected]))
@@ -4895,7 +4896,7 @@ void RenderGui(ImGuiIO& io)
                             if (Selectable(LanguageList[n], is_selected))
                             {
                                 LanguageSelected = n;
-                                RenderTip(config.UseChinese ? u8"éƒ¨åˆ†æ–‡å­—éœ€è¦é‡å¯åº”ç”¨æ‰èƒ½ç”Ÿæ•ˆ" : "Some text may need to restart\nthe app to take effect.", 3.0f, PT_INFO);
+                                RenderTip(config.UseChinese ? u8"²¿·ÖÎÄ×ÖĞèÒªÖØÆôÓ¦ÓÃ²ÅÄÜÉúĞ§" : "Some text may need to restart\nthe app to take effect.", 3.0f, PT_INFO);
                             }
                             if (is_selected)
                                 SetItemDefaultFocus();
@@ -4919,23 +4920,23 @@ void RenderGui(ImGuiIO& io)
                         Text("&bThe text content is translated by AI and may contain errors.\nYou can report this issue at https://bbs.mcgc.top.");
                 }
 
-                //-----------------------è„šæœ¬è‡ªåŠ¨å¯åŠ¨---------------------------
+                //-----------------------½Å±¾×Ô¶¯Æô¶¯---------------------------
                 {
-                    Text(config.UseChinese ? u8"è„šæœ¬è‡ªåŠ¨å¯åŠ¨" : "Script Auto-Start");
+                    Text(config.UseChinese ? u8"½Å±¾×Ô¶¯Æô¶¯" : "Script Auto-Start");
                     SameLine();
                     bool DisableAutoStart = DisableScriptAutoStart;
                     if (Toggle("##disable_script_autostart", &DisableAutoStart, ToggleFlags))
                         DisableScriptAutoStart = DisableAutoStart;
                     AttachTooltip(config.UseChinese ?
-                        u8"å…³é—­ï¼šå¯åŠ¨è½¯ä»¶æ—¶è‡ªåŠ¨è¿è¡Œæ‰€æœ‰å·²å®‰è£…è„šæœ¬\nå¼€å¯ï¼šä¸è‡ªåŠ¨è¿è¡Œï¼Œéœ€åœ¨\"å·²å®‰è£…\"åˆ—è¡¨ä¸­æ‰‹åŠ¨å¯åŠ¨" :
+                        u8"¹Ø±Õ£ºÆô¶¯Èí¼şÊ±×Ô¶¯ÔËĞĞËùÓĞÒÑ°²×°½Å±¾\n¿ªÆô£º²»×Ô¶¯ÔËĞĞ£¬ĞèÔÚ\"ÒÑ°²×°\"ÁĞ±íÖĞÊÖ¶¯Æô¶¯" :
                         "Off: auto-run all installed scripts on launch\nOn: start scripts manually in the \"Installed\" list");
                 }
                 EndTabItem();
             }
 
-            if (BeginTabItem((ICON_FA_LIST_UL + (config.UseChinese ? u8"æ—¥å¿—"s : "Logs"s)).c_str(), NULL))
+            if (BeginTabItem((ICON_FA_LIST_UL + (config.UseChinese ? u8"ÈÕÖ¾"s : "Logs"s)).c_str(), NULL))
             {
-                // LogContext ç”±æ—¥å¿—çº¿ç¨‹ï¼ˆLog.h å†™ç«¯åŠ  LogContextMtxï¼‰æŒç»­è¿½åŠ ï¼Œä¸»çº¿ç¨‹éœ€åŠ é”è¯»å–
+                // LogContext ÓÉÈÕÖ¾Ïß³Ì£¨Log.h Ğ´¶Ë¼Ó LogContextMtx£©³ÖĞø×·¼Ó£¬Ö÷Ïß³ÌĞè¼ÓËø¶ÁÈ¡
                 lock_guard lock(LogContextMtx);
                 string log = StringToUTF8(LogContext, true);
                 InputTextMultiline("##log_show", &log, ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
@@ -4948,31 +4949,31 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::About:
         {
-            TabsText((ICON_FA_CIRCLE_INFO + (config.UseChinese ? u8"å…³äº"s : "About"s)).c_str());
+            TabsText((ICON_FA_CIRCLE_INFO + (config.UseChinese ? u8"¹ØÓÚ"s : "About"s)).c_str());
 
             BeginTabBar("##About");
 
-            if (BeginTabItem((ICON_FA_ADDRESS_CARD + (config.UseChinese ? u8"å…³äºæˆ‘ä»¬"s : "About"s)).c_str()))
+            if (BeginTabItem((ICON_FA_ADDRESS_CARD + (config.UseChinese ? u8"¹ØÓÚÎÒÃÇ"s : "About"s)).c_str()))
             {
                 const static ImGuiWindowFlags flags =
                     ImGuiWindowFlags_HorizontalScrollbar |
                     ImGuiWindowFlags_NoScrollWithMouse |
                     ImGuiWindowFlags_NoScrollbar;
 
-                BeginCard(config.UseChinese ? u8"å…³äº" : "About", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"¹ØÓÚ" : "About", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Text(u8"GameClickerå¼€å‘è€…ï¼šCOM1919");
-                    Text(u8"æœåŠ¡å•†ï¼šy_bowen");
-                    Text(u8"YoClickerå¼€å‘è€…ï¼šæŒ½èŠ™å¤§é­”ç‹");
+                    Text(u8"GameClicker¿ª·¢Õß£ºCOM1919");
+                    Text(u8"·şÎñÉÌ£ºy_bowen");
+                    Text(u8"YoClicker¿ª·¢Õß£ºÍìÜ½´óÄ§Íõ");
                 }
                 EndCard();
 
-                TabsText((ICON_FA_LINK + (config.UseChinese ? u8"ç›¸å…³é“¾æ¥"s : "Related Links"s)).c_str());
-                BeginCard(config.UseChinese ? u8"ç½‘ç«™é“¾æ¥" : "Website Links", ImVec2(180, 190), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                TabsText((ICON_FA_LINK + (config.UseChinese ? u8"Ïà¹ØÁ´½Ó"s : "Related Links"s)).c_str());
+                BeginCard(config.UseChinese ? u8"ÍøÕ¾Á´½Ó" : "Website Links", ImVec2(180, 190), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (Button(config.UseChinese ? u8"è®ºå›" : "Forum"))
+                    if (Button(config.UseChinese ? u8"ÂÛÌ³" : "Forum"))
                         ShellExecute(NULL, NULL, "https://bbs.mcgc.top", NULL, NULL, SW_SHOWNORMAL);
-                    if (Button(config.UseChinese ? u8"æ–‡æ¡£ && ç»´åŸºç™¾ç§‘" : "Document && Wikipedia"))
+                    if (Button(config.UseChinese ? u8"ÎÄµµ && Î¬»ù°Ù¿Æ" : "Document && Wikipedia"))
                     {
 #ifdef USE_IN_MICROSOFT
                         ShellExecute(NULL, NULL, "https://bbs.mcgc.top/d/215", NULL, NULL, SW_SHOWNORMAL);
@@ -4983,22 +4984,22 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
                 SameLine();
-                BeginCard(config.UseChinese ? u8"æ²™é›•ç¾¤" : "QQ Group", ImVec2(180, 190), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"É³µñÈº" : "QQ Group", ImVec2(180, 190), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    if (Button(config.UseChinese ? u8"QQç¾¤1" : "QQ Group 1"))
+                    if (Button(config.UseChinese ? u8"QQÈº1" : "QQ Group 1"))
                         ShellExecute(NULL, NULL, "https://qm.qq.com/q/GFLkSmxR2o", NULL, NULL, SW_SHOWNORMAL);
-                    if (Button(config.UseChinese ? u8"QQç¾¤2" : "QQ Group 2"))
+                    if (Button(config.UseChinese ? u8"QQÈº2" : "QQ Group 2"))
                         ShellExecute(NULL, NULL, "https://qm.qq.com/q/kuesbZeYIa", NULL, NULL, SW_SHOWNORMAL);
-                    if (Button(config.UseChinese ? u8"QQç¾¤3" : "QQ Group 3"))
+                    if (Button(config.UseChinese ? u8"QQÈº3" : "QQ Group 3"))
                         ShellExecute(NULL, NULL, "https://qm.qq.com/q/lzWlCOTMeQ", NULL, NULL, SW_SHOWNORMAL);
-                    if (Button(config.UseChinese ? u8"QQç¾¤4" : "QQ Group 4"))
+                    if (Button(config.UseChinese ? u8"QQÈº4" : "QQ Group 4"))
                         ShellExecute(NULL, NULL, "https://qm.qq.com/q/5oDpFEGnE4", NULL, NULL, SW_SHOWNORMAL);
-                    if (Button(config.UseChinese ? u8"QQç¾¤-YC/GC" : "QQ Group - YC/GC"))
+                    if (Button(config.UseChinese ? u8"QQÈº-YC/GC" : "QQ Group - YC/GC"))
                         ShellExecute(NULL, NULL, "https://qm.qq.com/q/daIs0oTYv6", NULL, NULL, SW_SHOWNORMAL);
                 }
                 EndCard();
 
-                BeginCard(config.UseChinese ? u8"èµåŠ©åˆ—è¡¨(ä¸åˆ†æ’å)" : "Sponsors (not ranked)", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"ÔŞÖúÁĞ±í(²»·ÖÅÅÃû)" : "Sponsors (not ranked)", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     if (Sponsor::Mtx.try_lock_shared())
                     {
@@ -5007,7 +5008,7 @@ void RenderGui(ImGuiIO& io)
                         {
                             const float TextWidth = CalcTextSize(name.c_str()).x;
                             count += TextWidth + 10;
-                            if (count >= 680 - 50) // 680æ˜¯BeginChildçš„å®½åº¦ï¼Œå‡å»50æ˜¯ä¸ºäº†å®¹é”™
+                            if (count >= 680 - 50) // 680ÊÇBeginChildµÄ¿í¶È£¬¼õÈ¥50ÊÇÎªÁËÈİ´í
                                 count = 0;
                             else if (count != -1)
                                 SameLine(0, 10);
@@ -5018,9 +5019,9 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
 
-                //-----------------------ä¾èµ–çš„åº“---------------------------
+                //-----------------------ÒÀÀµµÄ¿â---------------------------
 
-                BeginCard(config.UseChinese ? u8"ä¾èµ–çš„åº“" : "Dependencies", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                BeginCard(config.UseChinese ? u8"ÒÀÀµµÄ¿â" : "Dependencies", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
                     // 1. Dear ImGui
                     Text(u8"1. Dear ImGui");
@@ -5085,19 +5086,19 @@ void RenderGui(ImGuiIO& io)
                 }
                 EndCard();
 
-                //-----------------------ç‰ˆæƒä¸éšç§--------------------------
-                BeginCard(config.UseChinese ? u8"ç‰ˆæƒä¸éšç§å£°æ˜" : "Copyright && Privacy Statement", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+                //-----------------------°æÈ¨ÓëÒşË½--------------------------
+                BeginCard(config.UseChinese ? u8"°æÈ¨ÓëÒşË½ÉùÃ÷" : "Copyright && Privacy Statement", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
                 {
-                    Text(config.UseChinese ? u8"è½¯ä»¶ç‰ˆæƒ Copyright 2026 By COM1919"                   : "Software Copyright 2026 By COM1919");
-                    Text(config.UseChinese ? u8"æœ¬è½¯ä»¶ä»…ä¾›ä¸ªäººä½¿ç”¨ï¼Œä¸å¾—ç”¨äºä»»ä½•å•†ä¸šç”¨é€”ã€‚"           : "This software is for personal use only and cannot be used for any commercial purpose.");
-                    Text(config.UseChinese ? u8"æœ¬è½¯ä»¶å°Šé‡æ‚¨çš„éšç§ï¼Œä»…ä¸Šä¼ åŠ å¯†ä¿æŠ¤çš„è®¾å¤‡IDå’ŒIPåœ°å€ã€‚" : "This software respects your privacy and only uploads encrypted device IDs and IP addresses.");
-                    Text(config.UseChinese ? u8"æœ¬è½¯ä»¶ä¸æä¾›ä»»ä½•å½¢å¼çš„æ‹…ä¿ï¼Œä¸æ‰¿æ‹…ä»»ä½•æ³•å¾‹è´£ä»»ã€‚"     : "This software does not provide any form of guarantee and is not responsible for any legal liability.");
-                    Text(config.UseChinese ? u8"æœ¬è½¯ä»¶ä½¿ç”¨äº†ç¬¬ä¸‰æ–¹åº“ï¼Œå…¶ç‰ˆæƒå½’å±äºå…¶å„è‡ªæ‹¥æœ‰è€…ã€‚"     : "This software uses third-party libraries, whose copyright belongs to them.");
-                    Text(config.UseChinese ? u8"å…¶ä»–ç‰ˆæƒå£°æ˜å’Œåè®®è§ä¸‹æ–¹ã€‚"                           : "Other copyright statements and licenses are listed below.");
+                    Text(config.UseChinese ? u8"Èí¼ş°æÈ¨ Copyright 2026 By COM1919"                   : "Software Copyright 2026 By COM1919");
+                    Text(config.UseChinese ? u8"±¾Èí¼ş½ö¹©¸öÈËÊ¹ÓÃ£¬²»µÃÓÃÓÚÈÎºÎÉÌÒµÓÃÍ¾¡£"           : "This software is for personal use only and cannot be used for any commercial purpose.");
+                    Text(config.UseChinese ? u8"±¾Èí¼ş×ğÖØÄúµÄÒşË½£¬½öÉÏ´«¼ÓÃÜ±£»¤µÄÉè±¸IDºÍIPµØÖ·¡£" : "This software respects your privacy and only uploads encrypted device IDs and IP addresses.");
+                    Text(config.UseChinese ? u8"±¾Èí¼ş²»Ìá¹©ÈÎºÎĞÎÊ½µÄµ£±££¬²»³Ğµ£ÈÎºÎ·¨ÂÉÔğÈÎ¡£"     : "This software does not provide any form of guarantee and is not responsible for any legal liability.");
+                    Text(config.UseChinese ? u8"±¾Èí¼şÊ¹ÓÃÁËµÚÈı·½¿â£¬Æä°æÈ¨¹éÊôÓÚÆä¸÷×ÔÓµÓĞÕß¡£"     : "This software uses third-party libraries, whose copyright belongs to them.");
+                    Text(config.UseChinese ? u8"ÆäËû°æÈ¨ÉùÃ÷ºÍĞ­Òé¼ûÏÂ·½¡£"                           : "Other copyright statements and licenses are listed below.");
 
                     SetCursorPosY(GetCursorPosY() + 12);
 
-                    Text(config.UseChinese ? u8"ç”¨æˆ·åè®®" : "Usage Help");
+                    Text(config.UseChinese ? u8"ÓÃ»§Ğ­Òé" : "Usage Help");
                     if (config.UseChinese)
                         TextUnformatted(AgreementCNString.c_str(), AgreementCNString.c_str() + AgreementCNString.size());
 					else
@@ -5114,7 +5115,7 @@ void RenderGui(ImGuiIO& io)
     }
     EndChild();
 
-    //=======================åŠ¨ç”»å¤„ç†===========================
+    //=======================¶¯»­´¦Àí===========================
 
     if (IsAnime)
     {
@@ -5135,9 +5136,9 @@ void RenderGui(ImGuiIO& io)
         }
     }
 
-    //=======================ç”¨æˆ·åè®®é‡æ–°æ˜¾ç¤º===========================
-    bool ForceOpen = IsNeedReshowAgreement; // ä¿è¯BeginPopupWindowä¸€ç›´å¼€ç€ï¼Œåªèƒ½åŒæ„æ‰èƒ½å…³é—­
-    if (BeginPopupWindow(config.UseChinese ? u8"ç”¨æˆ·åè®®æ›´æ–°" : "Agreement Update", &ForceOpen))
+    //=======================ÓÃ»§Ğ­ÒéÖØĞÂÏÔÊ¾===========================
+    bool ForceOpen = IsNeedReshowAgreement; // ±£Ö¤BeginPopupWindowÒ»Ö±¿ª×Å£¬Ö»ÄÜÍ¬Òâ²ÅÄÜ¹Ø±Õ
+    if (BeginPopupWindow(config.UseChinese ? u8"ÓÃ»§Ğ­Òé¸üĞÂ" : "Agreement Update", &ForceOpen))
     {
         BeginChild(u8"##ua_child", ImVec2(711, 260), true, ImGuiWindowFlags_HorizontalScrollbar);
         SetWindowFontScale(0.8f);
@@ -5148,17 +5149,17 @@ void RenderGui(ImGuiIO& io)
         SetWindowFontScale(1.0f);
         EndChild();
 
-        Text(config.UseChinese ? u8"&cæœ¬è½¯ä»¶å®Œå…¨å…è´¹ï¼ï¼ï¼\n&cå¦‚æœä½ æ˜¯è´­ä¹°çš„æœ¬è½¯ä»¶ï¼Œå¯ä»¥ä¸¾æŠ¥ã€‚" : "This software is completely free! \nIf you have purchased this software, you can report it.");
+        Text(config.UseChinese ? u8"&c±¾Èí¼şÍêÈ«Ãâ·Ñ£¡£¡£¡\n&cÈç¹ûÄãÊÇ¹ºÂòµÄ±¾Èí¼ş£¬¿ÉÒÔ¾Ù±¨¡£" : "This software is completely free! \nIf you have purchased this software, you can report it.");
 
         static bool IsCheck = false;
-        Toggle(config.UseChinese ? u8"æˆ‘å·²é˜…è¯»å¹¶åŒæ„ç”¨æˆ·åè®®" : "I have read and agree to the user agreement", &IsCheck, ToggleFlags);
+        Toggle(config.UseChinese ? u8"ÎÒÒÑÔÄ¶Á²¢Í¬ÒâÓÃ»§Ğ­Òé" : "I have read and agree to the user agreement", &IsCheck, ToggleFlags);
 
-        if (Button(config.UseChinese ? u8"ä¸åŒæ„" : "Decline", ImVec2(70, 40)))
+        if (Button(config.UseChinese ? u8"²»Í¬Òâ" : "Decline", ImVec2(70, 40)))
             IsGCExit = true;
         SameLine();
         BeginDisabled(!IsCheck);
         {
-            if (Button(config.UseChinese ? u8"åŒæ„" : " Next", ImVec2(70, 40)) && IsCheck)
+            if (Button(config.UseChinese ? u8"Í¬Òâ" : " Next", ImVec2(70, 40)) && IsCheck)
             {
                 IsNeedReshowAgreement = false;
                 thread th([](){
@@ -5171,7 +5172,7 @@ void RenderGui(ImGuiIO& io)
         EndPopupWindow();
     }
 
-    //-----------------------ç»˜åˆ¶æ ‡é¢˜æ å›¾æ ‡---------------------------
+    //-----------------------»æÖÆ±êÌâÀ¸Í¼±ê---------------------------
     static const Texture2D image_texture = LoadTextureFromFile(Pics_GCIcon);
     GetForegroundDrawList()->
         AddImage((ImTextureID)image_texture, ImVec2(4, 4), ImVec2(32, 32));
@@ -5180,7 +5181,7 @@ void RenderGui(ImGuiIO& io)
 
     RenderControl();
 
-    // ä¿®å¤ï¼šclient_id ç”±ç½‘ç»œçº¿ç¨‹å†™ï¼Œæ­¤å¤„æ¯å¸§è¯»å–â€”â€”é”å†…æ‹·è´åä½¿ç”¨ï¼Œé¿å… string å¹¶å‘è¯»å†™çš„æ•°æ®ç«äº‰
+    // ĞŞ¸´£ºclient_id ÓÉÍøÂçÏß³ÌĞ´£¬´Ë´¦Ã¿Ö¡¶ÁÈ¡¡ª¡ªËøÄÚ¿½±´ºóÊ¹ÓÃ£¬±ÜÃâ string ²¢·¢¶ÁĞ´µÄÊı¾İ¾ºÕù
     string CurClientID;
     {
         lock_guard lock(ClientIDMtx);
@@ -5189,4 +5190,4 @@ void RenderGui(ImGuiIO& io)
     ImVec2 TextSize = CalcTextSize(CurClientID.c_str());
     GetForegroundDrawList()->AddText(ImVec2((WindowWidth - TextSize.x) / 2, 6), GetColorU32((ImVec4)ImColor(128, 255, 0, 5)), CurClientID.c_str());
 }
-// å“~ è¿™ä»£ç å†™çš„çœŸçš„å¥½çƒ‚å•Š...
+// °¥~ Õâ´úÂëĞ´µÄÕæµÄºÃÀÃ°¡...

@@ -1,0 +1,59 @@
+@@p1old@@
+			{
+				static ULONGLONG LastTime = GetTickCount64();
+				// RecordTime为1小时
+				static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
+				if (GetTickCount64() - LastTime >= RecordTime)
+					app_status.UsageDuration += 0.1; // 10秒
+			}
+@@p1new@@
+			{
+				// 每10秒把本会话已使用时间累加进总使用时长（FlushUsageDuration 内部按实际增量累加，单位：小时）
+				static ULONGLONG LastTime = GetTickCount64();
+				static const ULONGLONG RecordTime = static_cast<ULONGLONG>(10 * 1000);
+				if (GetTickCount64() - LastTime >= RecordTime)
+				{
+					FlushUsageDuration();
+					LastTime = GetTickCount64();
+				}
+			}
+@@p2old@@
+namespace MessageBoxMsg
+@@p2new@@
+// ===== 使用时长统计（累计总时长，单位：小时）=====
+// 把自上次累加以来经过的时间计入 app_status.UsageDuration。
+// 在 ClickerControl 循环中定期调用；按实际增量累加，不会重复计数。
+mutex UsageDurationMtx;
+ULONGLONG UsageDurationLastTick = 0;
+inline void FlushUsageDuration()
+{
+    lock_guard<mutex> lock(UsageDurationMtx);
+    const ULONGLONG Now = GetTickCount64();
+    if (UsageDurationLastTick == 0)   // 首次调用只记录起点
+    {
+        UsageDurationLastTick = Now;
+        return;
+    }
+    if (Now > UsageDurationLastTick)
+    {
+        app_status.UsageDuration += (long double)(Now - UsageDurationLastTick) / 3600000.0L;   // 毫秒 -> 小时
+        UsageDurationLastTick = Now;
+    }
+}
+
+namespace MessageBoxMsg
+@@p3old@@
+    LoadConfig();
+    PresetConfig::Presets = ScanPresets();
+@@p3new@@
+    LoadConfig();
+    app_status.StartCount++;   // 启动次数 +1（本次启动）
+    PresetConfig::Presets = ScanPresets();
+@@p4old@@
+max(ThisUseTime * 60, 1)
+@@p4new@@
+max(ThisUseTime, 1)
+@@p2mark@@
+使用时长统计
+@@p3mark@@
+启动次数

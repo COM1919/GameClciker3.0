@@ -393,11 +393,14 @@ DWORD WINAPI ClickerControl(LPVOID lpParam)
 			}
 
 			{
+				// 每10秒把本会话已使用时间累加进总使用时长（FlushUsageDuration 内部按实际增量累加，单位：小时）
 				static ULONGLONG LastTime = GetTickCount64();
-				// RecordTime为1小时
-				static const ULONGLONG RecordTime = static_cast<ULONGLONG>(1 * 1000 * 60 * 60);
+				static const ULONGLONG RecordTime = static_cast<ULONGLONG>(10 * 1000);
 				if (GetTickCount64() - LastTime >= RecordTime)
-					app_status.UsageDuration += 0.1; // 10秒
+				{
+					FlushUsageDuration();
+					LastTime = GetTickCount64();
+				}
 			}
 			//处理溢出(没用，+0.1，一百年都到不了)
 			//if (LMouseClickCount >= LDBL_MAX - 2) LMouseClickCount = 0;
