@@ -944,3 +944,58 @@ end
 ```
 
 ---
+
+## minecraft.chat.OpenReader - 打开Minecraft聊天消息记录器
+
+获取物品栏指定格子的快捷键（按键代码）。传入 `0`-`8` 的索引，返回对应格子的快捷键键值。
+
+| 项目 | 说明 |
+|------|------|
+| **返回值** |  `Bool` 类型：是否打开成功，true为成功，false为失败 |
+| **参数** | 无 |
+
+> 打开失败的情况一般有这些：用户未获取游戏窗口、无法打开目标文件（权限不足）
+打开`消息记录器`后，如果脚本退出，会自动卸载，无须手动
+{.is-info}
+
+```lua
+function initScript()
+    SetScriptLoopDelay(10)
+    if not minecraft.chat.OpenReader()
+        RenderMessageBox("打开聊天消息监听器失败\n请前往基本设置中完成&6获取游戏窗口", "脚本初始化错误", 0)
+    then
+end
+```
+
+---
+
+## minecraft.chat.GetNewMsg - 获取未读的Minecraft聊天消息
+
+获取物品栏指定格子的快捷键（按键代码）。传入 `0`-`8` 的索引，返回对应格子的快捷键键值。
+
+| 项目 | 说明 |
+|------|------|
+| **返回值** |  `字符串` 类型：未读的消息内容 |
+| **参数** | 无 |
+
+> 打开失败的情况一般有这些：用户未获取游戏窗口、无法打开目标文件（权限不足）
+聊天栏的消息都可以获取到，包括系统的消息
+{.is-info}
+
+```lua
+function main() -- 在主循环中，main入口相当于OnTick消息回调
+    -- 调用API获取未读消息
+    local msg = minecraft.chat.GetNewMsg()
+
+    -- 一次性读取多条消息（如果有的话）   
+    while msg ~= nil do -- 如果msg为空 就是没消息了，然后结束循环
+      -- 输出获取到的聊天消息（已读的消息不会获取到）
+      PrintLog("[TestScript] " .. msg, 1) 
+
+      -- 读取下一条消息
+      msg = minecraft.chat.GetNewMsg()
+    end
+end
+```
+
+---

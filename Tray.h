@@ -36,13 +36,19 @@ DWORD WINAPI CreateTrayIcon(LPVOID lpParam)
             InitSuccessTime = GetNowMs();
     }
 
+    // 限时等待消息：最多阻塞 50ms 就回来检查 IsGCExit（主窗口关闭时没人给本线程 PostQuitMessage，
+    // 原来的 GetMessage 会一直阻塞，导致退出时主线程等满超时）
     MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
+    while (!IsGCExit)
     {
+        if (MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT) != WAIT_OBJECT_0)
+            continue;
+        if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            continue;
+        if (msg.message == WM_QUIT)
+            break;
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        if (IsGCExit)
-            break;
     }
     return 0;
 }

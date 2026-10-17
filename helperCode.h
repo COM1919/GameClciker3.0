@@ -531,7 +531,7 @@ struct MarketScriptMeta {
 	string iconurl;
 	string bbsurl;
 };
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
+static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
 {
 	// 修复：static 缓存向量（GiteeScriptList/MarketScriptList）可能被多个 detach 线程
 	//（快速切换下载源/翻页）并发访问 → 数据竞争（UB）。整个函数串行化；
@@ -763,6 +763,28 @@ int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, boo
 		rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str());
 
 	return (GiteeScriptList.size() + PaperSize - 1) / PaperSize;
+}
+
+// 脚本商店刷新：先用当前选中的源，加载失败时自动切换到另一个源再试一次，
+// 并把实际生效的源同步给界面（IsScriptUseGitee），避免下一轮又去用已经失败的源。
+int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
+{
+	const int pages = RefushScriptShopListWithSource(scripts, paper, clear, fromGitee);
+	if (pages > 0)
+		return pages;
+
+	const bool otherGitee = !fromGitee;
+	PrintLog(otherGitee ? "[ScriptMarket] 当前源加载失败，自动切换到 Gitee 源重试"
+		: "[ScriptMarket] 当前源加载失败，自动切换到官方接口源重试", PL_WARNING);
+	RenderTip(config.UseChinese ? "加载失败，自动切换下载源..." : "Loading failed.\auto switching download source...", 3.0f, PT_ERROR);
+	const int pages2 = RefushScriptShopListWithSource(scripts, paper, clear, otherGitee);
+	if (pages2 > 0)
+	{
+		IsScriptUseGitee = otherGitee;
+		PrintLog("[ScriptMarket] 已自动切换源并加载成功", PL_INFO);
+		return pages2;
+	}
+	return 0;
 }
 
 // 定义一个结构体来打包所有需要传递给线程的信息
@@ -1175,18 +1197,78 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 		}
 		vector<string> files;
 		FindFilesWithExtension(dir, "lua", files);
-		if (files.size() > 1)
+		if (files.empty())
 		{
-			PrintLog("[Script] 在脚本 " + filename + "发现多个lua文件，无法正确识别！", PL_ERROR);
+			PrintLog("[Script] 脚本 " + filename + " 中没有找到 lua 文件", PL_ERROR);
 			continue;
 		}
-		else if (files.empty())
+
+		// 读取文件内容，判断其中是否定义了全局入口函数 main
+		auto FileDefinesMain = [](const string& path) -> bool
 		{
-			PrintLog("[Script] 在脚本 " + filename + "没有发现lua文件", PL_ERROR);
-			continue;
+			ifstream file(path);
+			if (!file.is_open())
+				return false;
+			string content;
+			for (string line; getline(file, line);)
+			{
+				content += line;
+				content += '\n';
+			}
+			size_t pos = content.find("function");
+			while (pos != string::npos)
+			{
+				size_t p = pos + 8;
+				while (p < content.size() && (content[p] == ' ' || content[p] == '\t'))
+					++p;
+				if (content.compare(p, 4, "main") == 0)
+				{
+					size_t q = p + 4;
+					while (q < content.size() && (content[q] == ' ' || content[q] == '\t'))
+						++q;
+					if (q < content.size() && content[q] == '(')
+					{
+						// 排除 local function main（入口函数必须是全局函数）
+						size_t b = pos;
+						while (b > 0 && (content[b - 1] == ' ' || content[b - 1] == '\t'))
+							--b;
+						bool isLocal = (b >= 5 && content.compare(b - 5, 5, "local") == 0);
+						if (!isLocal)
+							return true;
+					}
+				}
+				pos = content.find("function", pos + 8);
+			}
+			return false;
+		};
+
+		string entryFile;
+		if (files.size() == 1)
+		{
+			// 兼容旧版单文件脚本：文件名不固定，直接作为主文件
+			entryFile = files.at(0);
 		}
+		else
+		{
+			// 多文件脚本：以定义了入口函数 main 的文件作为主文件，其余文件作为依赖
+			for (const string& f : files)
+			{
+				if (FileDefinesMain(f))
+				{
+					entryFile = f;
+					break;
+				}
+			}
+			if (entryFile.empty())
+			{
+				PrintLog("[Script] 脚本 " + filename + " 含有多个 lua 文件，但没有任何文件定义入口函数 main，无法确定主文件", PL_ERROR);
+				continue;
+			}
+		}
+
+
 		script.info = StringToUTF8(motd + (config.UseChinese ? u8"\n&7脚本作者：" : "\nAuthor: ") + author);
-		script.file = files.at(0);
+		script.file = entryFile;
 		script.name = StringToUTF8(filename); //StringToUTF8默认有try
 		script.title = StringToUTF8(title);
 		script.texture = BmpFile;

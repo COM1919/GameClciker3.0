@@ -132,12 +132,16 @@ int StartUpGC(HINSTANCE hInstance)
     SetupCrashHandler();
 
     // 不管怎么try都抓不住你的心
+#ifndef GC_NO_TRY_CATCH
     try
     {
+#endif // GC_NO_TRY_CATCH
+
         //_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
         cout << "进入GCMainLoop" << endl;
         int ret = GCMainLoop();
         cout << "GCMainLoop退出，返回值：" << ret << endl;
+#ifndef GC_NO_TRY_CATCH
     }
     catch (exception& e)
     {
@@ -153,6 +157,7 @@ int StartUpGC(HINSTANCE hInstance)
         NetworkClient.Send("exit");
         return 71;
     }
+#endif // GC_NO_TRY_CATCH
 
     //===============================结束===============================
     NetworkClient.Send("exit");
@@ -231,13 +236,19 @@ retry:
     // （状态/声音/连点器）在 HookDispatchThread 单一工作线程中异步执行（见 HookCentral.h）
     CreateThreadSafe(HookDispatchThread, NULL, 0, "HookDispatchThread");
     
+    // 限时等待消息：最多阻塞 50ms 就回来检查 IsGCExit。
+    // 否则退出时会卡死在 GetMessage 上，主线程只能等满线程等待超时（体感就是“退出卡顿”）
     MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
+    while (!IsGCExit)
     {
+        if (MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT) != WAIT_OBJECT_0)
+            continue;
+        if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+            continue;
+        if (msg.message == WM_QUIT)
+            break;
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        if (IsGCExit)
-            break;
     }
 
     PrintLog("[Hook] 卸载全局HOOK", PL_INFO);
@@ -3866,17 +3877,19 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         static const char* SourceNames[] = { config.UseChinese ? u8"稳定仓库源" : "Stable Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
-                        static int SourceIndex = 1;
+                        static int SourceIndex = IsScriptUseGitee ? 0 : 1;
+                        // 刷新线程可能因当前源加载失败而自动切换了源，这里让下拉框跟随实际使用的源
+                        SourceIndex = IsScriptUseGitee ? 0 : 1;
                         Text(config.UseChinese ? u8"下载源" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
                         if (Combo("##ScriptMarketSourceCombo", &SourceIndex, SourceNames, IM_ARRAYSIZE(SourceNames)))
                         {
+                            IsScriptUseGitee = (SourceIndex == 0);
                             IsRefushList = true;
                             IsNeedRefushShopList = true;
                             IsRefushSuccess = false; // 触发刷新动画
                         }
-                        IsScriptUseGitee = (SourceIndex == 0);
 
                         if (IsRefushSuccess)
                         {

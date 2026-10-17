@@ -3,7 +3,7 @@
 #include "ScriptAPI.h"
 #include <memory> // make_shared/shared_ptr（StartScript 线程句柄生命周期）
 
-lua_State* LuaInit();
+lua_State* LuaInit(const string& scriptFile);
 HANDLE StartScript(const string& file);
 void StartInstalledScriptsOnBoot();
 DWORD WINAPI ScriptKeyControlThread(LPVOID lpParam);
@@ -71,7 +71,7 @@ public:
     }
 };
 
-lua_State* LuaInit()
+lua_State* LuaInit(const string& scriptFile)
 {
     lua_State* L = luaL_newstate();
 
@@ -228,6 +228,14 @@ lua_State* LuaInit()
         lua_pushinteger(L, GK_BOTH);
         lua_setfield(L, -2, "BOTH");
         lua_setglobal(L, "GK");
+
+        lua_newtable(L);
+        lua_pushcfunction(L, ScriptAPI::RegexTest);    lua_setfield(L, -2, "test");
+        lua_pushcfunction(L, ScriptAPI::RegexFind);    lua_setfield(L, -2, "find");
+        lua_pushcfunction(L, ScriptAPI::RegexMatch);   lua_setfield(L, -2, "match");
+        lua_pushcfunction(L, ScriptAPI::RegexReplace); lua_setfield(L, -2, "replace");
+        lua_pushcfunction(L, ScriptAPI::RegexSplit);   lua_setfield(L, -2, "split");
+        lua_setglobal(L, "regex");
     }
     {
         // 加载所有库
@@ -237,9 +245,45 @@ lua_State* LuaInit()
         lua_pushnil(L);
         lua_setglobal(L, "io");
 
-        // 完全移除package库
-        lua_pushnil(L);
-        lua_setglobal(L, "package");
+        // Restricted package: keep require() but confine loading to the script folder.
+        {
+            string scriptDir = ".";
+            size_t slashPos = scriptFile.find_last_of("\\/");
+            if (slashPos != string::npos)
+                scriptDir = scriptFile.substr(0, slashPos);
+
+            lua_getglobal(L, "package");
+            if (!lua_isnil(L, -1))
+            {
+                string luaPath = scriptDir + "\\?.lua";
+                lua_pushstring(L, luaPath.c_str());
+                lua_setfield(L, -2, "path");     // search only the script folder
+                lua_pushstring(L, "");
+                lua_setfield(L, -2, "cpath");    // no C modules
+                lua_pushnil(L);
+                lua_setfield(L, -2, "loadlib");  // no native library loading
+
+                // Keep only the preload loader and the Lua file loader;
+                // drop the C loaders so cpath cannot be re-enabled later.
+                const char* loaderFields[2] = { "loaders", "searchers" };
+                for (int i = 0; i < 2; i++)
+                {
+                    lua_getfield(L, -1, loaderFields[i]);
+                    if (lua_istable(L, -1))
+                    {
+                        lua_newtable(L);
+                        lua_rawgeti(L, -2, 1);
+                        lua_rawseti(L, -2, 1);
+                        lua_rawgeti(L, -2, 2);
+                        lua_rawseti(L, -2, 2);
+                        lua_setfield(L, -3, loaderFields[i]);
+                    }
+                    lua_pop(L, 1);
+                }
+            }
+            lua_pop(L, 1);
+        }
+
 
         // 移除os库的危险函数
         lua_getglobal(L, "os");
@@ -425,7 +469,7 @@ inline bool InitLuaState(const string& file, LuaState& LuaInfo)
         try
         {
             if (LuaInfo.lua == NULL)
-                LuaInfo.lua = LuaInit();
+                LuaInfo.lua = LuaInit(file);
             if (!LuaInfo.IsLoaded)
             {
                 int ret = LoadScript(LuaInfo.lua, file);

@@ -6,6 +6,7 @@
 #include <deque>
 #include <unordered_map>
 #include <memory>
+#include <regex>
 
 extern "C"
 {
@@ -674,6 +675,163 @@ bool SimulatedInputText(HWND hwnd, const string& text)
 //=========================================功能API=========================================
 namespace ScriptAPI
 {
+    //=========================================regex 库（正则表达式）=========================================
+    // 基于 C++ std::regex（ECMAScript 语法），详细用法见 script-docs/lua-base.md
+    inline std::regex_constants::syntax_option_type RegexOptions(const char* flags)
+    {
+        auto opt = std::regex_constants::ECMAScript;
+        if (flags != nullptr)
+        {
+            for (const char* p = flags; *p != '\0'; ++p)
+            {
+                if (*p == 'i' || *p == 'I')
+                    opt |= std::regex_constants::icase;
+                else if (*p == 'm' || *p == 'M')
+                    opt |= std::regex_constants::multiline;
+            }
+        }
+        return opt;
+    }
+
+    inline std::regex RegexCompile(lua_State* L, const char* pattern, const char* flags, const char* funcName)
+    {
+        try
+        {
+            return std::regex(pattern, RegexOptions(flags));
+        }
+        catch (const std::regex_error& e)
+        {
+            luaL_error(L, "%s: 无效的正则表达式 '%s'（%s）", funcName, pattern, e.what());
+        }
+        return std::regex("");
+    }
+
+    int RegexTest(lua_State* L)
+    {
+        const int argc = lua_gettop(L);
+        if (argc < 2 || argc > 3)
+            luaL_error(L, "regex.test 的参数过多或太少");
+        const char* s = luaL_checkstring(L, 1);
+        const char* pattern = luaL_checkstring(L, 2);
+        const char* flags = luaL_optstring(L, 3, nullptr);
+        std::regex re = RegexCompile(L, pattern, flags, "regex.test");
+        lua_pushboolean(L, std::regex_search(s, re) ? 1 : 0);
+        return 1;
+    }
+
+    int RegexFind(lua_State* L)
+    {
+        const int argc = lua_gettop(L);
+        if (argc < 2 || argc > 4)
+            luaL_error(L, "regex.find 的参数过多或太少");
+        size_t len = 0;
+        const char* s = luaL_checklstring(L, 1, &len);
+        const char* pattern = luaL_checkstring(L, 2);
+        int init = (int)luaL_optinteger(L, 3, 1);
+        const char* flags = luaL_optstring(L, 4, nullptr);
+        if (init < 0)
+            init = (int)len + init + 1;
+        if (init < 1)
+            init = 1;
+        if (init > (int)len + 1)
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+        std::regex re = RegexCompile(L, pattern, flags, "regex.find");
+        const char* start = s + (init - 1);
+        const char* finish = s + len;
+        std::cmatch m;
+        if (!std::regex_search(start, finish, m, re))
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_pushinteger(L, (lua_Integer)(m[0].first - s) + 1);
+        lua_pushinteger(L, (lua_Integer)(m[0].second - s));
+        int count = 2;
+        for (size_t i = 1; i < m.size(); ++i)
+        {
+            if (m[i].matched)
+                lua_pushlstring(L, m[i].first, (size_t)m[i].length());
+            else
+                lua_pushnil(L);
+            ++count;
+        }
+        return count;
+    }
+
+    int RegexMatch(lua_State* L)
+    {
+        const int argc = lua_gettop(L);
+        if (argc < 2 || argc > 3)
+            luaL_error(L, "regex.match 的参数过多或太少");
+        const char* s = luaL_checkstring(L, 1);
+        const char* pattern = luaL_checkstring(L, 2);
+        const char* flags = luaL_optstring(L, 3, nullptr);
+        std::regex re = RegexCompile(L, pattern, flags, "regex.match");
+        std::cmatch m;
+        if (!std::regex_search(s, m, re))
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_pushlstring(L, m[0].first, (size_t)m[0].length());
+        int count = 1;
+        for (size_t i = 1; i < m.size(); ++i)
+        {
+            if (m[i].matched)
+                lua_pushlstring(L, m[i].first, (size_t)m[i].length());
+            else
+                lua_pushnil(L);
+            ++count;
+        }
+        return count;
+    }
+
+    int RegexReplace(lua_State* L)
+    {
+        const int argc = lua_gettop(L);
+        if (argc < 3 || argc > 4)
+            luaL_error(L, "regex.replace 的参数过多或太少");
+        const char* s = luaL_checkstring(L, 1);
+        const char* pattern = luaL_checkstring(L, 2);
+        const char* repl = luaL_checkstring(L, 3);
+        const char* flags = luaL_optstring(L, 4, nullptr);
+        std::regex re = RegexCompile(L, pattern, flags, "regex.replace");
+        std::string result = std::regex_replace(std::string(s), re, std::string(repl));
+        lua_pushlstring(L, result.c_str(), result.size());
+        return 1;
+    }
+
+    int RegexSplit(lua_State* L)
+    {
+        const int argc = lua_gettop(L);
+        if (argc < 2 || argc > 3)
+            luaL_error(L, "regex.split 的参数过多或太少");
+        const char* s = luaL_checkstring(L, 1);
+        const char* pattern = luaL_checkstring(L, 2);
+        const char* flags = luaL_optstring(L, 3, nullptr);
+        std::regex re = RegexCompile(L, pattern, flags, "regex.split");
+        std::string text(s);
+        std::sregex_iterator it(text.begin(), text.end(), re);
+        std::sregex_iterator itEnd;
+        lua_newtable(L);
+        int index = 1;
+        size_t last = 0;
+        for (; it != itEnd; ++it)
+        {
+            const std::smatch& m = *it;
+            if (m.length(0) == 0)
+                continue;
+            lua_pushlstring(L, text.c_str() + last, (size_t)m.position(0) - last);
+            lua_rawseti(L, -2, index++);
+            last = (size_t)m.position(0) + (size_t)m.length(0);
+        }
+        lua_pushlstring(L, text.c_str() + last, text.size() - last);
+        lua_rawseti(L, -2, index++);
+        return 1;
+    }
     int GetTickCount(lua_State* L)
     {
         if (lua_gettop(L) != 0)

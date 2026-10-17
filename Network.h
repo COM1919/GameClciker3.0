@@ -272,13 +272,15 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
         if (!NetworkClient.Init())
         {
             PrintLog("[Server]WSA初始化失败", PL_ERROR);
-            Sleep(1000);
+            for (int i = 0; i < 10 && !IsGCExit; ++i)   // 分片睡眠，退出时能及时响应
+                Sleep(100);
             continue;
         }
         if (NetworkClient.CreateSocket() != 0)
         {
             PrintLog("[Server] 创建socket失败", PL_ERROR);
-            Sleep(1000);
+            for (int i = 0; i < 10 && !IsGCExit; ++i)   // 分片睡眠，退出时能及时响应
+                Sleep(100);
             continue;
         }
 
@@ -292,7 +294,8 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
             if (ip == "0")
             {
                 PrintLog("[Server] 服务器域名解析失败，5秒后重试", PL_ERROR);
-                Sleep(5000);
+                for (int i = 0; i < 50 && !IsGCExit; ++i)   // 分片睡眠，退出时能及时响应
+                    Sleep(100);
                 continue;
             }
             
@@ -355,7 +358,8 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
 
             // 服务器发送的默认就是UTF-8
             string buf;
-            if (NetworkClient.Receive(buf) > 0)
+            // 短超时：退出时能迅速回到 IsGCExit 判断（默认 6 秒会明显拖慢退出）
+            if (NetworkClient.Receive(buf, 400) > 0)
             {
 #ifdef GC_SERVER_DEBUG
                 PrintLog("[Server] 来自服务器消息:" + buf, PL_WARNING);

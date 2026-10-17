@@ -1,5 +1,18 @@
 # 更新日志
 
+## 1.0.11
+
+- **主文件判定改为「包含 `main` 的文件」**（配套引擎改动）：多文件脚本以定义了 `main` 的文件为主文件，其余文件作为依赖；入口函数（`main` / `render` / `initScript` / `saveConfig`）必须写在同一文件；单文件脚本（文件名任意）保持兼容
+- **新增 `regex` 正则库补全**：`regex.test` / `regex.find` / `regex.match` / `regex.replace` / `regex.split`，并加入语法高亮
+- 文档：新增 `script-docs/lua-base.md`（GC Lua 基础教程：语法、逻辑、符号、文件导入、入口函数规则、各标准库用法、被移除内容与排错）
+
+## 1.0.10
+
+- **引擎支持多文件脚本**（配套改动）：一个脚本包（zip）现在可以包含多个 `.lua` 文件，入口固定为 `script.lua`（没有 `script.lua` 时仍兼容「仅一个 lua 文件」的旧包）；同名子目录中的 lua 文件不会被误当作入口
+- **恢复受限的 `require`**：`package` 不再被整体移除，改为受限模式 —— 仅能在脚本自身目录内解析 `?.lua`，C 库加载器被移除、`package.loadlib` 被删除，无法加载本地 DLL
+- 扩展同步：`require` 纳入标准库补全；`package` 视为受限可用库（`loadlib` 除外）；`package.xxx` 不再误报为「库已被整体移除」，仅 `package.loadlib` 报移除
+- `string` / `table` / `math` / `coroutine` 标准库始终完整可用
+
 ## 1.0.9
 
 - **所有符号改为蓝色**：运算符（`+ - * / % ^ # < > <= >= == ~= .. ...`）、标点（`() [] {} , ; .`）统一按关键字蓝 `#569CD6` 着色，不再显示为灰色；其中 `...`（变长参数）单独识别为 `keyword.operator.vararg`，`.`（访问符）单独识别为 `punctuation.accessor`，避免与 `..` 混淆

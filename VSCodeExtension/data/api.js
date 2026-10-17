@@ -1026,13 +1026,15 @@ const GK_CONSTANTS = {
  * collectgarbage / require 等被移除；os 仅保留部分函数。
  */
 const LUA_STDLIB = {
-  globals: ['assert', 'error', 'ipairs', 'pairs', 'next', 'pcall', 'xpcall', 'select', 'tonumber', 'tostring', 'type', 'unpack', 'setmetatable', 'getmetatable', 'rawget', 'rawset', 'rawequal', 'rawlen', '_G', '_VERSION'],
+  globals: ['assert', 'error', 'ipairs', 'pairs', 'next', 'pcall', 'xpcall', 'select', 'tonumber', 'tostring', 'type', 'unpack', 'setmetatable', 'getmetatable', 'rawget', 'rawset', 'rawequal', 'rawlen', 'require', '_G', '_VERSION'],
   libraries: {
     string: ['byte', 'char', 'dump', 'find', 'format', 'gmatch', 'gsub', 'len', 'lower', 'match', 'rep', 'reverse', 'sub', 'upper'],
     table: ['concat', 'insert', 'maxn', 'remove', 'sort', 'unpack', 'pack'],
     math: ['abs', 'ceil', 'cos', 'deg', 'exp', 'floor', 'fmod', 'huge', 'log', 'max', 'min', 'modf', 'pi', 'pow', 'rad', 'random', 'randomseed', 'sin', 'sqrt', 'tan'],
     os: ['clock', 'date', 'difftime', 'time'],
-    coroutine: ['create', 'resume', 'running', 'status', 'wrap', 'yield']
+    coroutine: ['create', 'resume', 'running', 'status', 'wrap', 'yield'],
+    package: ['path', 'cpath', 'loaded', 'preload', 'loaders', 'config'],
+    regex: ['test', 'find', 'match', 'replace', 'split']
   }
 };
 

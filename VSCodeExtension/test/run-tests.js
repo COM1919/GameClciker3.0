@@ -82,6 +82,8 @@ check('弃用 API', hasCode('Helpmarker("x")\n', 'deprecated-api'));
 check('移除的库', hasCode('io.open("a")\n', 'removed-library'));
 check('移除的全局函数', hasCode('dofile("a.lua")\n', 'removed-function'));
 check('移除的 os 函数', hasCode('os.execute("x")\n', 'removed-os'));
+check('package 不再报 removed-library', !hasCode('function main()\n  local p = package.path\n  PrintLog(tostring(p), 1)\nend\n', 'removed-library'));
+check('package.loadlib 仍报移除', hasCode('function main()\n  package.loadlib("a.dll", "luaopen_a")\nend\n', 'removed-function'));
 check('未知 KEY 常量', hasCode('local k = KEY.NOPE\n', 'unknown-key'));
 check('未知 SC 成员', hasCode('SetKeyUp(1, SC.FOO)\n', 'unknown-sc'));
 check('未知 GK 成员', hasCode('GetKeyDown(1, false, GK.FOO)\n', 'unknown-gk'));
@@ -113,6 +115,10 @@ check('KEY 常量包含 A/Esc/Space', 'A' in api.KEY_CONSTANTS && 'VK_ESCAPE' in
 check('SC 值为 0/1/2', api.SC_CONSTANTS.MOUSE_EVENT.value === 0 && api.SC_CONSTANTS.SEND_INPUT.value === 1 && api.SC_CONSTANTS.POST_MESSAGE.value === 2);
 check('GK 值为 1/3', api.GK_CONSTANTS.HOOK.value === 1 && api.GK_CONSTANTS.BOTH.value === 3);
 check('GK 不包含 API（未注册）', !('API' in api.GK_CONSTANTS));
+check('LUA 标准库包含 require', api.LUA_STDLIB.globals.includes('require'));
+check('package 为受限可用库（不含 loadlib）', Array.isArray(api.LUA_STDLIB.libraries.package) && !api.LUA_STDLIB.libraries.package.includes('loadlib'));
+check('string / table 标准库可用', Array.isArray(api.LUA_STDLIB.libraries.string) && Array.isArray(api.LUA_STDLIB.libraries.table));
+check('regex 库已注册（5 个函数）', Array.isArray(api.LUA_STDLIB.libraries.regex) && api.LUA_STDLIB.libraries.regex.join(',') === 'test,find,match,replace,split');
 
 console.log('\n[8] 智能补全上下文');
 {
@@ -502,6 +508,7 @@ console.log('\n[23] 语法增强（not / 入口函数 / .. / # 标签）');
   check('字符串外 # 仍作为长度运算符着色', (grammar.repository['operators'].patterns || []).some(p => /#/.test(p.match || '')));
   check('不存在遗留的 string-tag 规则', !grammar.repository['string-tag']);
   check('字符串引号有专门的定义 scope', JSON.stringify(grammar.repository['strings']).includes('punctuation.definition.string.begin.gclua'));
+  check('regex 库已加入高亮', (grammar.repository['keywords'].patterns || []).some(p => /regex/.test(p.match || '')));
   const opPatterns = grammar.repository['operators'].patterns || [];
   check('vararg ... 有专门 scope', opPatterns.some(p => p.name === 'keyword.operator.vararg.gclua'));
   const punctNames = (grammar.repository['punctuation'].patterns || []).map(p => p.name);

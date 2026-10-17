@@ -654,10 +654,15 @@ function computeDiagnostics(text, options) {
 
   // ---------- 4. 被移除的标准库 ----------
   {
-    const removedLibRe = /\b(io|package|debug)\s*\./g;
+    const removedLibRe = /\b(io|debug)\s*\./g;
     let m;
     while ((m = removedLibRe.exec(mask))) {
       add(m.index, m.index + m[1].length, 'error', `\`${m[1]}\` 库已被 GC 脚本沙箱整体移除，无法使用。`, 'removed-library');
+    }
+    // package 已受限恢复（require 仅能在脚本自身目录内解析），但 loadlib 仍被移除
+    const pkgLoadlibRe = /\bpackage\.loadlib\b/g;
+    while ((m = pkgLoadlibRe.exec(mask))) {
+      add(m.index, m.index + m[0].length, 'error', '`package.loadlib` 已被 GC 脚本沙箱移除，禁止加载本地库。', 'removed-function');
     }
     const removedFnRe = /\b(dofile|loadfile|loadstring|load|collectgarbage)\s*\(/g;
     while ((m = removedFnRe.exec(mask))) {

@@ -11,13 +11,19 @@
         MSIX 应用不能默认以管理员运行（不利于商店审核），
         程序会在运行时自行用 runas 请求提权（见 GetInfo.h 中的更新逻辑）。
       * 自动生成 AppxManifest.xml 与各尺寸图标。
-      * 使用 makeappx 打包，只产出未签名包（用于发布 Microsoft Store）。
-        本地安装测试请使用同目录下的 install-unsigned.cmd（自动开启开发者模式并安装）。
+      * 使用 makeappx 打包，产出两个未签名包：
+          - 商店包（<名称>_<版本>_<架构>.msix）：Publisher 为商店保留身份，用于上传 Microsoft Store。
+          - 本地测试包（<名称>_<版本>_<架构>_localtest.msix）：Publisher 附加未签名 OID，
+            供本机安装测试（Windows 强制要求，否则安装报 0x80073D2C）。
+        本地安装测试请使用同目录下的 install-unsigned.cmd（自动提权、开启开发者模式并安装测试包）。
       * 声明微软商店标准的 VC++ 运行库框架依赖（Microsoft.VCLibs.140.00.UWPDesktop），
         包内不再自带 VC++ 运行库 DLL（安装时由框架包提供，符合商店规范）。
+      * 注入 PSF（Package Support Framework）：修正打包应用的工作目录（默认是 System32，
+        会导致相对路径资源加载失败），并把程序对自身安装目录的写入重定向到用户可写位置。
 
 .PARAMETER Version
-    MSIX 版本号，必须为四段式（如 1.0.0.0）。留空则自动读取主程序的文件版本。
+    MSIX 版本号，必须为四段式（如 1.0.0.0）。留空时自动生成：取主程序版本、
+    已有产物与已安装版本中的最大者并递增末段，无需每次手动输入。
 
 .PARAMETER Configuration
     编译配置，默认 Release。
@@ -66,10 +72,14 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
 # ============================ 商店身份信息（固定不变） ============================
-$IdentityName         = 'Euxstudio.GameClicker'
+$IdentityName         = 'Euxstudio.GameClicker3'
+$PackageFamilyName    = 'Euxstudio.GameClicker3_gwer11b85jr02'   # Package Family Name
 $Publisher            = 'CN=61A042EF-46FF-46B2-AF26-BB187D95DF79'
+# 未签名包专用 OID：Windows 只允许 Publisher 带此标记的未签名包被注册（否则报 0x80073D2C）。
+# 仅用于本地测试包，商店包的 Publisher 不能带它。
+$UnsignedOid          = 'OID.2.25.311729368913984317654407730594956997722=1'
 $PublisherDisplayName = 'COM1919'
-$DisplayName          = 'GC连点器'
+$DisplayName          = 'GC连点器3'
 $Description          = 'GC连点器 3.0'
 $MinWinVersion        = '10.0.17763.0'
 $MaxWinVersionTested  = '10.0.26100.0'
@@ -87,6 +97,9 @@ $VCRuntimeDlls = @(
 )
 
 $ExeName              = 'GameClciker3.0.exe'
+$ExeLauncher          = 'PsfLauncher64.exe'   # PSF 启动器（作为包入口，用于修正工作目录与把写入重定向到可写位置）
+$ApplicationId        = 'GCGameClicker'       # AppxManifest 中的 Application Id（config.json 须一致）
+$AppDataDir           = 'GameClicker'         # 程序在自身目录下创建的数据文件夹（需重定向）
 
 # ============================ 路径推导 ============================
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -100,14 +113,32 @@ if (-not (Test-Path $ExePath)) {
     throw "找不到主程序：$ExePath`n请先编译 $Platform|$Configuration，或使用 -Build 参数，或用 -SourceDir 指定目录。"
 }
 
-# 自动推导版本号
+# 版本号：未显式指定时自动生成，无需每次手动输入。
+# 取「主程序文件版本」「output 已有产物」「本机已安装版本」中的最大者，末段 +1，
+# 保证每次产出都高于上一次，可直接覆盖安装。
 if (-not $Version) {
-    $fileVersion = (Get-Item $ExePath).VersionInfo.FileVersion
-    if ($fileVersion -and ($fileVersion -match '(\d+)\.(\d+)\.(\d+)\.(\d+)')) {
-        $Version = "$($matches[1]).$($matches[2]).$($matches[3]).$($matches[4])"
-    } else {
-        $Version = '1.0.0.0'
+    $candidates = New-Object System.Collections.Generic.List[version]
+
+    $fv = (Get-Item $ExePath).VersionInfo.FileVersion
+    if ($fv -and ($fv -match '(\d+)\.(\d+)\.(\d+)\.(\d+)')) {
+        $candidates.Add([version]"$($matches[1]).$($matches[2]).$($matches[3]).$($matches[4])")
     }
+
+    Get-ChildItem $OutputDir -Filter '*.msix' -File -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.BaseName -match '_(\d+)\.(\d+)\.(\d+)\.(\d+)_') {
+            $candidates.Add([version]"$($matches[1]).$($matches[2]).$($matches[3]).$($matches[4])")
+        }
+    }
+
+    try {
+        Get-AppxPackage -Name $PackageFamilyName -ErrorAction SilentlyContinue | ForEach-Object {
+            $candidates.Add([version]$_.Version)
+        }
+    } catch { }
+
+    if ($candidates.Count -eq 0) { $candidates.Add([version]'0.0.0.0') }
+    $latest  = $candidates | Sort-Object -Descending | Select-Object -First 1
+    $Version = "$($latest.Major).$($latest.Minor).$($latest.Build).$($latest.Revision + 1)"
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
     throw "Version 必须为四段式数字，例如 1.0.0.0，当前值：$Version"
@@ -202,7 +233,7 @@ function Set-ExeAsInvoker {
 }
 
 # ============================ 开始 ============================
-$totalSteps = 6
+$totalSteps = 7
 Write-Host "==============================================" -ForegroundColor Green
 Write-Host " GC连点器 MSIX 打包脚本" -ForegroundColor Green
 Write-Host "==============================================" -ForegroundColor Green
@@ -262,6 +293,50 @@ foreach ($dll in $VCRuntimeDlls) {
 if ($removedVc.Count) {
     Write-Host "  - 移除 VC++ 运行库 DLL（由 VCLibs 框架提供）：$($removedVc -join ', ')" -ForegroundColor DarkGray
 }
+
+# ---------- 注入 PSF（Package Support Framework）----------
+# 打包应用默认工作目录是 System32，且安装目录只读。程序用相对路径读取 res/sound，
+# 并把配置、日志等写入自身目录，因此需要 PSF 修正「工作目录」与「写入权限」两个问题。
+$PsfDir   = Join-Path $ScriptDir 'psf'
+$psfFiles = @($ExeLauncher, 'PsfRuntime64.dll', 'PsfRunDll64.exe', 'FileRedirectionFixup.dll')
+foreach ($f in $psfFiles) {
+    $src = Join-Path $PsfDir $f
+    if (-not (Test-Path $src)) { throw "缺少 PSF 组件：$src（请确认 packaging\psf 目录完整）" }
+    Copy-Item $src $StagingDir -Force
+}
+Write-Host "  + PSF 组件：$($psfFiles -join ', ')" -ForegroundColor Green
+
+$psfConfig = @"
+{
+  "applications": [
+    {
+      "id": "$ApplicationId",
+      "executable": "$ExeName",
+      "workingDirectory": "."
+    }
+  ],
+  "processes": [
+    {
+      "executable": "$([System.IO.Path]::GetFileNameWithoutExtension($ExeName))",
+      "fixups": [
+        {
+          "dll": "FileRedirectionFixup.dll",
+          "config": {
+            "redirectedPaths": {
+              "packageRelative": [
+                { "base": "$AppDataDir", "patterns": [ ".*" ] },
+                { "base": ".", "patterns": [ ".*\\.log" ] }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+"@
+[System.IO.File]::WriteAllText((Join-Path $StagingDir 'config.json'), $psfConfig, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "  + config.json（工作目录=包根；写入重定向：$AppDataDir 目录与 *.log）"
 
 # ---------- 3. 处理 UAC ----------
 Write-Step 3 $totalSteps "调整主程序提权级别（asInvoker）"
@@ -336,7 +411,7 @@ $manifestTemplate = @'
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
   <Applications>
-    <Application Id="GCGameClicker" Executable="{EXE}" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="{APPID}" Executable="{LAUNCHER}" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="{DISPLAYNAME}"
         Description="{DESCRIPTION}"
@@ -366,6 +441,8 @@ $manifest = $manifestTemplate `
     -replace '\{VCLIBSNAME\}',           $VCLibsName `
     -replace '\{VCLIBSVER\}',            $VCLibsMinVersion `
     -replace '\{VCLIBSPUB\}',            $VCLibsPublisher `
+    -replace '\{APPID\}',                $ApplicationId `
+    -replace '\{LAUNCHER\}',             $ExeLauncher `
     -replace '\{EXE\}',                  $ExeName
 
 [System.IO.File]::WriteAllText((Join-Path $StagingDir 'AppxManifest.xml'), $manifest, (New-Object System.Text.UTF8Encoding($false)))
@@ -379,7 +456,23 @@ $makeappx = Get-SdkTool 'makeappx.exe'
 if (Test-Path $OutputMsix) { Remove-Item $OutputMsix -Force }
 & $makeappx pack /d $StagingDir /p $OutputMsix /o
 if ($LASTEXITCODE -ne 0) { throw "makeappx 打包失败，退出码 $LASTEXITCODE。" }
-Write-Host "  未签名包已生成：$OutputMsix" -ForegroundColor Green
+Write-Host "  商店包已生成：$OutputMsix" -ForegroundColor Green
+
+# ---------- 7. 打包本地测试包（Publisher 附加未签名 OID）----------
+# Windows 只允许「Publisher 带特殊 OID」的未签名包被注册，否则报 0x80073D2C。
+# 商店包的 Publisher 必须是商店保留身份的正式值（不能带 OID），二者无法共用一个包，
+# 因此额外产出一个仅供本机安装测试的包。
+Write-Step 7 $totalSteps "生成本地测试包（Publisher 附加未签名 OID）"
+$TestMsix = Join-Path $OutputDir "$([System.IO.Path]::GetFileNameWithoutExtension($ExeName))_${Version}_${Platform}_localtest.msix"
+$oldPublisherAttr = 'Publisher="' + $Publisher + '"'
+$newPublisherAttr = 'Publisher="' + $Publisher + ', ' + $UnsignedOid + '"'
+$testManifest = $manifest.Replace($oldPublisherAttr, $newPublisherAttr)
+if ($testManifest -eq $manifest) { throw "未能为本地测试包写入未签名 OID。" }
+[System.IO.File]::WriteAllText((Join-Path $StagingDir 'AppxManifest.xml'), $testManifest, (New-Object System.Text.UTF8Encoding($false)))
+if (Test-Path $TestMsix) { Remove-Item $TestMsix -Force }
+& $makeappx pack /d $StagingDir /p $TestMsix /o
+if ($LASTEXITCODE -ne 0) { throw "makeappx 打包本地测试包失败，退出码 $LASTEXITCODE。" }
+Write-Host "  本地测试包已生成：$TestMsix" -ForegroundColor Green
 
 # ---------- 收尾 ----------
 Remove-Item (Join-Path $OutputDir '_patch_exe.manifest') -Force -ErrorAction SilentlyContinue
@@ -389,11 +482,12 @@ Write-Host ""
 Write-Host "==============================================" -ForegroundColor Green
 Write-Host " 打包完成" -ForegroundColor Green
 Write-Host "==============================================" -ForegroundColor Green
-Write-Host " 未签名包（发布商店）: $OutputMsix"
+Write-Host " 商店包（发布商店）  : $OutputMsix"
+Write-Host " 本地测试包（本机装）: $TestMsix"
 Write-Host ""
 Write-Host " 本地安装测试：" -ForegroundColor Cyan
-Write-Host "   双击运行 install-unsigned.cmd 即可（自动开启开发者模式并安装）"
+Write-Host "   双击运行 install-unsigned.cmd 即可（自动提权、开启开发者模式并安装测试包）"
 Write-Host " 卸载：" -ForegroundColor Cyan
-Write-Host "   Remove-AppxPackage -Package ${IdentityName}_gwer11b85jr02"
+Write-Host "   Remove-AppxPackage -Name $IdentityName"
 Write-Host ""
-Write-Host " 提示：更新版本时把 -Version 递增（如 1.0.0.1）再重新打包即可。" -ForegroundColor DarkGray
+Write-Host " 提示：未指定 -Version 时版本号会自动递增，直接重新运行本脚本即可。" -ForegroundColor DarkGray

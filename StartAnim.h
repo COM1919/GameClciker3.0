@@ -480,9 +480,16 @@ static int RenerStartupAnimation(HINSTANCE hInstance)
     SetTimer(AnimHwnd, 1, 4000, nullptr); // 4秒后强制退出
 
     // 消息循环
+    // 限时等待消息：最多阻塞 50ms 就回来检查 IsGCExit（动画期间退出时不必等满线程等待超时）
     MSG msg;
-    while (GetMessage(&msg, nullptr, 0, 0))
+    while (!IsGCExit)
     {
+        if (MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT) != WAIT_OBJECT_0)
+            continue;
+        if (!PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+            continue;
+        if (msg.message == WM_QUIT)
+            break;
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }

@@ -1472,6 +1472,10 @@ bool PopTip(string msg, float timeout, UINT type)
         {
             size_t pos = msg.find("\n", index);
             size_t next_break = index + MaxTextLength;
+            // 已经到字符串末尾（剩余不足一整块）时不能再插入换行，
+            // 否则插入位置会越过字符串长度，std::string::insert 会抛出 std::out_of_range
+            if (next_break >= text_length)
+                break;
             // 没找到\n 或者 \n在当前切割点之后时，插入换行
             if (pos == string::npos || pos >= next_break)
             {

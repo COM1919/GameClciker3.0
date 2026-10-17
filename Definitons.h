@@ -421,18 +421,19 @@ bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里
 inline const int RenderFps = 60;        //渲染帧率
 
 //#define GC_USE_D_DRIVE                //是否使用D盘的配置文件，方便调试
-//#define GC_NO_HOOK                    //是否禁用HOOK
+#define GC_NO_HOOK                    //是否禁用HOOK
 //#define GC_DEBUG_VS                   //是否在VS的调试窗口输出日志
 #define GC_DEBUG_CMD                    //是否在命令行输出日志
 //#define GC_NO_ANIMATION               //是否禁用启动动画
 //#define GC_REMOTE_DEBUG               //是否使用远程调试
 //#define GC_MORE_DEBUG_INFO            //更多详细调试信息
-//#define GC_NO_MSGBOX                  //禁用消息弹窗
+#define GC_NO_MSGBOX                  //禁用消息弹窗
 //#define GC_SERVER_DEBUG               //是否开启服务器通讯调试
 #define GC_ENABLE_QUICK_EXIT            //开启调试快速退出
+#define GC_NO_TRY_CATCH                 //不捕获异常，让调试器捕获来定位代码位置
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS

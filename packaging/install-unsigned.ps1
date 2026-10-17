@@ -4,10 +4,12 @@
     安装（或更新）未签名的 GC连点器 MSIX 包，用于本地功能测试。
 
 .DESCRIPTION
-    未签名的 MSIX 需要「开发人员模式」才能安装。本脚本会自动：
-      1. 定位 output 目录下最新的 .msix（也可用 -PackagePath 指定具体文件）；
-      2. 若未开启开发人员模式，则请求管理员权限（UAC）自动开启；
-      3. 卸载同名旧版本后安装新包（Add-AppxPackage -AllowUnsigned）。
+    未签名的 MSIX 需要「开发人员模式」与管理员权限才能安装。本脚本会自动：
+      1. 非管理员时先请求管理员权限（UAC）并提权重启本脚本；
+      2. 优先定位 output 目录下的本地测试包（*_localtest.msix，Publisher 带未签名 OID），
+         也可用 -PackagePath 指定具体文件；
+      3. 若未开启开发人员模式则自动开启；
+      4. 卸载旧版本后安装新包（Add-AppxPackage -AllowUnsigned）。
     直接双击同目录的 install-unsigned.cmd 即可运行。
 
 .PARAMETER PackagePath
@@ -32,8 +34,19 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutputDir   = Join-Path $ScriptDir 'output'
-$PackageName = 'Euxstudio.GameClicker_gwer11b85jr02'   # Package Family Name
+$IdentityName  = 'Euxstudio.GameClicker3'              # Identity Name（商店包与测试包共用）
 $ApplicationId = 'GCGameClicker'                       # AppxManifest.xml 中的 Application Id
+
+# 未签名包内含可执行内容，安装需要管理员权限；非管理员时自提权重启本脚本。
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Host "安装未签名包需要管理员权限，正在请求提权（将出现 UAC 提示）..." -ForegroundColor Yellow
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"")
+    if ($PackagePath) { $argList += @('-PackagePath', "`"$PackagePath`"") }
+    if ($KeepData)    { $argList += '-KeepData' }
+    $p = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList $argList
+    exit $p.ExitCode
+}
 
 function Test-DeveloperMode {
     $key = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue
@@ -41,15 +54,9 @@ function Test-DeveloperMode {
 }
 
 function Enable-DeveloperMode {
-    Write-Host "未开启「开发人员模式」，正在请求管理员权限开启（将出现 UAC 提示）..." -ForegroundColor Yellow
-    $inner = @'
-New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Force | Out-Null
-New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -PropertyType DWORD -Value 1 -Force | Out-Null
-'@
-    $tmp = Join-Path $env:TEMP 'gc_enable_devmode.ps1'
-    [System.IO.File]::WriteAllText($tmp, $inner, (New-Object System.Text.UTF8Encoding($false)))
-    Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$tmp`""
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    Write-Host "未开启「开发人员模式」，正在开启..." -ForegroundColor Yellow
+    New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Force | Out-Null
+    New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -PropertyType DWORD -Value 1 -Force | Out-Null
     if (-not (Test-DeveloperMode)) {
         throw "开发人员模式开启失败。请手动在「设置 → 系统 → 开发者选项」中开启「开发人员模式」后重试。"
     }
@@ -58,8 +65,13 @@ New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel
 
 # ---------- 定位安装包 ----------
 if (-not $PackagePath) {
-    $latest = Get-ChildItem $OutputDir -Filter '*.msix' -File -ErrorAction SilentlyContinue |
+    $all = Get-ChildItem $OutputDir -Filter '*.msix' -File -ErrorAction SilentlyContinue
+    # 优先使用带未签名 OID 的本地测试包（商店包不带 OID，无法未签名安装）
+    $latest = $all | Where-Object { $_.Name -like '*_localtest*' } |
               Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $latest) {
+        $latest = $all | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    }
     if (-not $latest) { throw "未在 $OutputDir 找到 .msix，请先运行 build-msix.cmd 打包。" }
     $PackagePath = $latest.FullName
 }
@@ -77,7 +89,7 @@ if (-not (Test-DeveloperMode)) { Enable-DeveloperMode }
 
 # ---------- 卸载旧版本 ----------
 if (-not $KeepData) {
-    $old = Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue
+    $old = Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue
     if ($old) {
         Write-Host "卸载旧版本 $($old.Version) ..."
         $old | Remove-AppxPackage -ErrorAction SilentlyContinue
@@ -90,12 +102,13 @@ try {
     Add-AppxPackage -Path $PackagePath -AllowUnsigned -ForceApplicationShutdown
 } catch {
     Write-Warning "安装失败：$($_.Exception.Message)"
-    Write-Warning "若提示版本/签名冲突，可先执行：Remove-AppxPackage -Package $PackageName"
+    Write-Warning "若提示版本/签名冲突，可先执行：Remove-AppxPackage -Name $IdentityName"
     Write-Warning "若提示缺少 Microsoft.VCLibs.140.00.UWPDesktop 框架包（错误 0x80073CF3），请先安装该框架包再重试。"
     throw
 }
 
-$installed = Get-AppxPackage -Name $PackageName -ErrorAction SilentlyContinue
+$installed = Get-AppxPackage -Name $IdentityName -ErrorAction SilentlyContinue |
+             Sort-Object Version -Descending | Select-Object -First 1
 Write-Host ""
 if ($installed) {
     Write-Host "安装成功：$($installed.PackageFullName)" -ForegroundColor Green
