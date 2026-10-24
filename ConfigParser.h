@@ -104,12 +104,12 @@ void SaveConfig(const string& file);
 void LoadPresetConfig(const string& file);
 void LoadGlobalConfig();
 void LoadConfig(const string& file);
-void RestoreInstalledScripts();
 inline string GetPresetFile(const string& name);
 inline void IniWrite(const char* sec, const char* key, const char* val);
 inline DWORD IniRead(const char* sec, const char* key, const char* def, char* buf, UINT sz);
 inline UINT IniReadInt(const char* sec, const char* key, int def);
 inline void IniFlushFile(const string& file, const string& text);
+void SaveInstalledScriptList();
 
 void ClearFile(const string& fileName)
 {
@@ -146,7 +146,7 @@ bool DeleteDirectory(const string& path)
 {
 	DWORD attr = GetFileAttributesA(path.c_str());
 
-	// 路径不存在 → 视为成功（与 fs::remove_all 行为一致）
+	// 路径不存在 -> 视为成功（与 fs::remove_all 行为一致）
 	if (attr == INVALID_FILE_ATTRIBUTES)
 	{
 		PrintLog("[File] 已删除文件夹：" + path, PL_INFO);
@@ -501,6 +501,38 @@ void SavePresetConfig(const string& file)
 	IniFlushFile(CIniPos, ini.Serialize());
 }
 
+void SaveInstalledScriptList()
+{
+	if (_access(ScriptInstallList.c_str(), 0) != 0)
+		CreateFile(ScriptInstallList);
+	fstream ScriptFile(ScriptInstallList, ios::out | ios::trunc);
+	if (!ScriptFile.is_open())
+	{
+		PrintLog("[Config] 打开已安装脚本配置失败：" + ScriptInstallList, PL_ERROR);
+		return;
+	}
+	// 先在锁内取出快照，避免边写文件边持锁
+	vector<pair<string, int>> list;
+	{
+		shared_lock read_lock(ScriptData::InstalledMtx);
+		for (const auto& script : ScriptData::Installed)
+		{
+			int key = 0;
+			{
+				shared_lock stateLock(ScriptData::StatesMtx);
+				auto it = ScriptData::States.find(script.file);
+				if (it != ScriptData::States.end())
+					key = it->second.key;
+			}
+			list.push_back({ script.name, key });
+		}
+	}
+	for (const auto& item : list)
+		ScriptFile << item.first << ':' << item.second << endl;
+	ScriptFile.close();
+	PrintLog("[Config] 已保存 " + to_string(list.size()) + " 个已安装脚本", PL_INFO);
+}
+
 void SaveGlobalConfig()
 {
 	IniMemData ini;
@@ -571,22 +603,6 @@ void SaveGlobalConfig()
 	IniWrite("个性化", "BgLightness", to_string(BgLightness).c_str());
 	IniWrite("个性化", "GuiItemAlpha", to_string(GuiItemAlpha).c_str());
 	IniWrite("个性化", "BgAutoResize", (BgAutoResize) ? "TRUE" : "FALSE");
-
-	//--------------------已安装脚本列表持久化（原"脚本自启动"，已废弃自动运行，仅保留列表保存）--------------------
-	if (_access(ScriptInstallList.c_str(), 0) != 0)
-		CreateFile(ScriptInstallList);
-	// 创建或清空
-	fstream ScriptFile(ScriptInstallList, ios::trunc);
-	if (ScriptFile.is_open())
-	{
-		// 读取锁
-		shared_lock read_lock(ScriptData::InstalledMtx);
-		for (const auto& script : ScriptData::Installed)
-			ScriptFile << script.name << endl;
-		ScriptFile.close();
-		// 修复：原代码 size()-1 在空列表时无符号下溢 → 日志显示天文数字（"int 极限"）
-		PrintLog("[Config] 已保存 " + to_string(ScriptData::Installed.size()) + " 个已安装脚本", PL_INFO);
-	}
 
 	g_pIniSave = nullptr;
 	IniFlushFile(CustomConfigFile, ini.Serialize());
@@ -1149,40 +1165,6 @@ void LoadConfig(const string& file)
 {
 	LoadPresetConfig(file);
 	LoadGlobalConfig();
-}
-
-// 从已安装脚本列表文件恢复 ScriptData::Installed。
-// 修复：原逻辑放在 LoadConfig() 中，但 LoadConfig 运行时 ScriptData::Avaiable 尚未填充
-//（RefushScriptList 在 InitGC 线程执行）--> 恢复块恒被跳过，已安装列表每次启动丢失。
-// 现在改为独立函数，由 InitGC 在 RefushScriptList() 之后调用。
-void RestoreInstalledScripts()
-{
-	PrintLog("[Config] 已恢复 " + to_string(ScriptData::Installed.size()) + " 个已安装脚本", PL_INFO);
-	if (!ScriptData::Avaiable.empty())
-	{
-		ifstream ScriptFile(ScriptInstallList.c_str());
-		if (ScriptFile.is_open())
-		{
-			string line;
-			while (getline(ScriptFile, line))
-			{
-				// 写入锁
-				lock_guard lock1(ScriptData::AvaiableMtx);
-				lock_guard lock2(ScriptData::InstalledMtx);
-				// 修复：原代码对每一行把【所有】可用脚本都标记 IsInstalled 且重复 push 同名脚本
-				//（导致已安装列表错乱、无法正常工作）；改为只恢复名字匹配的脚本。
-				for (auto& asc : ScriptData::Avaiable)
-				{
-					if (asc.name == line)
-					{
-						asc.IsInstalled = true;
-						ScriptData::Installed.push_back(asc);
-						break;
-					}
-				}
-			}
-		}
-	}
 }
 
 inline string GetPresetFile(const string& name)

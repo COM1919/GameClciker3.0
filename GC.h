@@ -1031,33 +1031,51 @@ bool InputKey(const char* label, int* key, const char* press_tip)
        buf_display = press_tip;
 
     static bool IsJustActive = false; // 是否是刚刚才激活的，用于过滤鼠标点击消息
+    static ULONGLONG ActivateTick = 0;
+    // 物理按键上一帧状态：不依赖全局低级钩子的 isHumanDown。
+    // 钩子线程未就绪、被系统移除或 Debug 下初始化较慢时 isHumanDown 不更新，
+    // 会导致"点了按钮却怎么按都录不进去、ActiveId 一直卡住"。
+    static bool PrevPhysKey[256] = {};
     const bool hovered_key = ItemHoverable(rect, id, g.LastItemData.ItemFlags);
     if (hovered_key && io.MouseClicked[0] && g.ActiveId != id) // 如果激活了就不重复激活
     {
         SetActiveID(id, window);
         FocusWindow(window);
         IsJustActive = true;
+        ActivateTick = GetTickCount64();
+        // 激活瞬间同步一次物理按键状态，避免上一轮残留状态造成误录入
+        for (int i = 1; i < 256; ++i)
+            PrevPhysKey[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
     }
 
     if (g.ActiveId == id)
     {
-        if (IsMouseReleased(ImGuiMouseButton_Left))
+        // 松开激活用的左键、或激活已超过 500ms 都结束"刚激活"过滤；
+        // 500ms 兜底用于鼠标释放事件丢失的情况，避免一直录不进鼠标键。
+        if (IsJustActive && (IsMouseReleased(ImGuiMouseButton_Left) || GetTickCount64() - ActivateTick > 500))
+        {
             IsJustActive = false;
+            // 同步鼠标按键状态，避免把"点击按钮"的那次左键松开当成录入
+            PrevPhysKey[VK_LBUTTON] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+            PrevPhysKey[VK_RBUTTON] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+        }
+
+        // 保留原逻辑的扫描范围：激活期间从 3 开始（跳过激活用的鼠标左/右键），
+        // 结束激活后从 1 开始，所以鼠标左键、右键、中键、侧键都能正常录入。
         for (unsigned int i = IsJustActive ? 3 : 1; i < 255; i++)
         {
-            if (GetKeyUp(i, true))
-            {
-                int TagetValue;
-                if (i == VK_ESCAPE)
-                    TagetValue = 0;
-                else
-                    TagetValue = i;
-                if (TagetValue != *key)
-                    value_changed = true;
-                *key = TagetValue;
-                ClearActiveID();
-                break;
-            }
+            const bool down = (GetAsyncKeyState(i) & 0x8000) != 0;
+            const bool released = PrevPhysKey[i] && !down;
+            PrevPhysKey[i] = down;
+            if (!released)
+                continue;
+
+            const int TagetValue = (i == VK_ESCAPE) ? 0 : i;
+            if (TagetValue != *key)
+                value_changed = true;
+            *key = TagetValue;
+            ClearActiveID();
+            break;
         }
     }
 

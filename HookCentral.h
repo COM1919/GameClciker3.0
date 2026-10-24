@@ -39,7 +39,9 @@ DWORD WINAPI HookDispatchThread(LPVOID lpParam)
 		HookEventData ev;
 		{
 			std::unique_lock<std::mutex> lock(g_HookEventMutex);
-			g_HookEventCV.wait(lock, [] { return !g_HookEventQueue.empty() || IsGCExit; });
+			// 带超时等待：退出时没有人再投递钩子事件，无超时的 wait 会永久阻塞，
+			// 导致退出流程每次都要等满 3 秒超时才强杀进程。
+			g_HookEventCV.wait_for(lock, std::chrono::milliseconds(100), [] { return !g_HookEventQueue.empty() || IsGCExit; });
 			if (g_HookEventQueue.empty())
 				continue;   // GCExit 唤醒，直接退出
 			ev = std::move(g_HookEventQueue.front());

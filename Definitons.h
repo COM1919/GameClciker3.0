@@ -401,19 +401,30 @@ namespace ScriptData
     shared_mutex StatesMtx;             //½Å±¾×´Ì¬µÄËø
     shared_mutex ShopListMtx;           //½Å±¾ÉÌµêÁĞ±íµÄËø£¨Ë¢ĞÂÏß³Ì clear/ÖØÌî¡¢Ö÷Ïß³Ì±éÀú¡¢¼ì²é¸üĞÂÏß³Ì±éÀú£©
     vector<ScriptInfo> Installed;       //ÒÑ°²×°µÄ½Å±¾
+        // ÍË³öÁ÷³Ì CloseAllLua »áÏÈÇå¿Õ Installed£¬Ö®ºó SaveGlobalConfig ²ÅĞ´ÁĞ±íÎÄ¼ş£¬
+    // ÕâÀï±£ÁôÇå¿ÕÇ°µÄ(½Å±¾Ãû, ´¥·¢¼ü)¿ìÕÕ£¬±ÜÃâ InstalledScripts.cfg ±»Ğ´³É¿ÕÎÄ¼ş¡£
+    vector<pair<string, int>> InstalledScriptsOnExit;
+    bool HasInstalledNamesSnapshot = false;
     vector<ScriptInfo> Avaiable;        //¿ÉÓÃµÄ½Å±¾
-    vector<ScriptInfo> ShopList;        //½Å±¾ÉÌµêµÄ½Å±¾ÁĞ±í
+    vector<ScriptInfo> ShopList;        //½Å±¾ÊĞ³¡µÄ½Å±¾ÁĞ±í
     map<string, ScriptState> States;    //½Å±¾Ïà¹Ø×´Ì¬¿ØÖÆ
 }
 
+enum class ScriptMarketSource : int {
+    Unknown = 0,
+    Gitee = 1,
+    Official = 2
+};
+atomic<ScriptMarketSource> ScriptSource = ScriptMarketSource::Official;//½Å±¾ÊĞ³¡µÄÏÂÔØÔ´ÀàĞÍ
+
 namespace Sponsor
 {
-    shared_mutex Mtx;                       
+    shared_mutex Mtx;
     vector<string> List;                //ÔŞÖúÁĞ±í
 }
 
-const string version = "3.57";          //°æ±¾ºÅ
-string title = "GAMECLICKER 3.57";      //±êÌâÃû×Ö
+const string version = "3.58";          //°æ±¾ºÅ
+string title = "GAMECLICKER 3.58";      //±êÌâÃû×Ö
 constexpr int ConfigVersion = 5;        //ÅäÖÃÎÄ¼ş°æ±¾ºÅ
 constexpr int AgreementVersion = 8;     //Ğ­ÒéÎÄ¼ş°æ±¾ºÅ
 bool IsNeedReshowAgreement = false;     //ÊÇ·ñĞèÒªÏÔÊ¾¸üĞÂµÄĞ­Òé£¬¸ù¾İÅäÖÃÎÄ¼şÀïÃæµÄ°æ±¾ºÅ¶Ô±È
@@ -427,13 +438,13 @@ inline const int RenderFps = 60;        //äÖÈ¾Ö¡ÂÊ
 //#define GC_NO_ANIMATION               //ÊÇ·ñ½ûÓÃÆô¶¯¶¯»­
 //#define GC_REMOTE_DEBUG               //ÊÇ·ñÊ¹ÓÃÔ¶³Ìµ÷ÊÔ
 //#define GC_MORE_DEBUG_INFO            //¸ü¶àÏêÏ¸µ÷ÊÔĞÅÏ¢
-#define GC_NO_MSGBOX                  //½ûÓÃÏûÏ¢µ¯´°
+//#define GC_NO_MSGBOX                  //½ûÓÃÏûÏ¢µ¯´°
 //#define GC_SERVER_DEBUG               //ÊÇ·ñ¿ªÆô·şÎñÆ÷Í¨Ñ¶µ÷ÊÔ
 #define GC_ENABLE_QUICK_EXIT            //¿ªÆôµ÷ÊÔ¿ìËÙÍË³ö
 #define GC_NO_TRY_CATCH                 //²»²¶»ñÒì³££¬ÈÃµ÷ÊÔÆ÷²¶»ñÀ´¶¨Î»´úÂëÎ»ÖÃ
 //#define GC_DEBUG_GUIDE_UI             //¿ªÆô×ÜÊÇÏÔÊ¾Ïòµ¼UI
 
-//#define GC_RELEASE_MODE               //ÊÇ·ñÎª·¢²¼°æ£¨Èç¹ûÊÇ¾Í×Ô¶¯¹Ø±ÕËùÓĞµ÷ÊÔÄÚÈİ£©
+#define GC_RELEASE_MODE               //ÊÇ·ñÎª·¢²¼°æ£¨Èç¹ûÊÇ¾Í×Ô¶¯¹Ø±ÕËùÓĞµ÷ÊÔÄÚÈİ£©
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -523,7 +534,8 @@ inline const string ScriptPath =         WorkPath + "\\GameClicker\\Script";
 inline const string ScriptTestFile =     WorkPath + "\\GameClicker\\Script\\test.lua";
 inline const string ScriptTemp =         WorkPath + "\\GameClicker\\Script\\temp";
 inline const string ScriptIconTemp =     WorkPath + "\\GameClicker\\Script\\shop\\icons";
-inline const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstallList.txt";
+// ÒÑ°²×°½Å±¾¼°Æä´¥·¢¿ì½İ¼ü£¨Ã¿ĞĞ£º½Å±¾Ãû:°´¼üÂë£©
+inline const string ScriptInstallList =  WorkPath + "\\GameClicker\\Script\\InstalledScripts.cfg";
 inline const string ScriptShopDir =      WorkPath + "\\GameClicker\\Script\\shop";
 inline const string ScriptShopTemp =     WorkPath + "\\GameClicker\\Script\\shop\\temp";
 
@@ -612,6 +624,16 @@ HANDLE WindowMsgThreadHandle = nullptr;   // ´°¿ÚÏûÏ¢Ïß³Ì¾ä±ú, ÍË³öÊ±µÈ´ıÆä½áÊøÔ
 atomic<bool> IsWindowInitSuccessful  = false;           //´°¿ÚÊÇ·ñ´´½¨³É¹¦
 atomic<bool> IsStopClicker           = false;           //ÊÇ·ñÍ£Ö¹Á¬µã
 atomic<bool> IsGCExit                = false;           //Á¬µãÆ÷ÍË³ö
+atomic<ULONGLONG> ExitRequestTick    = 0;               //ÍË³öÁ÷³Ì¿ªÊ¼Ê±¼ä£¨tick£©£¬ÓÃÓÚ³¬Ê±ÅĞ¶¨
+constexpr DWORD EXIT_TIMEOUT_MS      = 3000;            //ÍË³öµÈ´ıÔ¤Ëã£º3 Ãë
+
+// ÍË³öÁ÷³ÌÒÑºÄÊ±£¨ºÁÃë£©
+inline DWORD GetExitElapsedMs()
+{
+    const ULONGLONG start = ExitRequestTick.load();
+    return start == 0 ? 0 : (DWORD)(GetTickCount64() - start);
+}
+
 atomic<bool> IsShowGui               = true;            //ÊÇ·ñÏÔÊ¾GUI
 atomic<bool> IsFirstRun              = false;           //µÚÒ»´ÎÔËĞĞ£¨ÊÇ·ñÏÔÊ¾Ïòµ¼£©
 LRPair<atomic<bool>> IsClickering    = {};              //ÊÇ·ñÁ¬µã
@@ -627,7 +649,6 @@ atomic<bool> AllowUseGameGui         = false;           //ÊÇ·ñÔÊĞíÊ¹ÓÃÊÓ¾õĞ§¹û
 atomic<bool> AllowConnectServer      = false;           //ÊÇ·ñÔÊĞíÁ¬½Ó·şÎñÆ÷
 atomic<bool> IsDragingFile           = false;           //ÊÇ·ñÕıÔÚÍÏÈëÎÄ¼ş
 atomic<bool> IsCPSWaveSettingChanged = false;           //ÊÇ·ñ¸ü¸ÄÁËCPS²¨ĞÎÉèÖÃ
-atomic<bool> IsScriptUseGitee        = false;           //½Å±¾ÉÌ³¡ÊÇ·ñÊ¹ÓÃgitee
 
 int ClickTabCount = 11;                                 //Á¬µãÆ÷±êÇ©Ò³µÄ´ÎÊı
 int GameGuiTransparency = 40;                           //µ¥Î»%
@@ -642,7 +663,6 @@ vector<string> KeybdSoundList;                          //¿ÉÓÃµÄ¼üÅÌÉùÒôÁĞ±í
 UDPSocket NetworkClient;
 string ClientID;
 mutex ClientIDMtx;
-
 
 namespace PresetConfig
 {

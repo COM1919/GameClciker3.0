@@ -3,6 +3,7 @@
 #include "ScriptAPI.h"
 #include <memory> // make_shared/shared_ptr（StartScript 线程句柄生命周期）
 
+static int LuaErrorHandler(lua_State* L);
 lua_State* LuaInit(const string& scriptFile);
 HANDLE StartScript(const string& file);
 void StartInstalledScriptsOnBoot();
@@ -11,9 +12,12 @@ static int panic_handler(lua_State* L);
 bool RenderScriptGui(const string& file);
 int SaveScriptConfig(const string& file);
 int LoadScript(lua_State* L, const string& file);
+void RestoreInstalledScripts();
 void CloseScriptThread(const string& filename, ScriptInfo& info);
 int CalledScriptFunction(lua_State* L, const string& func);
 inline bool InitLuaState(const string& file, LuaState& lua);
+DWORD WINAPI ScriptAutoStartThread(LPVOID lpParam);
+void ReportScriptError(const string& file, const string& message);
 
 class SpaceKeyCodeDefine
 {
@@ -344,6 +348,65 @@ void ReportScriptError(const string& file, const string& message)
         ScriptData::ErrorRecords.erase(ScriptData::ErrorRecords.begin());
 }
 
+void RestoreInstalledScripts()
+{
+    // 恢复前 Installed 必为空，这里打印数量会误导；改由调用方在恢复完成后打印真实数量
+    if (ScriptData::Avaiable.empty())
+        return;
+
+    ifstream ScriptFile(ScriptInstallList.c_str());
+    if (!ScriptFile.is_open())
+        return;
+
+    string line;
+    while (getline(ScriptFile, line))
+    {
+        if (line.empty())
+            continue;
+        // 如果脚本名没有 ":" 时，触发键按 0（未设置）处理
+        string name = line;
+        int key = 0;
+        const size_t tab = line.find(':');
+        if (tab != string::npos)
+        {
+            name = line.substr(0, tab);
+            try
+            {
+                key = stoi(line.substr(tab + 1));
+            }
+            catch (...)
+            {
+                PrintLog("[Script] 恢复已安装脚本时，解析触发键失败，已忽略该行：" + line, PL_WARNING);
+                continue;
+            }
+        }
+
+        {
+            // 写入锁
+            lock_guard lock1(ScriptData::AvaiableMtx);
+            lock_guard lock2(ScriptData::InstalledMtx);
+            for (ScriptInfo& asc : ScriptData::Avaiable)
+            {
+                if (asc.name == name)
+                {
+                    asc.IsInstalled = true;
+                    ScriptData::Installed.push_back(asc);
+                    {
+                        lock_guard lock3(ScriptData::StatesMtx);
+                        ScriptData::States[asc.file].key = key;
+                    }
+                    {
+                        // 保存线程句柄，删除脚本时才能正确终止线程
+                        const HANDLE hThread = StartScript(asc.file);
+                        asc.hThread = hThread; // 不检查是不是NULL，因为没必要，因为asc.hThread初始值就是NULL
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // 严重错误处理
 static int panic_handler(lua_State* L)
 {
@@ -356,6 +419,70 @@ static int panic_handler(lua_State* L)
     IsGCExit = true;
     return 0;
 }
+
+// 脚本自动启动线程：等窗口初始化完成后，按 InstallList.txt 恢复出的已安装列表逐个启动。
+DWORD WINAPI ScriptAutoStartThread(LPVOID lpParam)
+{
+    while (!IsGCExit && !IsWindowInitSuccessful)
+        Sleep(50);
+    if (IsGCExit)
+        return 0;
+
+    vector<ScriptInfo> scripts;
+    {
+        shared_lock lock(ScriptData::InstalledMtx);
+        scripts = ScriptData::Installed;
+    }
+    if (scripts.empty())
+    {
+        PrintLog("[Script] 没有已安装脚本，跳过自动启动", PL_INFO);
+        return 0;
+    }
+
+    PrintLog("[Script] 自动启动已安装脚本，共 " + to_string(scripts.size()) + " 个", PL_INFO);
+    vector<string> failed;
+    for (const ScriptInfo& script : scripts)
+    {
+        if (IsGCExit)
+            break;
+        const HANDLE hThread = StartScript(script.file);
+        if (hThread != NULL)
+        {
+            lock_guard lock(ScriptData::InstalledMtx);
+            for (ScriptInfo& s : ScriptData::Installed)
+            {
+                if (s.file == script.file)
+                {
+                    s.hThread = hThread;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            failed.push_back(script.name);
+            lock_guard lock(ScriptData::StatesMtx);
+            auto it = ScriptData::States.find(script.file);
+            if (it != ScriptData::States.end())
+                it->second.IsRunning = false;
+        }
+    }
+
+    if (!failed.empty())
+    {
+        string names;
+        for (const string& n : failed)
+            names += (names.empty() ? "" : ", ") + n;
+        PrintLog("[Script] 自动启动失败：" + names, PL_ERROR);
+        RenderTip((config.UseChinese ? u8"脚本自动启动失败："s : "Failed to auto start: "s) + names, 6.0f, PT_ERROR);
+    }
+    else
+    {
+        PrintLog("[Script] 自动启动完成", PL_INFO);
+    }
+    return 0;
+}
+
 
 int LoadScript(lua_State* L, const string& file)
 {
@@ -942,8 +1069,23 @@ void CloseAllLua()
         lock_guard lock1(ScriptData::InstalledMtx);
         for (ScriptInfo script : ScriptData::Installed)
             CloseScriptThread(script.file, script);
+        // 退出最后还会调用 SaveGlobalConfig 重写 InstallList.txt，
+        // 先保存清空前的已安装脚本名，避免列表被写成空文件导致下次启动无法自动启动。
+                {
+            lock_guard stateLock(ScriptData::StatesMtx);
+            ScriptData::InstalledScriptsOnExit.clear();
+            for (const ScriptInfo& script : ScriptData::Installed)
+            {
+                int key = 0;
+                auto it = ScriptData::States.find(script.file);
+                if (it != ScriptData::States.end())
+                    key = it->second.key;
+                ScriptData::InstalledScriptsOnExit.push_back({ script.name, key });
+            }
+            ScriptData::States.clear();
+        }
+        ScriptData::HasInstalledNamesSnapshot = true;
         ScriptData::Installed.clear();
-        ScriptData::States.clear();
     }
     {
         // 写入锁

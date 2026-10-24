@@ -80,7 +80,7 @@ void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool UpdateScriptFromShop(const ScriptInfo& script);
 bool AddToStartup(const string& file = "0");
 bool RemoveStartup(const string& file = "0");
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee = false);
+int RefushScriptMarketList(vector<ScriptInfo>& scripts, int paper, bool isClearCache, ScriptMarketSource source = ScriptMarketSource::Official);
 bool RemoveFollowStartup();
 bool DeleteDirectoryRecursively(const string& dirPath);
 inline void FlushUsageDuration();
@@ -256,7 +256,7 @@ inline ULONGLONG GetNowMs()
 	).count();
 }
 
-static map<string, time_t> LastTime;
+thread_local static map<string, time_t> LastTime;
 // 不一定需要End
 inline void BeginSleep(const char* flag)
 {
@@ -522,7 +522,7 @@ bool DeleteDirectoryRecursively(const string& dirPath)
 }
 
 // 辅助结构：存储市场脚本元数据
-struct MarketScriptMeta {
+struct ScriptMarketMeta {
 	int scriptid;
 	string title;
 	string author;
@@ -531,10 +531,10 @@ struct MarketScriptMeta {
 	string iconurl;
 	string bbsurl;
 };
-static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
+static int RefushScriptMarketListWithSource(vector<ScriptInfo>& scripts, int paper, bool isClearCache, ScriptMarketSource source)
 {
 	// 修复：static 缓存向量（GiteeScriptList/MarketScriptList）可能被多个 detach 线程
-	//（快速切换下载源/翻页）并发访问 → 数据竞争（UB）。整个函数串行化；
+	//（快速切换下载源/翻页）并发访问 -> 数据竞争（UB）。整个函数串行化；
 	// 网络请求期间持锁会阻塞其他调用，但商场刷新是用户显式操作，可接受。
 	static mutex ShopListMtx;
 	lock_guard lock(ShopListMtx);
@@ -542,15 +542,14 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 	const int PaperSize = 10;
 	const string baseUrl = "https://scripts.mcgc.top";
 
-	// ---------- 静态缓存（分开存储两种源） ----------
 	static vector<string> GiteeScriptList;            // Gitee 文本列表
-	static vector<MarketScriptMeta> MarketScriptList; // 市场元数据列表
+	static vector<ScriptMarketMeta> MarketScriptList; // 市场元数据列表
 
 	// ======================== 市场源 ========================
-	if (!fromGitee)
+	if (source == ScriptMarketSource::Official)
 	{
-		// 1拉取列表（若缓存为空或强制刷新）
-		if (MarketScriptList.empty() || clear)
+		// 拉取列表（若缓存为空或强制刷新）
+		if (MarketScriptList.empty() || isClearCache)
 		{
 			MarketScriptList.clear();
 			const int FetchSize = 20;   // 每次请求条数
@@ -563,9 +562,11 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 				string url = baseUrl + "/api/app/list?begin=" + to_string(begin) + "&end=" + to_string(end);
 				string content;
 
-				if (!ReadURLDatasRetry(url, content))
+				constexpr char const* LogPrefix = "[ScriptMarket][scripts.mcgc.top] ";
+
+				if (!ReadURLDatas(url, content)) // 不使用重试，失败直接返回，然后自动换源
 				{
-					PrintLog("[ScriptMarket] 获取列表失败", PL_ERROR);
+					PrintLog(LogPrefix + "获取列表失败"s, PL_ERROR);
 					return 0;
 				}
 
@@ -574,12 +575,12 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 				string err = picojson::parse(v, content);
 				if (!err.empty())
 				{
-					PrintLog("[ScriptMarket] JSON 解析错误: " + err, PL_ERROR);
+					PrintLog(LogPrefix + "JSON 解析错误: "s + err, PL_ERROR);
 					return 0;
 				}
 				if (!v.is<picojson::object>())
 				{
-					PrintLog("[ScriptMarket] 响应不是对象", PL_ERROR);
+					PrintLog(LogPrefix + "响应不是对象"s, PL_ERROR);
 					return 0;
 				}
 				auto& obj = v.get<picojson::object>();
@@ -587,17 +588,17 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 				// 检查 success 和 code
 				if (!obj.count("success") || !obj["success"].is<bool>() || !obj["success"].get<bool>())
 				{
-					PrintLog("[ScriptMarket] success为false", PL_ERROR);
+					PrintLog(LogPrefix + "success为false"s, PL_ERROR);
 					return 0;
 				}
 				if (!obj.count("code") || !obj["code"].is<double>() || (int)obj["code"].get<double>() != 0)
 				{
-					PrintLog("[ScriptMarket] code 非 0", PL_ERROR);
+					PrintLog(LogPrefix + "code 非 0"s, PL_ERROR);
 					return 0;
 				}
 				if (!obj.count("data") || !obj["data"].is<picojson::array>())
 				{
-					PrintLog("[ScriptMarket] data 缺失或非数组", PL_ERROR);
+					PrintLog(LogPrefix + "data 缺失或非数组"s, PL_ERROR);
 					return 0;
 				}
 				auto& data = obj["data"].get<picojson::array>();
@@ -609,7 +610,7 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 				{
 					if (!item.is<picojson::object>()) continue;
 					auto& it = item.get<picojson::object>();
-					MarketScriptMeta meta;
+					ScriptMarketMeta meta;
 					meta.scriptid = (int)it["scriptid"].get<double>();
 					meta.title = it["title"].get<string>();
 					meta.author = it["author"].get<string>();
@@ -637,13 +638,13 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 			}
 		}
 
-		// 2. 计算总页数
+		// 计算总页数
 		int totalCount = (int)MarketScriptList.size();
 		int totalPages = (totalCount + PaperSize - 1) / PaperSize;
 		if (totalCount == 0)
 			return 0;
 
-		// 3. 截取当前页
+		// 截取当前页
 		int beginIdx = (paper - 1) * PaperSize;
 		int endIdx = min(beginIdx + PaperSize, totalCount);
 		scripts.clear();
@@ -703,19 +704,19 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 			scripts.push_back(info);
 		}
 		// 市场模式下 不调用 GetScriptsInfo，也不重命名
-		// 并行下载图标（带重试），提高整体下载速度
+		// 并行下载图标，提高整体下载速度
 		{
 			vector<thread> threads;
 			for (const auto& task : iconTasks)
 			{
 				threads.emplace_back([task]()
+				{
+					if (DownloadURLFilesRetry(task.url, task.tempFile, 2))
 					{
-						if (DownloadURLFilesRetry(task.url, task.tempFile))
-						{
-							if (rename(task.tempFile.c_str(), task.localPath.c_str()) != 0)
-								_unlink(task.tempFile.c_str());
-						}
-					});
+						if (rename(task.tempFile.c_str(), task.localPath.c_str()) != 0)
+							_unlink(task.tempFile.c_str());
+					}
+				});
 			}
 			for (auto& t : threads)
 				t.join();
@@ -723,65 +724,66 @@ static int RefushScriptShopListWithSource(vector<ScriptInfo>& scripts, int paper
 
 		return totalPages;
 	}
-
-	// ======================== Gitee 源（保留原逻辑） ========================
-	if (GiteeScriptList.empty() || clear)
+	// ======================== Gitee 源 ========================
+	else
 	{
-		string content;
-		if (!ReadURLDatasRetry(URL_GITEE_SCRIPTS, content))
+		if (GiteeScriptList.empty() || isClearCache)
 		{
-			PrintLog("[Init] Gitee: 获取脚本列表失败", PL_ERROR);
-			return 0;
-		}
-		SplitString(content, "\r\n", GiteeScriptList);
-	}
-
-	const int BeginCount = (paper - 1) * PaperSize;
-	const int EndCount = BeginCount + PaperSize;
-	scripts.clear();
-	int count = 0;
-	for (const string& script : GiteeScriptList)
-	{
-		count++;
-		if (BeginCount >= count || EndCount < count)
-			continue;
-		const string filename = ScriptShopDir + "\\" + script + ".gcdat";
-		if (_access(filename.c_str(), 0) != 0) {
-			const string url = URL_GITEE_SC_ROOT + script + ".zip";
-			if (!DownloadURLFilesRetry(url, filename))
+			string content;
+			if (!ReadURLDatas(URL_GITEE_SCRIPTS, content)) // 不使用重试
 			{
-				PrintLog("[Script] Gitee: 下载脚本失败: " + url, PL_WARNING);
-				continue;
+				PrintLog("[ScriptMarket] 获取脚本列表失败（gitee.com）", PL_ERROR);
+				return 0;
 			}
+			SplitString(content, "\r\n", GiteeScriptList);
 		}
-		ScriptInfo info;
-		info.file = filename;
-		scripts.push_back(info);
-	}
-	GetScriptsInfo(scripts, ScriptShopTemp);
-	for (const ScriptInfo& info : scripts)
-		rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str());
+		const int BeginCount = (paper - 1) * PaperSize;
+		const int EndCount = BeginCount + PaperSize;
+		scripts.clear();
+		int count = 0;
+		for (const string& script : GiteeScriptList)
+		{
+			count++;
+			if (BeginCount >= count || EndCount < count)
+				continue;
+			const string filename = ScriptShopDir + "\\" + script + ".gcdat";
+			if (_access(filename.c_str(), 0) != 0) {
+				const string url = URL_GITEE_SC_ROOT + script + ".zip";
+				if (!DownloadURLFilesRetry(url, filename, 2))
+				{
+					PrintLog("[ScriptMarket] 下载脚本失败: " + url, PL_WARNING);
+					continue;
+				}
+			}
+			ScriptInfo info;
+			info.file = filename;
+			scripts.push_back(info);
+		}
+		GetScriptsInfo(scripts, ScriptShopTemp);
+		for (const ScriptInfo& info : scripts)
+			rename(info.file.c_str(), (ScriptShopDir + "\\" + info.name).c_str());
 
-	return (GiteeScriptList.size() + PaperSize - 1) / PaperSize;
+		return (GiteeScriptList.size() + PaperSize - 1) / PaperSize;
+	}
+	return -1;
 }
 
 // 脚本商店刷新：先用当前选中的源，加载失败时自动切换到另一个源再试一次，
 // 并把实际生效的源同步给界面（IsScriptUseGitee），避免下一轮又去用已经失败的源。
-int RefushScriptShopList(vector<ScriptInfo>& scripts, int paper, bool clear, bool fromGitee)
+int RefushScriptMarketList(vector<ScriptInfo>& scripts, int paper, bool isClearCache, ScriptMarketSource source)
 {
-	const int pages = RefushScriptShopListWithSource(scripts, paper, clear, fromGitee);
+	const int pages = RefushScriptMarketListWithSource(scripts, paper, isClearCache, source);
 	if (pages > 0)
 		return pages;
 
-	const bool otherGitee = !fromGitee;
-	PrintLog(otherGitee ? "[ScriptMarket] 当前源加载失败，自动切换到 Gitee 源重试"
-		: "[ScriptMarket] 当前源加载失败，自动切换到官方接口源重试", PL_WARNING);
-	RenderTip(config.UseChinese ? "加载失败，自动切换下载源..." : "Loading failed.\auto switching download source...", 3.0f, PT_ERROR);
-	const int pages2 = RefushScriptShopListWithSource(scripts, paper, clear, otherGitee);
+	PrintLog((source == ScriptMarketSource::Official) ? "[ScriptMarket] 当前源加载失败，自动切换到 Gitee 源重试" : "[ScriptMarket] 当前源加载失败，自动切换到官方接口源重试", PL_WARNING);
+	RenderTip(config.UseChinese ? u8"加载失败，自动切换下载源..." : "Loading failed.\nauto switching download source...", 3.0f, PT_ERROR);
+
+	ScriptMarketSource source2 = (source == ScriptMarketSource::Official) ? ScriptMarketSource::Gitee : ScriptMarketSource::Official;
+	const int pages2 = RefushScriptMarketListWithSource(scripts, paper, isClearCache, source2);
 	if (pages2 > 0)
 	{
-		IsScriptUseGitee = otherGitee;
-		PrintLog("[ScriptMarket] 已自动切换源并加载成功", PL_INFO);
+		ScriptSource = source2;
 		return pages2;
 	}
 	return 0;
@@ -820,7 +822,12 @@ static DWORD WINAPI SafeThreadEntry(LPVOID lpContext)
 }
 
 // 前台线程句柄登记表：用于进程退出时等待所有后台线程结束后再销毁全局对象
-static vector<HANDLE> BackgroundThreads;
+struct BackgroundThreadRecord
+{
+	HANDLE handle;
+	string name;
+};
+static vector<BackgroundThreadRecord> BackgroundThreads;
 static mutex BackgroundThreadsMtx;
 
 HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, LPDWORD lpThreadId, const string& name)
@@ -840,52 +847,90 @@ HANDLE CreateThreadSafe(LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParamete
 	else
 	{
 		PrintLog("[Thread] " + name + "线程已启动", PL_INFO);
-		lock_guard lock(BackgroundThreadsMtx);
-		BackgroundThreads.push_back(hThread);
+				lock_guard lock(BackgroundThreadsMtx);
+		BackgroundThreads.push_back({ hThread, name });
 	}
-	return hThread;
+		return hThread;
 }
 
-// 退出前调用：先置 IsGCExit 并关闭网络套接字解锁阻塞接收，
-// 再等待所有登记的后台线程结束，最后等待日志线程排空队列，
-// 确保全局对象析构时没有任何线程仍在访问它们。
-void StopAndWaitBackgroundThreads()
+// 退出前调用：等待所有登记的后台线程结束。
+// 返回 true 表示全部退出，可以安全析构全局对象；返回 false 表示仍有线程在跑，
+// 调用方必须直接结束进程，否则线程会访问已析构的全局对象（如声音映射表）导致 0xC0000005。
+bool StopAndWaitBackgroundThreads(DWORD timeoutMs = EXIT_TIMEOUT_MS)
 {
 	IsGCExit = true;
 	NetworkClient.CloseSocket();
 
-	vector<HANDLE> handles;
+	auto Remaining = [timeoutMs]() -> DWORD
+	{
+		const DWORD used = GetExitElapsedMs();
+		return used >= timeoutMs ? 0 : timeoutMs - used;
+	};
+
+	vector<BackgroundThreadRecord> records;
 	{
 		lock_guard lock(BackgroundThreadsMtx);
-		handles = BackgroundThreads;
+		records = BackgroundThreads;
 	}
+
+	bool AllExited = true;
+	vector<HANDLE> handles;
+	for (const auto& r : records)
+		handles.push_back(r.handle);
+
 	if (!handles.empty())
 	{
 		const DWORD count = (DWORD)handles.size();
 		if (count <= 60)
 		{
-			const DWORD wr = WaitForMultipleObjects(count, handles.data(), TRUE, 5000);
+			const DWORD wr = WaitForMultipleObjects(count, handles.data(), TRUE, Remaining());
 			if (wr == WAIT_TIMEOUT)
-				PrintLog("[Thread] 部分后台线程超时未退出，继续退出流程", PL_WARNING);
+			{
+				AllExited = false;
+				// 逐个探测仍未退出的线程，日志里直接给出线程名，便于定位
+				string aliveList;
+				for (const auto& r : records)
+				{
+					if (WaitForSingleObject(r.handle, 0) == WAIT_TIMEOUT)
+						aliveList += (aliveList.empty() ? "" : ", ") + r.name;
+				}
+				PrintLog("[Thread] 后台线程超时未退出：" + aliveList, PL_WARNING);
+			}
 		}
 		else
 		{
 			for (HANDLE h : handles)
-				WaitForSingleObject(h, 2000);
+			{
+				const DWORD left = Remaining();
+				if (left == 0)
+				{
+					AllExited = false;
+					break;
+				}
+				if (WaitForSingleObject(h, left) == WAIT_TIMEOUT)
+					AllExited = false;
+			}
 		}
 	}
+
 	{
 		lock_guard lock(BackgroundThreadsMtx);
-		for (HANDLE h : handles)
-			if (h && h != INVALID_HANDLE_VALUE) CloseHandle(h);
+		for (const auto& r : records)
+			if (r.handle && r.handle != INVALID_HANDLE_VALUE)
+				CloseHandle(r.handle);
 		BackgroundThreads.clear();
 	}
 
-	// 等待日志线程把队列写完后退出
-	for (int i = 0; i < 300 && !LogThreadExited; ++i)
+	// 等待日志线程把队列写完
+	while (!LogThreadExited && Remaining() > 0)
 		Sleep(10);
 	if (!LogThreadExited)
+	{
+		AllExited = false;
 		PrintLog("[Thread] 日志线程超时未退出", PL_WARNING);
+	}
+
+	return AllExited;
 }
 
 void ClearProcessMemory()

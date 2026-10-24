@@ -318,7 +318,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
     if (ShExecInfo.hProcess)
         CloseHandle(ShExecInfo.hProcess);
 
-    IsGCExit = true;
+    RequestExit();
 #endif // USE_IN_MICROSOFT
     return 0;
 }

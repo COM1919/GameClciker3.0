@@ -105,7 +105,10 @@ void ALFWShutdown()
 		g_pWaveLoader = NULL;
 	}
 
-	ALchar ch = _getch();
+	// ALchar ch = _getch(); // 修复严重的BUG
+	// 因为这个库代码是开源库来的，可能作者为了方便就针对控制台应用设计了
+	// 导致这个代码影响非控制台应用的运行
+	// 删掉这个代码就可以了
 }
 
 ALboolean ALFWInitOpenAL()

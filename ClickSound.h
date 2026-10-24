@@ -606,8 +606,9 @@ void BindSouce(ALuint* source, ALuint* buffer, bool loop = true)
 
 DWORD WINAPI ClickSound(LPVOID lpParam)
 {
-	while (IsFirstRun)
-		Sleep(1000);
+		// 等待首次运行向导完成；退出时也要能及时醒来
+	while (IsFirstRun && !IsGCExit)
+		Sleep(100);
 
 	ALFWInit();
 
@@ -726,15 +727,19 @@ DWORD WINAPI ClickSound(LPVOID lpParam)
 			EnsureALContextCurrent();
 			// 修复：设备切换统一在 ClickSound 线程重建（唯一执行 OpenAL 生命周期管理的线程），
 			// 避免 detach 线程并发 Shutdown/Init 与其它线程持有失效上下文的竞态
-			g_IsLoadedSounds = false;
+						g_IsLoadedSounds = false;
 			ShutdownOpenAL();
-			Sleep(1000);
+			// 分片等待，退出时能及时跳出，避免拖满退出预算
+			for (int i = 0; i < 20 && !IsGCExit; ++i)
+				Sleep(50);
 			if (!InitOpenAL())
 				PrintLog("[Sound] 重新打开音频设备失败", PL_ERROR);
 			g_IsLoadedSounds = true;
 		}
 
-		Sleep(500);
+				// 分片等待，退出时最多 50ms 就能跳出循环进入清理
+		for (int i = 0; i < 10 && !IsGCExit; ++i)
+			Sleep(50);
 	}
 
 	{

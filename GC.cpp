@@ -159,30 +159,56 @@ int StartUpGC(HINSTANCE hInstance)
     }
 #endif // GC_NO_TRY_CATCH
 
-    //===============================结束===============================
-    NetworkClient.Send("exit");
-    PrintLog("[Render] 释放GUI", PL_INFO);
-    // 先关闭脚本线程, 避免其仍在用 D3D 加载纹理(LoadTextureFromFile)时 ReleasGui 释放设备
-    CloseAllLua();
-    // 停止并等待所有后台线程结束，再释放 GUI/全局对象，避免退出时访问已析构内存
-    StopAndWaitBackgroundThreads();
-    ReleasGui(wcex, &MainGuiData);
+    {
+        NetworkClient.Send("exit");
+        IsGCExit = true;
+        ExitRequestTick = GetTickCount64();
 
-    PrintLog("[Render] 释放Dx11", PL_INFO);
-    DragAcceptFiles(GCHWND, FALSE);
+        // 看门狗：从用户点击退出起算，3 秒后无论主线程卡在哪一步都强制结束进程
+		thread th([]()
+		{
+            Sleep(EXIT_TIMEOUT_MS);
+            ExitProcess(0);
+            return 0;
+		});
+		th.detach();
+    }
+	// 隐藏窗口 & 禁止拖拽文件
     ShowWindow(GCHWND, SW_HIDE);
-    if (IsFirstRun)
-        DelFile(ConfigFile.c_str());
-
-    Shell_NotifyIcon(NIM_DELETE, &TrayNid);
+    DragAcceptFiles(GCHWND, FALSE);
 
     // 关闭互斥量
     if (AntiMultiOpenMutex)
         CloseHandle(AntiMultiOpenMutex);
+    
+    PrintLog("[Render] 开始退出，保存配置", PL_INFO);
+    SaveConfig(GetPresetFile(PresetConfig::CurrentName));
+
+    // 先关闭脚本线程, 避免其仍在用 D3D 加载纹理(LoadTextureFromFile)时 ReleasGui 释放设备
+    CloseAllLua();
+
+    // 等待所有后台线程退出。只要还有线程在跑，就绝不能继续析构全局对象：
+    // 例如 ClickSound 线程会遍历 g_MouseSoundSourceList，全局对象析构后再访问它
+    // 会触发 0xC0000005（this 为 0xFFFFFFFFFFFFFFF7）。这种情况下直接结束进程。
+    const bool AllThreadsExited = StopAndWaitBackgroundThreads(EXIT_TIMEOUT_MS);
+    if (!AllThreadsExited)
+    {
+        PrintLog("[Exit] 仍有后台线程未退出，直接结束进程（跳过全局析构）", PL_WARNING);
+        ExitProcess(0);
+    }
+
+    // 释放GUI
+    ReleasGui(wcex, &MainGuiData);
+    
+	// 如果没有完成新手向导，就删除配置文件，让其下一次启动继续显示新手向导
+    if (IsFirstRun)
+        DelFile(ConfigFile.c_str());
+
+	// 删除托盘图标
+    Shell_NotifyIcon(NIM_DELETE, &TrayNid);
+
     // 清除符号处理
     SymCleanup(GetCurrentProcess());
-
-    SaveConfig(GetPresetFile(PresetConfig::CurrentName));
 
     PrintLog("[Render] GC连点器退出成功 - 开发者：COM1919", PL_INFO);
     return 1919;
@@ -554,7 +580,6 @@ int GCMainLoop()
 
 DWORD WINAPI InitGC(LPVOID lpParam)
 {
-    PrintLog("[Init] 创建线程", PL_INFO);
     CreateThreadSafe(HandleCPSRecord, NULL, 0, "HandleCPSRecord");
     SetThreadPriority(ClickRunThread, THREAD_PRIORITY_HIGHEST);
     ClickSoundThread = CreateThreadSafe(ClickSound, NULL, 0, "ClickSound");
@@ -572,10 +597,6 @@ DWORD WINAPI InitGC(LPVOID lpParam)
 
     bool IsDownload = false;
 
-    PrintLog("[Init] 检查文件完整性 - InitThread", PL_INFO);
-    // 安装的脚本会在配置文件读取的函数中，获取到
-    //RefreshScriptList(InstallScriptList, InstallTextureList, InstallScriptInfo, InstallScriptName);
-
     if (_access(ScriptPath.c_str(), 0) != 0)
     {
         CreateDirectory(ScriptPath.c_str(), NULL);
@@ -590,8 +611,6 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         CreateDirectory(Sound_CfgPath.c_str(), NULL);
     if (_access(Sound_KeybdPath.c_str(), 0) != 0)
         CreateDirectory(Sound_KeybdPath.c_str(), NULL);
-    if (_access("D:\\GameClicker\\sound", 0) != 0)
-        DeleteDirectory("D:\\GameClicker\\sound");
 
     string ver;
     char* buffer = new char[MAX_BUF];
@@ -617,7 +636,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         }
         catch (const exception&)
         {
-            PrintLog("[Init] 版本号格式错误", PL_ERROR);
+            PrintLog("[Init] 版本号格式错误：" + ver, PL_ERROR);
         }
     }
     if (!ver.empty())
@@ -633,7 +652,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
         }
         catch (const exception&)
         {
-            PrintLog("[Init] 版本号格式错误", PL_ERROR);
+            PrintLog("[Init] 版本号格式错误：" + ver, PL_ERROR);
         }
     }
 
@@ -646,6 +665,21 @@ DWORD WINAPI InitGC(LPVOID lpParam)
     RefushScriptList();
     // 已安装列表恢复必须在 ScriptData::Avaiable 填充之后（原逻辑在 LoadConfig 中因列表为空被跳过）
     RestoreInstalledScripts();
+
+    // 恢复完成后再打印真实数量（RestoreInstalledScripts 内部恢复前 size 恒为 0）
+    {
+        size_t AvaiableCount = 0;
+        {
+            shared_lock aLock(ScriptData::AvaiableMtx);
+            AvaiableCount = ScriptData::Avaiable.size();
+        }
+        size_t InstalledCount = 0;
+        {
+            shared_lock iLock(ScriptData::InstalledMtx);
+            InstalledCount = ScriptData::Installed.size();
+        }
+        PrintLog("[Config] 已恢复 " + to_string(InstalledCount) + " 个已安装脚本", PL_INFO);
+    }
 
     // 为已恢复的已安装脚本创建状态条目（供"启用"开关与启动按键显示）
     {
@@ -663,9 +697,21 @@ DWORD WINAPI InitGC(LPVOID lpParam)
             InitSuccessTime = GetNowMs();
     }
 
-    // 未禁用脚本自动启动时，启动所有已安装脚本
+        // 未禁用脚本自动启动时，交给独立线程执行：
+    // 脚本解析与 Lua 初始化可能较慢，不能拖住首帧渲染与后续初始化。
     if (!DisableScriptAutoStart)
-        StartInstalledScriptsOnBoot();
+        CreateThreadSafe(ScriptAutoStartThread, NULL, 0, "ScriptAutoStart");
+    else
+    {
+        // 被设置项禁用时留一条日志，避免用户只看到"没有自动启动"却找不到原因
+        size_t InstalledCount = 0;
+        {
+            shared_lock lock(ScriptData::InstalledMtx);
+            InstalledCount = ScriptData::Installed.size();
+        }
+        if (InstalledCount > 0)
+            PrintLog("[Script] 脚本自动启动已被设置项禁用，本次不会自动运行已安装脚本", PL_WARNING);
+    }
     PrintLog("[Init] 初始化已完成，耗时: " + to_string(GetNowMs() - StartTime), PL_INFO); // 原代码误打印了启动时间戳，而非耗时
     return 0;
 }
@@ -3862,7 +3908,7 @@ void RenderGui(ImGuiIO& io)
                                 // vector 扩容 -> 迭代器失效 -> 0xC0000005。
                                 // 改为先在临时列表填充，锁内一次性 swap。
                                 vector<ScriptInfo> tmpList;
-                                const int papers = RefushScriptShopList(tmpList, CurrentPaper, false, IsScriptUseGitee);
+                                const int papers = RefushScriptMarketList(tmpList, CurrentPaper, false, ScriptSource);
                                 {
                                     lock_guard lock(ScriptData::ShopListMtx);
                                     ScriptData::ShopList.swap(tmpList);
@@ -3877,15 +3923,13 @@ void RenderGui(ImGuiIO& io)
                         }
 
                         static const char* SourceNames[] = { config.UseChinese ? u8"稳定仓库源" : "Stable Repo Source", config.UseChinese ? u8"官方下载源" : "Official Source" };
-                        static int SourceIndex = IsScriptUseGitee ? 0 : 1;
-                        // 刷新线程可能因当前源加载失败而自动切换了源，这里让下拉框跟随实际使用的源
-                        SourceIndex = IsScriptUseGitee ? 0 : 1;
+                        int SourceIndex = (int)ScriptSource.load() - 1;
                         Text(config.UseChinese ? u8"下载源" : "Source");
                         SameLine();
                         SetNextItemWidth(110.0f);
                         if (Combo("##ScriptMarketSourceCombo", &SourceIndex, SourceNames, IM_ARRAYSIZE(SourceNames)))
                         {
-                            IsScriptUseGitee = (SourceIndex == 0);
+                            ScriptSource = (ScriptMarketSource)(SourceIndex + 1);
                             IsRefushList = true;
                             IsNeedRefushShopList = true;
                             IsRefushSuccess = false; // 触发刷新动画
@@ -3972,46 +4016,46 @@ void RenderGui(ImGuiIO& io)
                                         if (ImageButton("##script_download", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                         {
                                             thread FuncThread([scriptCopy = script]()
+                                            {
+                                                bool IsDownloadSuccess = false;
+                                                if (ScriptSource == ScriptMarketSource::Gitee)
                                                 {
-                                                    bool IsDownloadSuccess = false;
-                                                    if (IsScriptUseGitee)
+                                                    const string filename = ScriptShopDir + "\\" + scriptCopy.name + ".gcdat";
+                                                    const string target = ScriptPath + "\\" + scriptCopy.name + ".zip";
+                                                    if (!CopyFile(filename.c_str(), target.c_str(), false))
                                                     {
-                                                        const string filename = ScriptShopDir + "\\" + scriptCopy.name + ".gcdat";
-                                                        const string target = ScriptPath + "\\" + scriptCopy.name + ".zip";
-                                                        if (!CopyFile(filename.c_str(), target.c_str(), false))
-                                                        {
-                                                            // 修复：打印具体错误码（如 ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND）便于定位编码/路径问题
-                                                            PrintLog("[ScriptMarket] 脚本下载失败：" + filename + "，错误：" + to_string(GetLastError()), PL_ERROR);
-                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
-                                                        }
-                                                        else
-                                                            IsDownloadSuccess = true;
+                                                        // 修复：打印具体错误码（如 ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND）便于定位编码/路径问题
+                                                        PrintLog("[ScriptMarket] 脚本下载失败：" + filename + "，错误：" + to_string(GetLastError()), PL_ERROR);
+                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                     }
                                                     else
+                                                        IsDownloadSuccess = true;
+                                                }
+                                                else
+                                                {
+                                                    // 修复：市场源脚本名为 UTF-8（可能含中文，如"我的刀附"），
+                                                    // 直接拼进窄字符路径会被 Windows 按 GBK 解释 → 乱码文件 + 错误 1113。
+                                                    // 改用下载链接末尾的 ID 作为 ASCII 文件名（显示名仍由解压后 info.ini 的 title 提供）。
+                                                    string id = scriptCopy.file.substr(scriptCopy.file.find_last_of('/') + 1);
+                                                    if (id.empty())
+                                                        id = "script";
+                                                    for (char& c : id)
+                                                        if (!isalnum((unsigned char)c)) c = '_';
+                                                    const string target = ScriptPath + "\\download_" + id + ".zip";
+                                                    if (!DownloadURLFilesRetry(scriptCopy.file, target))
                                                     {
-                                                        // 修复：市场源脚本名为 UTF-8（可能含中文，如"我的刀附"），
-                                                        // 直接拼进窄字符路径会被 Windows 按 GBK 解释 → 乱码文件 + 错误 1113。
-                                                        // 改用下载链接末尾的 ID 作为 ASCII 文件名（显示名仍由解压后 info.ini 的 title 提供）。
-                                                        string id = scriptCopy.file.substr(scriptCopy.file.find_last_of('/') + 1);
-                                                        if (id.empty())
-                                                            id = "script";
-                                                        for (char& c : id)
-                                                            if (!isalnum((unsigned char)c)) c = '_';
-                                                        const string target = ScriptPath + "\\download_" + id + ".zip";
-                                                        if (!DownloadURLFilesRetry(scriptCopy.file, target))
-                                                        {
-                                                            PrintLog("[ScriptMarket] 脚本下载失败，URL：" + scriptCopy.file, PL_ERROR);
-                                                            RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
-                                                        }
-                                                        else
-                                                            IsDownloadSuccess = true;
+                                                        PrintLog("[ScriptMarket] 脚本下载失败，URL：" + scriptCopy.file, PL_ERROR);
+                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                     }
-                                                    // 修复：原代码此处无条件弹"下载成功"，即使上面下载失败也会同时弹"失败+成功"两个提示。
-                                                    // 改为仅在成功时提示。
-                                                    if (IsDownloadSuccess)
-                                                        RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载成功") : (scriptCopy.title + " Download Success"), 2.0f, PT_INFO);
-                                                    RefushScriptList(); // 刷新
-                                                });
+                                                    else
+                                                        IsDownloadSuccess = true;
+                                                }
+                                                // 修复：原代码此处无条件弹"下载成功"，即使上面下载失败也会同时弹"失败+成功"两个提示。
+                                                // 改为仅在成功时提示。
+                                                if (IsDownloadSuccess)
+                                                    RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载成功") : (scriptCopy.title + " Download Success"), 2.0f, PT_INFO);
+                                                RefushScriptList(); // 刷新
+                                            });
                                             FuncThread.detach();
                                         }
                                     }
@@ -4280,6 +4324,7 @@ void RenderGui(ImGuiIO& io)
                                                             }
                                                         }
                                                     }
+                                                    SaveInstalledScriptList();
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4437,14 +4482,23 @@ void RenderGui(ImGuiIO& io)
                                     // 启动按键
                                     SetNextItemWidth(InputKeyWidth);
                                     {
-                                        // 写入锁
-                                        lock_guard lock(ScriptData::StatesMtx);
-                                        // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
-                                        auto st = ScriptData::States.find(script.file);
-                                        if (st != ScriptData::States.end())
+                                        bool keyChanged = false;
                                         {
-                                            SetCursorPosY(WindowHeight - 26.0f);
-                                            InputKey("##script_key", &st->second.key, config.UseChinese ? u8"请按下按键" : "Press a key");
+                                            // 写入锁
+                                            lock_guard lock(ScriptData::StatesMtx);
+                                            // find 替代 operator[]，避免脚本已删除后仍被本循环复活僵尸 ScriptState 条目
+                                            auto st = ScriptData::States.find(script.file);
+                                            if (st != ScriptData::States.end())
+                                            {
+                                                SetCursorPosY(WindowHeight - 26.0f);
+                                                keyChanged = InputKey("##script_key", &st->second.key, config.UseChinese ? u8"请按下按键" : "Press a key");
+                                            }
+                                        }
+                                        // 在锁外保存，避免死锁（保存函数内部会再取 StatesMtx 读锁）
+                                        if (keyChanged)
+                                        {
+                                            thread th(SaveInstalledScriptList);
+                                            th.detach();
                                         }
                                     }
                                     SameLine(0, spacing);
@@ -4568,6 +4622,8 @@ void RenderGui(ImGuiIO& io)
                                                     }
                                                 }
                                             }
+                                            // 卸载后立即写盘，保持列表与界面一致
+                                            SaveInstalledScriptList();
                                         }, script);
                                         FuncThread.detach();
                                     }
@@ -4944,14 +5000,16 @@ void RenderGui(ImGuiIO& io)
 
                 //-----------------------脚本自动启动---------------------------
                 {
-                    Text(config.UseChinese ? u8"脚本自动启动" : "Script Auto-Start");
+                                        Text(config.UseChinese ? u8"脚本自动启动" : "Script Auto-Start");
                     SameLine();
-                    bool DisableAutoStart = DisableScriptAutoStart;
-                    if (Toggle("##disable_script_autostart", &DisableAutoStart, ToggleFlags))
-                        DisableScriptAutoStart = DisableAutoStart;
+                    // 界面用正向语义（开 = 自动启动），保存时仍写旧的 DisableScriptAutoStart 键，
+                    // 保持旧配置兼容。此前是"开 = 禁用"，很容易被理解反。
+                    bool EnableAutoStart = !DisableScriptAutoStart;
+                    if (Toggle("##enable_script_autostart", &EnableAutoStart, ToggleFlags))
+                        DisableScriptAutoStart = !EnableAutoStart;
                     AttachTooltip(config.UseChinese ?
-                        u8"关闭：启动软件时自动运行所有已安装脚本\n开启：不自动运行，需在\"已安装\"列表中手动启动" :
-                        "Off: auto-run all installed scripts on launch\nOn: start scripts manually in the \"Installed\" list");
+                        u8"开启：启动软件时自动运行所有已安装脚本\n关闭：不自动运行，需在\"已安装\"列表中手动启动" :
+                        "On: auto-run all installed scripts on launch\nOff: start scripts manually in the \"Installed\" list");
                 }
                 EndTabItem();
             }

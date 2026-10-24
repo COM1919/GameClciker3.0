@@ -335,7 +335,9 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
                 PrintLog("[Server] 将尝试重复连接服务器，直到成功", PL_INFO);
                 IsShowedError = true;
             }
-            Sleep(1000);   // 连接失败后稍作等待再重试，避免忙转
+                        // 分片等待：退出时最多 100ms 就能跳出，避免拖慢退出流程
+            for (int i = 0; i < 10 && !IsGCExit; ++i)
+                Sleep(100);
         }
 
         PrintLog("[Server] 服务器连接成功！", PL_INFO);
@@ -344,10 +346,15 @@ DWORD WINAPI NetworkClientThread(LPVOID lpParam)
         IsServerClosed = false;
         while (!IsServerClosed)
         {
-            if (IsGCExit)   // 退出时立即中断，避免套接字关闭后仍在等待心跳超时
+                        if (IsGCExit)   // 退出时立即中断，避免套接字关闭后仍在等待心跳超时
                 break;
             if (!AllowConnectServer)
-                return 0;
+            {
+                // 不再允许连接：结束本次会话走外层重连流程，而不是结束整个线程
+                PrintLog("[Server] 服务器已不再允许连接，稍后重试", PL_WARNING);
+                IsServerClosed = true;
+                break;
+            }
 
             if (GetTickCount64() - LastHBTime > (ULONGLONG)40 * 1000) // 40 秒
             {
