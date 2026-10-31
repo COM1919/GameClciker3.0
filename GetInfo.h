@@ -252,7 +252,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
     string filename = ConfigPath + "\\" + "gc-pack" + NewVersionStr + ".exe";
 
     string temp_url;
-    if (DownloadURL.find("lanzouu.com") == string::npos)
+    if (DownloadURL.find("lanzouu.com") == string::npos && DownloadURL.find("lanzoum.com") == string::npos)
         temp_url = DownloadURL;
     else
         temp_url = URL_RESOLVE + DownloadURL;
@@ -269,7 +269,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
         fclose(pf);
         DeleteFileA(probe.c_str());
     }
-
+    cout << "\n\n\n" << temp_url << endl;
     bool IsDownloadSuccess = DownloadURLFiles(temp_url.c_str(), filename.c_str());
     if (_access(filename.c_str(), 0) != 0 || !IsDownloadSuccess)
     {
@@ -318,7 +318,7 @@ DWORD WINAPI Updata(LPVOID lpParam)
     if (ShExecInfo.hProcess)
         CloseHandle(ShExecInfo.hProcess);
 
-    RequestExit();
+    IsGCExit = true;
 #endif // USE_IN_MICROSOFT
     return 0;
 }

@@ -423,8 +423,8 @@ namespace Sponsor
     vector<string> List;                //赞助列表
 }
 
-const string version = "3.58";          //版本号
-string title = "GAMECLICKER 3.58";      //标题名字
+const string version = "3.59";          //版本号
+string title = "GAMECLICKER 3.59";      //标题名字
 constexpr int ConfigVersion = 5;        //配置文件版本号
 constexpr int AgreementVersion = 8;     //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比
@@ -444,7 +444,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #define GC_NO_TRY_CATCH                 //不捕获异常，让调试器捕获来定位代码位置
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS
@@ -462,7 +462,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #undef GC_USE_D_DRIVE
 #endif // GC_RELEASE_MODE
 
-#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
+//#define USE_IN_MICROSOFT              //是否是微软商店发行版本（微软商店的要关闭自动更新）
 
 //=============================待更改项==========================================================
 // 把这些文件的封装到class FileDefines，变量名字为path
