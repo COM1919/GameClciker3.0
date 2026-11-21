@@ -74,7 +74,6 @@ bool ZipFiles(const vector<pair<string, string>>& files, const string& zipFilena
 int UnZipFile(const char* zipFilePath, const char* destDir);
 bool CopyTextToClipboard(const string& text);
 void ClearProcessMemory();
-void UpdateScriptFromShop();
 POINT GetGameWindowCenter(HWND hwnd);
 void CheckUpdateScriptFromShop(ScriptInfo& script);
 bool UpdateScriptFromShop(const ScriptInfo& script);
@@ -1230,7 +1229,10 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 			if (strlen(buffer) > 0)
 			{
 				script.link = buffer;
-				if (script.link.empty() || script.link.find("https://bbs.mcgc.top") == string::npos || script.link.find("https://scripts.mcgc.top") == string::npos)
+				// 白名单校验：只保留 bbs.mcgc.top / scripts.mcgc.top 的链接。
+				// 原条件用 '||' 连接两个 npos 判断 -> 除非一个链接同时包含两个域名，否则恒为 true，
+				// 结果 link 永远被清空（"教程网站"按钮永远不会出现）。改为 &&。
+				if (script.link.find("https://bbs.mcgc.top") == string::npos && script.link.find("https://scripts.mcgc.top") == string::npos)
 					script.link.clear();
 #ifdef GC_MORE_DEBUG_INFO
 				PrintLog("[Script] 脚本" + script.name + "的链接为：" + script.link, PL_INFO);
@@ -1346,6 +1348,11 @@ void GetScriptsInfo(vector<ScriptInfo>& ScriptList, const string& TempPath)
 
 void RefushScriptList()
 {
+	// 串行化：初始化、下载后、更新后、清除缓存、刷新按钮都会调用这里，而 GetScriptsInfo
+	// 对每个脚本是"先删解压目录再重新解压"，并发执行时会互相删掉对方刚解压的文件，
+	// 导致脚本加载失败（脚本加载失败现在会触发自动卸载，后果更严重）。
+	static mutex RefushMtx;
+	lock_guard RefushLock(RefushMtx);
 	{
 		vector<string> files;
 		FindFilesWithExtension(ScriptPath, "zip", files);
@@ -1357,6 +1364,33 @@ void RefushScriptList()
 			scripts.push_back(script);
 		}
 		GetScriptsInfo(scripts, ScriptTemp);
+		// 重新扫描出来的列表默认 IsInstalled = false，这里按脚本名回填"已安装"状态。
+		// 否则刷新/下载/更新脚本后，已安装脚本会在"可用脚本"页重新显示"安装"按钮，
+		// 再点一次就会重复安装（已安装列表出现两条同名脚本、两份线程同时运行）。
+		// 只回填 IsInstalled，不复制 hThread：线程句柄由 ScriptData::Installed 独占持有
+		//（两边都持有同一个句柄值，将来任一侧 CloseHandle 都会 double-close）。
+		// 先取 Installed 快照再回填：避免 InstalledMtx 与 AvaiableMtx 嵌套
+		//（RestoreInstalledScripts 是 Avaiable→Installed 的加锁顺序，反序会 ABBA 死锁）。
+		{
+			vector<string> installedNames;
+			{
+				shared_lock installedLock(ScriptData::InstalledMtx);
+				installedNames.reserve(ScriptData::Installed.size());
+				for (const ScriptInfo& info : ScriptData::Installed)
+					installedNames.push_back(info.name);
+			}
+			for (ScriptInfo& script : scripts)
+			{
+				for (const string& name : installedNames)
+				{
+					if (name == script.name)
+					{
+						script.IsInstalled = true;
+						break;
+					}
+				}
+			}
+		}
 		// 写入锁
 		lock_guard lock(ScriptData::AvaiableMtx);
 		ScriptData::Avaiable = scripts;

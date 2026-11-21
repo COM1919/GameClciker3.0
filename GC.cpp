@@ -331,14 +331,10 @@ int GCMainLoop()
     PrintLog("[Init] 检查文件完整性 - MainThread", PL_INFO);
 
     // 在RefushScriptList之前删除
-    if (DeleteDirectory(ScriptShopDir))
-        PrintLog("[File] 删除脚本缓存成功！", PL_INFO);
-    else
-        PrintLog("[File] 删除脚本缓存失败！", PL_ERROR);
-    if (DeleteDirectory(ScriptTemp))
-        PrintLog("[File] 删除脚本商店缓存成功！", PL_INFO);
-    else
-        PrintLog("[File] 删除脚本商店缓存失败！", PL_ERROR);
+    if (!DeleteDirectory(ScriptShopDir))
+        PrintLog("[File] 删除插件缓存失败！", PL_ERROR);
+    if (!DeleteDirectory(ScriptTemp))
+        PrintLog("[File] 删除插件商店缓存失败！", PL_ERROR);
     if (_access(ConfigPath.c_str(), 0) != 0)
         CreateDirectory(ConfigPath.c_str(), NULL);
 
@@ -427,8 +423,6 @@ int GCMainLoop()
     
     bool ShouldFirstClearMemory = true;
 
-    long LastTime = 0;
-    long DeltaTime = 0;
     int RenderSleepCount = 0;
     const int SleepFps = round(1000 / RenderFps);
     PrintLog("[Render] 开始渲染UI", PL_INFO);
@@ -437,9 +431,26 @@ int GCMainLoop()
 
     while (!IsGCExit)
     {
-        LastTime = clock();
+        // 帧起点用墙钟时间。原先用 clock()（进程 CPU 时间）限帧：Present(1) 等待
+        // 垂直同步的时间不计入 CPU 时间，帧尾又 Sleep 一整帧，实际帧率被压到 ~30fps，
+        // 表现为 UI 悬停/点击明显迟钝。
+        const auto FrameStart = std::chrono::steady_clock::now();
+
         //===============================消息处理===============================
         {
+            // 高报告率鼠标会让窗口队列堆积大量 WM_MOUSEMOVE。逐条 Dispatch 既没有意义
+            // （ImGui 只关心最新坐标），又会把点击消息挤到每帧配额之外，导致"点不动"。
+            // 先把移动消息抽干，只派发最后一条。
+            MSG LastMouseMove = {};
+            bool HasMouseMove = false;
+            while (PeekMessage(&LastMouseMove, NULL, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE))
+                HasMouseMove = true;
+            if (HasMouseMove)
+            {
+                TranslateMessage(&LastMouseMove);
+                DispatchMessage(&LastMouseMove);
+            }
+
             constexpr int MaxMsgsPerFrame = 128;   // 每帧处理的消息数量，限制每帧的处理数据量
             int processed = 0;
             MSG msg;
@@ -470,6 +481,11 @@ int GCMainLoop()
                 ++processed;
             }
         }
+
+        //===============================处理脚本自动卸载===============================
+        // 脚本因自身 Lua 报错需要卸载时，脚本线程只负责入队，真正卸载在这里派发到后台线程执行。
+        // 放在暂停渲染判断之前，保证窗口最小化/被遮挡时同样能完成卸载与写盘。
+        ProcessScriptUninstallQueue();
 
         //===============================处理暂停渲染逻辑===============================
         {
@@ -571,9 +587,10 @@ int GCMainLoop()
         //const HRESULT hr = g_pSwapChain->Present(0, 0); // 不使用垂直同步
         MainGuiData.SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
-        DeltaTime = clock() - LastTime;
-        if (DeltaTime < SleepFps)
-            Sleep(SleepFps - DeltaTime - 1);
+        const auto FrameElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - FrameStart).count();
+        if (FrameElapsed < SleepFps)
+            Sleep(static_cast<DWORD>(SleepFps - FrameElapsed));
     }
     return 0;
 }
@@ -678,7 +695,7 @@ DWORD WINAPI InitGC(LPVOID lpParam)
             shared_lock iLock(ScriptData::InstalledMtx);
             InstalledCount = ScriptData::Installed.size();
         }
-        PrintLog("[Config] 已恢复 " + to_string(InstalledCount) + " 个已安装脚本", PL_INFO);
+        PrintLog("[Config] 已恢复 " + to_string(InstalledCount) + " 个已安装插件", PL_INFO);
     }
 
     // 为已恢复的已安装脚本创建状态条目（供"启用"开关与启动按键显示）
@@ -697,21 +714,9 @@ DWORD WINAPI InitGC(LPVOID lpParam)
             InitSuccessTime = GetNowMs();
     }
 
-        // 未禁用脚本自动启动时，交给独立线程执行：
-    // 脚本解析与 Lua 初始化可能较慢，不能拖住首帧渲染与后续初始化。
-    if (!DisableScriptAutoStart)
-        CreateThreadSafe(ScriptAutoStartThread, NULL, 0, "ScriptAutoStart");
-    else
-    {
-        // 被设置项禁用时留一条日志，避免用户只看到"没有自动启动"却找不到原因
-        size_t InstalledCount = 0;
-        {
-            shared_lock lock(ScriptData::InstalledMtx);
-            InstalledCount = ScriptData::Installed.size();
-        }
-        if (InstalledCount > 0)
-            PrintLog("[Script] 脚本自动启动已被设置项禁用，本次不会自动运行已安装脚本", PL_WARNING);
-    }
+    // 脚本现在是"插件"：已安装 == 运行中，不再提供"自动启动"开关，启动时无条件恢复已安装脚本。
+    // 交给独立线程执行：脚本解析与 Lua 初始化可能较慢，不能拖住首帧渲染与后续初始化。
+    CreateThreadSafe(ScriptAutoStartThread, NULL, 0, "ScriptAutoStart");
     PrintLog("[Init] 初始化已完成，耗时: " + to_string(GetNowMs() - StartTime), PL_INFO); // 原代码误打印了启动时间戳，而非耗时
     return 0;
 }
@@ -913,7 +918,7 @@ void RenderGui(ImGuiIO& io)
 
     SetCursorPos({ 10, 234 + 32 });
     static const Texture2D image_texture4 = LoadTextureFromFile(Pics_Script);
-    if (ButtonImage((ImTextureID)image_texture4, config.UseChinese ? u8"脚本" : "Script", { 80, 40 }))
+    if (ButtonImage((ImTextureID)image_texture4, config.UseChinese ? u8"插件" : "Plugins", { 80, 40 }))
     {
         LastTab = CurrentTab;
         NextTab = Tab::Script;
@@ -3810,11 +3815,12 @@ void RenderGui(ImGuiIO& io)
         }
         case Tab::Script:
         {
-            TabsText((ICON_FA_CODE + (config.UseChinese ? u8"脚本"s : "Scripts"s)).c_str());
+            TabsText((ICON_FA_PUZZLE_PIECE + (config.UseChinese ? u8"插件"s : "Plugins"s)).c_str());
             
             {
                 //-------------------------获取脚本--------------------------
                 static int ScriptSettingsSelected = -1; // -1为没有打开任何设置
+                static string ScriptSettingsFile;       // 打开设置时对应的脚本文件（列表下标会因安装/卸载位移，故记录文件）
                 static bool IsWillGotoShopTab = false; // 用于调整到其他tab
 
                 static auto NothingsHereFunc = []()
@@ -3834,7 +3840,7 @@ void RenderGui(ImGuiIO& io)
 
                     const ImVec2 LinePos(20, TitlePos.y + TitleSize.y + 16);
                     const float LineLength = BoxSize.x - LinePos.x - 20;
-                    const string Info = config.UseChinese ? u8"你可以将脚本文件拖入进来。" : "You can drop the script file into here.";
+                    const string Info = config.UseChinese ? u8"你可以将插件文件拖入进来。" : "You can drop the plugins file into here.";
                     const ImVec2 InfoSize = CalcTextSize(Info.c_str());
                     const ImVec2 InfoPos((BoxSize.x - InfoSize.x) / 2, LinePos.y + 16);
 
@@ -3880,7 +3886,7 @@ void RenderGui(ImGuiIO& io)
                 if (BeginTabBar("##Script"))
                 {
                     // shop放前面相当于先刷新shop，防止可用列表先加载导致检查更新失败
-                    if (BeginTabItem((ICON_FA_STORE + (config.UseChinese ? u8"脚本商场"s : "Shop"s)).c_str(), NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
+                    if (BeginTabItem((ICON_FA_STORE + (config.UseChinese ? u8"插件商场"s : "Shop"s)).c_str(), NULL, IsWillGotoShopTab ? ImGuiTabItemFlags_SetSelected : 0))
                     {
                         IsShopTab = true;
                         static bool IsInit = false;
@@ -4025,7 +4031,7 @@ void RenderGui(ImGuiIO& io)
                                                     if (!CopyFile(filename.c_str(), target.c_str(), false))
                                                     {
                                                         // 修复：打印具体错误码（如 ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND）便于定位编码/路径问题
-                                                        PrintLog("[ScriptMarket] 脚本下载失败：" + filename + "，错误：" + to_string(GetLastError()), PL_ERROR);
+                                                        PrintLog("[ScriptMarket] 插件下载失败：" + filename + "，错误：" + to_string(GetLastError()), PL_ERROR);
                                                         RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                     }
                                                     else
@@ -4044,7 +4050,7 @@ void RenderGui(ImGuiIO& io)
                                                     const string target = ScriptPath + "\\download_" + id + ".zip";
                                                     if (!DownloadURLFilesRetry(scriptCopy.file, target))
                                                     {
-                                                        PrintLog("[ScriptMarket] 脚本下载失败，URL：" + scriptCopy.file, PL_ERROR);
+                                                        PrintLog("[ScriptMarket] 插件下载失败，URL：" + scriptCopy.file, PL_ERROR);
                                                         RenderTip(config.UseChinese ? (scriptCopy.name + u8"下载失败") : (scriptCopy.title + " Download Failed"), 2.0f, PT_INFO);
                                                     }
                                                     else
@@ -4174,7 +4180,7 @@ void RenderGui(ImGuiIO& io)
                                     SameLine();
                                     Text(ICON_FA_CIRCLE_INFO);
                                     AttachTooltip((script.RestrictedFuncsStr.length() > 0) ? 
-                                        (((config.UseChinese ? u8"脚本请求的权限：\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) : 
+                                        (((config.UseChinese ? u8"权限：\n" : "Permissions:\n") + script.RestrictedFuncsStr).c_str()) : 
                                         (config.UseChinese ? u8"&7无风险" : "&7No Risks"));
 
                                     SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
@@ -4185,14 +4191,16 @@ void RenderGui(ImGuiIO& io)
                                         SameLine();
                                         if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"更新"s : "Update"s)).c_str(), ImVec2(60, 32)))
                                         {
-                                            thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
-                                                {
-                                                    if (UpdateScriptFromShop(ScriptCopy))
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
-                                                    else
-                                                        RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
-                                                    RefushScriptList(); // 刷新
-                                                });
+                                            thread FuncThread([ScriptCopy = script]() // 一定要值捕获！！
+                                            {
+                                                // 未安装：只覆盖旧版本脚本文件
+                                                // 已安装：卸载脚本 -> 覆盖旧版本文件 -> 重新安装并运行（去看UpdateScriptKeepInstallState函数）
+                                                // 该函数内部已重新扫描脚本列表，这里不再重复调 RefushScriptList
+                                                if (UpdateScriptKeepInstallState(ScriptCopy))
+                                                    RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
+                                                else
+                                                    RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
+                                            });
                                             FuncThread.detach();
                                         }
                                     }
@@ -4278,53 +4286,11 @@ void RenderGui(ImGuiIO& io)
                                         static const Texture2D image_texture1 = LoadTextureFromFile(Pics_Add);
                                         if (ImageButton("##script_install", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                         {
-                                            ScriptInfo ScriptCopy = script; // 拷贝时仍持有 read_lock，引用有效
-                                            thread FuncThread([ScriptCopy]() mutable
+                                            // 安装 = 加入已安装列表 + 建状态 + 启动脚本 + 写盘
+                                            //（与"更新后重新安装"共用 InstallScriptByName，已安装则忽略）
+                                            thread FuncThread([name = script.name]()
                                                 {
-                                                    const HANDLE hThread = nullptr;
-                                                    ScriptCopy.hThread = hThread;
-                                                    // 创建 ScriptState 条目（供"启用"开关/启动按键使用，IsRunning=false）
-                                                    {
-                                                        lock_guard lock(ScriptData::StatesMtx);
-                                                        ScriptData::States[ScriptCopy.file];
-                                                    }
-                                                    {
-                                                        lock_guard lock(ScriptData::InstalledMtx);
-                                                        ScriptData::Installed.push_back(ScriptCopy);
-                                                    }
-                                                    {
-                                                        lock_guard lock(ScriptData::AvaiableMtx);
-                                                        for (ScriptInfo& s : ScriptData::Avaiable)
-                                                        {
-                                                            if (s.file == ScriptCopy.file)
-                                                            {
-                                                                s.hThread = hThread;
-                                                                s.IsInstalled = true;
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                    {
-                                                        lock_guard lock(ScriptData::StatesMtx);
-                                                        ScriptData::States[ScriptCopy.file].IsRunning = true;
-                                                    }
-                                                    {
-                                                        // 保存线程句柄，删除脚本时才能正确终止线程
-                                                        const HANDLE hThread = StartScript(ScriptCopy.file);
-                                                        if (hThread != NULL)
-                                                        {
-                                                            lock_guard lock(ScriptData::AvaiableMtx);
-                                                            for (ScriptInfo& s : ScriptData::Avaiable)
-                                                            {
-                                                                if (s.file == ScriptCopy.file)
-                                                                {
-                                                                    s.hThread = hThread;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    SaveInstalledScriptList();
+                                                    InstallScriptByName(name, 0, false);
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4337,8 +4303,11 @@ void RenderGui(ImGuiIO& io)
                                         {
                                             thread FunThread([scriptCopy = script]()
                                             {
-                                                DeleteDirectoryRecursively(ScriptTemp + "\\" + scriptCopy.name);
-                                                DelFile(ScriptPath + "\\" + scriptCopy.name + ".zip");
+                                                // scriptCopy.name 是 UTF-8（给界面显示用），文件系统路径必须用 ANSI，
+                                                // 直接用 UTF-8 拼路径会让中文名脚本删不掉（目录/zip 静默残留）。
+                                                const string nameAnsi = UTF8ToString(scriptCopy.name);
+                                                DeleteDirectoryRecursively(ScriptTemp + "\\" + nameAnsi);
+                                                DelFile(ScriptPath + "\\" + nameAnsi + ".zip");
                                                 // 修复：原代码无锁 erase，与主线程（持读锁遍历 ScriptData::Avaiable）并发 → 崩溃。
                                                 // 写入必须加写锁（主线程释放读锁后本线程才能执行）；
                                                 // 同时不用外部捕获的旧索引 count，改为按名称查找后删除。
@@ -4377,7 +4346,7 @@ void RenderGui(ImGuiIO& io)
                         {
                             ScriptInfo& script = ScriptData::Avaiable[ShowDocsScriptID];
 
-                            if (BeginPopupWindow(config.UseChinese ? u8"脚本文档" : "Script Document"))
+                            if (BeginPopupWindow(config.UseChinese ? u8"插件文档" : "Plugins Document"))
                             {
                                 TextUnformatted(DocsText.c_str());
                                 EndPopupWindow();
@@ -4447,7 +4416,7 @@ void RenderGui(ImGuiIO& io)
                                     SameLine();
                                     Text(ICON_FA_CIRCLE_INFO);
                                     AttachTooltip((script.RestrictedFuncsStr.length() > 0) ?
-                                        (((config.UseChinese ? u8"脚本请求的权限：\n" : "Permissions requested by the script:\n") + script.RestrictedFuncsStr).c_str()) :
+                                        (((config.UseChinese ? u8"权限：\n" : "Permissions:\n") + script.RestrictedFuncsStr).c_str()) :
                                         (config.UseChinese ? u8"&7无风险" : "&7No Risks"));
 
                                     SetCursorPos(ImVec2(PosX, 4.0f + TitleHeight));
@@ -4458,13 +4427,15 @@ void RenderGui(ImGuiIO& io)
                                         SameLine();
                                         if (Button((ICON_FA_DOWNLOAD + (config.UseChinese ? u8"更新"s : "Update"s)).c_str(), ImVec2(60, 32)))
                                         {
-                                            thread FuncThread([ScriptCopy = script]() // 值捕获，避免 script 引用随 for 循环/并发删除失效
+                                            thread FuncThread([ScriptCopy = script]() // 值捕获
                                                 {
-                                                    if (UpdateScriptFromShop(ScriptCopy))
+                                                    // 未安装：只覆盖旧版本脚本文件
+                                                    // 已安装：卸载脚本 -> 覆盖旧版本文件 -> 重新安装并运行（去看UpdateScriptKeepInstallState）
+                                                    // 该函数内部已重新扫描脚本列表，这里不再重复调 RefushScriptList
+                                                    if (UpdateScriptKeepInstallState(ScriptCopy))
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新成功") : (ScriptCopy.title + " Update Success"), 2.0f, PT_INFO);
                                                     else
                                                         RenderTip(config.UseChinese ? (ScriptCopy.name + u8"更新失败") : (ScriptCopy.title + " Update Failed"), 2.0f, PT_ERROR);
-                                                    RefushScriptList(); // 刷新
                                                 });
                                             FuncThread.detach();
                                         }
@@ -4523,38 +4494,14 @@ void RenderGui(ImGuiIO& io)
                                                     st->second.IsRunning = true; // 乐观置位，防止重复启动
                                                     thread th([file = script.file]()
                                                     {
-                                                        // 保存线程句柄，删除脚本时才能正确终止线程
-                                                        const HANDLE hThread = StartScript(file);
-                                                        if (hThread != NULL)
-                                                        {
-                                                            lock_guard lock(ScriptData::AvaiableMtx);
-                                                            for (ScriptInfo& s : ScriptData::Avaiable)
-                                                            {
-                                                                if (s.file == file)
-                                                                {
-                                                                    s.hThread = hThread;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                        {
-                                                            lock_guard lock2(ScriptData::InstalledMtx);
-                                                            for (ScriptInfo& s : ScriptData::Installed)
-                                                            {
-                                                                if (s.file == file)
-                                                                {
-                                                                    s.hThread = hThread;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
+                                                        // 启动并记录线程句柄（卸载/退出时靠它停线程）
+                                                        StoreScriptThreadHandle(file, StartScript(file));
                                                     });
                                                     th.detach();
                                                 }
                                             }
                                         }
                                     }
-                                    AttachTooltip(config.UseChinese ? u8"关闭后：脚本停止运行\n开启时：若脚本未运行则启动脚本" : "Disabled: the script pauses\nEnabled: starts the script if it is not running");
                                     SameLine(0, spacing);
 
                                     // 脚本设置按键 - ImageButtonWidth也是hight，因为是正方形，所以 w = h
@@ -4563,6 +4510,7 @@ void RenderGui(ImGuiIO& io)
                                     if (ImageButton("##script_settings", (ImTextureID)image_texture1, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                     {
                                         ScriptSettingsSelected = count;
+                                        ScriptSettingsFile = script.file;
                                         // 打开设置时暂停脚本，避免脚本与设置界面并发操作
                                         lock_guard lock(ScriptData::StatesMtx);
                                         auto st = ScriptData::States.find(script.file);
@@ -4576,55 +4524,13 @@ void RenderGui(ImGuiIO& io)
                                     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Delete);
                                     if (ImageButton("##script_delete", (ImTextureID)image_texture2, ImVec2(ImageButtonWidth, ImageButtonWidth)))
                                     {
-                                        thread FuncThread([](const ScriptInfo& script)
+                                        // 与"因脚本报错自动卸载"共用同一套流程：
+                                        // 停线程 -> 清 Lua/状态 -> 移出已安装列表 -> 立即写盘（文件保留，仍可在可用列表中重新安装）
+                                        thread FuncThread([](const string file)
                                         {
-                                            bool IsError = false;
-                                            string errormsg;
                                             ScriptSettingsSelected = -1;
-                                            {
-                                                // 修复：原代码用 shared_lock（读锁）却修改 s.IsInstalled 并调用
-                                                // CloseScriptThread（会写 s.hThread）→ 读锁内写的数据竞争。改为写锁。
-                                                lock_guard lock(ScriptData::AvaiableMtx);
-                                                // 将可用脚本列表的IsInstalled改为false
-                                                for (ScriptInfo& s : ScriptData::Avaiable)
-                                                {
-                                                    if (s.file == script.file)
-                                                    {
-                                                        s.IsInstalled = false;
-                                                        CloseScriptThread(s.file, s);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            const string file = script.file;
-                                            {
-                                                // 修复：原代码 LuaStates.find 在锁外执行，与下方锁内 erase 并发 → 竞争。移入锁内。
-                                                lock_guard lock(LuaStatesMtx);
-                                                auto it = LuaStates.find(file);
-                                                if (it != LuaStates.end())
-                                                {
-                                                    it->second.release();
-                                                    LuaStates.erase(it);
-                                                }
-                                            }
-                                            PrintLog("[Script] 已删除脚本：" + script.file, PL_INFO);
-                                            {
-                                                // 修复：原代码在主线程 read_lock.unlock() 后 erase ScriptData::Installed 再重锁，
-                                                // 重锁后 range-for 迭代器失效 -> 崩溃。改为在此 detach 线程内按 file 查找删除
-                                                // （独立加锁、不嵌套，避免与 ClearScriptCache 的锁序形成环）。
-                                                lock_guard lock(ScriptData::InstalledMtx);
-                                                for (auto it = ScriptData::Installed.begin(); it != ScriptData::Installed.end(); ++it)
-                                                {
-                                                    if (it->file == script.file)
-                                                    {
-                                                        ScriptData::Installed.erase(it);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            // 卸载后立即写盘，保持列表与界面一致
-                                            SaveInstalledScriptList();
-                                        }, script);
+                                            UninstallScript(file, "");
+                                        }, script.file);
                                         FuncThread.detach();
                                     }
                                 }
@@ -4639,7 +4545,7 @@ void RenderGui(ImGuiIO& io)
                         EndTabItem();
                     }
 
-                    if (BeginTabItem((ICON_FA_CODE + (config.UseChinese ? u8"脚本开发"s : "Script Creator"s)).c_str(), NULL))
+                    if (BeginTabItem((ICON_FA_CODE + (config.UseChinese ? u8"插件开发"s : "Plugins Creator"s)).c_str(), NULL))
                     {
                         IsScriptCreatorTab = true;
 
@@ -4738,7 +4644,7 @@ void RenderGui(ImGuiIO& io)
                                 if (CollapsingHeader(header.c_str()))
                                 {
                                     AttachTooltip(record.file.c_str());
-                                    Text(((config.UseChinese ? u8"脚本路径："s : "Path: "s) + record.file).c_str());
+                                    Text(((config.UseChinese ? u8"插件路径："s : "Path: "s) + record.file).c_str());
                                     Text(((config.UseChinese ? u8"报错时间："s : "Time: "s) + record.time).c_str());
                                     string detail = record.message;
                                     InputTextMultiline(("##script_error_detail_" + to_string(i)).c_str(), &detail, ImVec2(-1, 160), ImGuiInputTextFlags_ReadOnly);
@@ -4802,7 +4708,7 @@ void RenderGui(ImGuiIO& io)
                                         lock_guard lock(ScriptData::StatesMtx);
                                         ScriptData::States[ScriptTestFile].key = StartKey;  // 设置默认启动按键为End，方便一点，一定要在StartScript之后赋值（因为如果在StartScript之前，会导致ScriptStates[file]被创建，导致ScriptStates不初始化）
                                     }
-                                    RenderTip(config.UseChinese ? u8"脚本开始运行" : "Script starts running", 3.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"插件开始运行" : "Plugins starts running", 3.0f, PT_INFO);
                                     IsRunning = true;
                                 };
                             thread th(func, ScriptEditor::editor.GetText());
@@ -4819,7 +4725,7 @@ void RenderGui(ImGuiIO& io)
                                     ScriptInfo temp;
                                     temp.hThread = ThreadHandle;
                                     CloseScriptThread(ScriptTestFile, temp);
-                                    RenderTip(config.UseChinese ? u8"脚本已停止运行" : "The script has stopped.", 3.0f, PT_INFO);
+                                    RenderTip(config.UseChinese ? u8"插件已停止运行" : "The plugins have stopped.", 3.0f, PT_INFO);
                                     IsRunning = false;
                                 };
                             thread th(func);
@@ -4833,7 +4739,7 @@ void RenderGui(ImGuiIO& io)
                     BeginDisabled(!IsRunning);
                     {
                         static const Texture2D image_texture = LoadTextureFromFile(Pics_Setting);
-                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"脚本配置" : "Script Cfg", ImVec2(100, 40)))
+                        if (ButtonImage((ImTextureID)image_texture, config.UseChinese ? u8"插件配置" : "Plugins Cfg", ImVec2(100, 40)))
                         {
                             ScriptSettingsSelected = 999999999;
                             // 写入锁
@@ -4860,7 +4766,7 @@ void RenderGui(ImGuiIO& io)
                     SameLine();
 
                     static const Texture2D image_texture2 = LoadTextureFromFile(Pics_Book);
-                    if (ImageButton(config.UseChinese ? u8"脚本文档" : "Script Doc", (ImTextureID)image_texture2, ImVec2(32, 32)))
+                    if (ImageButton(config.UseChinese ? u8"插件文档" : "Plugins Doc", (ImTextureID)image_texture2, ImVec2(32, 32)))
                     {
 #ifdef USE_IN_MICROSOFT
                         ShellExecute(NULL, NULL, "https://bbs.mcgc.top/d/214", NULL, NULL, SW_SHOWNORMAL);
@@ -4886,7 +4792,7 @@ void RenderGui(ImGuiIO& io)
                             IsClearing = true;
                         }
                     }
-                    AttachTooltip(config.UseChinese ? u8"清除脚本缓存，重新加载所有脚本\n如果你是脚本开发者，每次修改完脚本都要清除缓存\n否则会导致修改不起作用。\n&c目前因为BUG，可能会导致GC崩溃" : "Clear script cache and reload all scripts. \nIf you are a script developer, \nyou need to clear the cache every time you modify the script. \nOtherwise, the modification will not take effect.\n&cCurrently, due to a BUG, the GC may crash.");
+                    AttachTooltip(config.UseChinese ? u8"清除插件缓存，重新加载所有插件\n如果你是插件开发者，每次修改完插件都要清除缓存\n否则会导致修改不起作用。\n&c目前因为BUG，可能会导致GC崩溃" : "Clear plugins cache and reload all plugins. \nIf you are a plugins developer, \nyou need to clear the cache every time you modify the plugins. \nOtherwise, the modification will not take effect.\n&cCurrently, due to a BUG, the GC may crash.");
                 }
                 //-----------------------脚本设置GUI---------------------------
 
@@ -4898,16 +4804,29 @@ void RenderGui(ImGuiIO& io)
                     {
                         // 读取锁
                         shared_lock lock(ScriptData::InstalledMtx);
-                        // 修复：ScriptSelected 是打开设置时的列表索引，若期间脚本被删除（列表变短）
-                        // 会越界访问 → 崩溃。加边界检查，越界则关闭设置。
-                        if (ScriptSettingsSelected >= (int)ScriptData::Installed.size())
-                            ScriptSettingsSelected = -114514;
+                        // 修复：ScriptSettingsSelected 是打开设置时的列表下标，期间若有脚本被安装/卸载，
+                        // 下标会整体位移：用旧下标会打开另一个脚本的设置（中间项被卸载时还不会越界，
+                        // 原来的越界检查拦不住）。改为按打开时记录的脚本文件重新定位。
+                        int idx = -1;
+                        for (int i = 0; i < (int)ScriptData::Installed.size(); i++)
+                        {
+                            if (ScriptData::Installed[i].file == ScriptSettingsFile)
+                            {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        if (idx < 0)
+                            ScriptSettingsSelected = -114514;   // 脚本已被卸载：关闭设置界面
                         else
-                            script = ScriptData::Installed[ScriptSettingsSelected];
+                        {
+                            ScriptSettingsSelected = idx;
+                            script = ScriptData::Installed[idx];
+                        }
                     }
                     if (IsTestScript || ScriptSettingsSelected > -1)
                     {
-                        const string title = IsTestScript ? (config.UseChinese ? u8"测试脚本设置" : "Test Script Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
+                        const string title = IsTestScript ? (config.UseChinese ? u8"测试插件设置" : "Test Plugins Settings") : (script.title + (config.UseChinese ? u8"设置" : "Settings"));
                         const string& filename = IsTestScript ? ScriptTestFile : script.file;
 
                         static bool IsOpened = true;
@@ -4936,7 +4855,7 @@ void RenderGui(ImGuiIO& io)
                                 if (st != ScriptData::States.end())
                                     st->second.IsSuspend = false;
                             }
-                            PrintLog("[Script] 已保存脚本配置：" + filename, PL_INFO);
+                            PrintLog("[Script] 已保存插件配置：" + filename, PL_INFO);
                         }
                     }
                 }
@@ -4996,20 +4915,6 @@ void RenderGui(ImGuiIO& io)
 
                     if (!config.UseChinese)
                         Text("&bThe text content is translated by AI and may contain errors.\nYou can report this issue at https://bbs.mcgc.top.");
-                }
-
-                //-----------------------脚本自动启动---------------------------
-                {
-                                        Text(config.UseChinese ? u8"脚本自动启动" : "Script Auto-Start");
-                    SameLine();
-                    // 界面用正向语义（开 = 自动启动），保存时仍写旧的 DisableScriptAutoStart 键，
-                    // 保持旧配置兼容。此前是"开 = 禁用"，很容易被理解反。
-                    bool EnableAutoStart = !DisableScriptAutoStart;
-                    if (Toggle("##enable_script_autostart", &EnableAutoStart, ToggleFlags))
-                        DisableScriptAutoStart = !EnableAutoStart;
-                    AttachTooltip(config.UseChinese ?
-                        u8"开启：启动软件时自动运行所有已安装脚本\n关闭：不自动运行，需在\"已安装\"列表中手动启动" :
-                        "On: auto-run all installed scripts on launch\nOff: start scripts manually in the \"Installed\" list");
                 }
                 EndTabItem();
             }

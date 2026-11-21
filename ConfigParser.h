@@ -543,7 +543,6 @@ void SaveGlobalConfig()
 
 	if (IsNeedReshowAgreement == false) // 不同意就不写入
 		IniWrite("Config", "AgreementVersion", to_string(AgreementVersion).c_str());
-	IniWrite("Config", "DisableScriptAutoStart", DisableScriptAutoStart ? "TRUE" : "FALSE");
 
 	//-----------------------统计信息-----------------------
 	{
@@ -1074,8 +1073,6 @@ void LoadGlobalConfig()
 	int ver2 = stoi(buffer);
 	if (ver2 != AgreementVersion)
 		IsNeedReshowAgreement = true;
-	IniRead("Config", "DisableScriptAutoStart", "FALSE", buffer, MAX_BUF); st = buffer;
-	DisableScriptAutoStart = st.find("TRUE") != string::npos;
 
 	//==================================================统计信息==================================================
 	{

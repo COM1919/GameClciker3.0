@@ -313,7 +313,6 @@ int BgScale = 100;                          //背景缩放百分比
 int BgLightness = 75;                       //背景亮度百分比
 int GuiItemAlpha = 40;                      //控件的透明度百分比（仅有背景图片时才能使用）
 bool BgAutoResize = true;                   //自动调整背景大小
-bool DisableScriptAutoStart = false;        //禁用脚本自动启动（关闭时：启动软件自动运行已安装脚本）
 
 inline const array<const char*, 2> RandomDistList = {
     (config.UseChinese ? u8"均匀整数分布"       : "Uniform Int Distribution"    ),
@@ -401,13 +400,14 @@ namespace ScriptData
     shared_mutex StatesMtx;             //脚本状态的锁
     shared_mutex ShopListMtx;           //脚本商店列表的锁（刷新线程 clear/重填、主线程遍历、检查更新线程遍历）
     vector<ScriptInfo> Installed;       //已安装的脚本
-        // 退出流程 CloseAllLua 会先清空 Installed，之后 SaveGlobalConfig 才写列表文件，
-    // 这里保留清空前的(脚本名, 触发键)快照，避免 InstalledScripts.cfg 被写成空文件。
-    vector<pair<string, int>> InstalledScriptsOnExit;
-    bool HasInstalledNamesSnapshot = false;
     vector<ScriptInfo> Avaiable;        //可用的脚本
     vector<ScriptInfo> ShopList;        //脚本市场的脚本列表
     map<string, ScriptState> States;    //脚本相关状态控制
+    // 脚本因自身报错（Lua error）需要自动卸载时的队列：脚本线程/渲染线程只负责入队，
+    // 真正的卸载（停线程、清状态、写盘）由独立的后台线程执行，避免在 Lua 调用栈内自杀。
+    shared_mutex UninstallQueueMtx;             //卸载队列的锁
+    vector<pair<string, string>> UninstallQueue; //(脚本文件, 卸载原因)
+    atomic<bool> IsUninstallWorkerBusy = false;  //是否已有卸载线程在跑（防止并发卸载同一脚本）
 }
 
 enum class ScriptMarketSource : int {
@@ -444,7 +444,7 @@ inline const int RenderFps = 60;        //渲染帧率
 #define GC_NO_TRY_CATCH                 //不捕获异常，让调试器捕获来定位代码位置
 //#define GC_DEBUG_GUIDE_UI             //开启总是显示向导UI
 
-//#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
+#define GC_RELEASE_MODE               //是否为发布版（如果是就自动关闭所有调试内容）
 
 #ifdef GC_RELEASE_MODE
 #undef GC_DEBUG_VS

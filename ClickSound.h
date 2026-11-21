@@ -820,7 +820,11 @@ inline void HandleMouseSound(int nCode, WPARAM wParam, LPARAM lParam)
 	if (!UseMouseSoundNow || !g_IsLoadedSounds)
 		return;
 
-	std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
+	// 输入分发线程不能被音频重载/设备切换（可能持有该锁数百毫秒）挡住：
+	// 拿不到锁就放弃这一次点击声音，按键状态与后续事件照常处理。
+	std::unique_lock<std::recursive_mutex> alLock(g_ALSoundMtx, std::try_to_lock);
+	if (!alLock.owns_lock())
+		return;
 
 	if (g_pALContext && alcGetCurrentContext() != g_pALContext)
 		alcMakeContextCurrent(g_pALContext);
@@ -881,71 +885,69 @@ inline void HandleKeybdSound(int nCode, WPARAM wParam, LPARAM lParam)
 	if (nCode < 0)
 		return;
 
-	bool UseKeybdSoundNow = false, UseMouseSoundNow = false;
+	KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
+	const int rawVk = (int)pKeyBoard->vkCode;
+	if (rawVk < 0 || rawVk >= 256)
+		return;
+
+	// 物理按键状态只在本分发线程中更新，且不依赖声音开关/音频锁：
+	// 否则声音关闭或音频锁被占用时按下/抬起状态会错位，重新开启声音后按键无声。
+	static bool KeyPhysicalState[256] = { false };
+
+	if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
 	{
-		// 低级键盘钩子与主线程并发读写 config，此前无锁存在数据竞争；这里一次性拷贝所需字段
-		// （仅短暂持读锁，避免在钩子内长时间持锁影响系统超时移除钩子）
-		UseKeybdSoundNow = config.UseKeybdSound;
-		UseMouseSoundNow = config.UseMouseSound;
+		KeyPhysicalState[rawVk] = false;
+		return;
 	}
-	if ((UseKeybdSoundNow || UseMouseSoundNow) && g_IsLoadedSounds)
+	if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
+		return;
+	// 按住不放时系统会持续投递重复 KEYDOWN，只在首次按下时触发声音
+	if (KeyPhysicalState[rawVk])
+		return;
+	KeyPhysicalState[rawVk] = true;
+
+	// 低级键盘钩子与主线程并发读写 config；这里只读所需字段
+	if (!config.UseKeybdSound || !g_IsLoadedSounds)
+		return;
+
+	// 输入分发线程不能被音频重载/设备切换（可能持有该锁数百毫秒）挡住：
+	// 拿不到锁就放弃这一次声音，按键状态与后续事件照常处理。
+	std::unique_lock<std::recursive_mutex> alLock(g_ALSoundMtx, std::try_to_lock);
+	if (!alLock.owns_lock())
+		return;
+
+	// 说明：WH_KEYBOARD_LL 钩子收不到 DBT_* 设备消息（wParam 只会是 WM_KEYDOWN / WM_KEYUP 等），
+	// 原“设备切换”分支是死代码且线程不安全，已移除。音频设备插拔现由主窗口 WndProc 的
+	// WM_DEVICECHANGE + RegisterDeviceNotification 监听（见 GC.h），置 g_AudioDeviceChanged 后
+	// 由 ClickSound 线程统一重建，不再多线程直接操作 OpenAL。
+	if (g_pALContext && alcGetCurrentContext() != g_pALContext)
+		alcMakeContextCurrent(g_pALContext);
+
+	// 修复（Ctrl/Alt/Shift 无声根因）：WH_KEYBOARD_LL 的 vkCode 对左右修饰键返回区分左右的
+	// VK（VK_LCONTROL=0xA2、VK_RMENU=0xA5 等），而声音包加载时 KeyScanToVk 只映射为通用
+	// VK（VK_CONTROL=0x11、VK_MENU=0x12），导致按 0xA2..0xA5 索引 CurrentKeybdSource 恒为 0
+	// 而无声音。这里归一化为通用 VK 后再查表；物理状态仍按原始 vkCode 记录，左右键可独立触发。
+	int vk = rawVk;
+	switch (rawVk)
 	{
-		std::lock_guard<std::recursive_mutex> alLock(g_ALSoundMtx);
-		// 说明：WH_KEYBOARD_LL 钩子收不到 DBT_* 设备消息（wParam 只会是 WM_KEYDOWN / WM_KEYUP 等），
-		// 原“设备切换”分支是死代码且线程不安全，已移除。音频设备插拔现由主窗口 WndProc 的
-		// WM_DEVICECHANGE + RegisterDeviceNotification 监听（见 GC.h），置 g_AudioDeviceChanged 后
-		// 由 ClickSound 线程统一重建，不再多线程直接操作 OpenAL。
-		if (UseKeybdSoundNow)
+		case VK_LSHIFT:   case VK_RSHIFT:   vk = VK_SHIFT;   break;
+		case VK_LCONTROL: case VK_RCONTROL: vk = VK_CONTROL; break;
+		case VK_LMENU:    case VK_RMENU:    vk = VK_MENU;    break;
+	}
+
+	ALuint src = g_CurrentKeybdSource[vk];
+	// 当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
+	if (src == 0)
+	{
+		for (int i = 1; i < 256; ++i)
 		{
-			if (g_pALContext && alcGetCurrentContext() != g_pALContext)
-				alcMakeContextCurrent(g_pALContext);
-
-			KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT*)lParam;
-			int rawVk = (int)pKeyBoard->vkCode;
-			if (rawVk < 0 || rawVk >= 256)
-				return;
-
-			// 修复（Ctrl/Alt/Shift 无声根因）：WH_KEYBOARD_LL 的 vkCode 对左右修饰键返回区分左右的
-			// VK（VK_LCONTROL=0xA2、VK_RMENU=0xA5 等），而声音包加载时 KeyScanToVk 只映射为通用
-			// VK（VK_CONTROL=0x11、VK_MENU=0x12），导致按 0xA2..0xA5 索引 CurrentKeybdSource 恒为 0
-			// 而无声音。这里归一化为通用 VK 后再查表；物理状态仍按原始 vkCode 记录，左右键可独立触发。
-			int vk = rawVk;
-			switch (rawVk)
+			if (g_CurrentKeybdSource[i] != 0)
 			{
-				case VK_LSHIFT:   case VK_RSHIFT:   vk = VK_SHIFT;   break;
-				case VK_LCONTROL: case VK_RCONTROL: vk = VK_CONTROL; break;
-				case VK_LMENU:    case VK_RMENU:    vk = VK_MENU;    break;
+				src = g_CurrentKeybdSource[i];
+				break;
 			}
-
-			static bool KeyPhysicalState[256] = { false };
-
-			if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
-			{
-				// 只有当前物理状态为 false（之前确实没有按下）时，才触发声音
-				if (!KeyPhysicalState[rawVk])
-				{
-					KeyPhysicalState[rawVk] = true;// 标记为已按下
-
-					ALuint src = g_CurrentKeybdSource[vk];
-					// 当前声音包未定义该按键时，回退播放该声音包第一个有效的按键音频，避免静音
-					if (src == 0)
-					{
-						for (int i = 1; i < 256; ++i)
-						{
-							if (g_CurrentKeybdSource[i] != 0)
-							{
-								src = g_CurrentKeybdSource[i];
-								break;
-							}
-						}
-					}
-					if (src != 0)
-						alSourcePlay(src);
-				}
-				// 如果KeyPhysicalState[rawVk]已经是true，直接忽略（无论系统 flags 是什么）
-			}
-			else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP)
-				KeyPhysicalState[rawVk] = false;
 		}
 	}
+	if (src != 0)
+		alSourcePlay(src);
 }
