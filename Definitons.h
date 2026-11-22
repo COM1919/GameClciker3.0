@@ -423,8 +423,8 @@ namespace Sponsor
     vector<string> List;                //赞助列表
 }
 
-const string version = "3.59";          //版本号
-string title = "GAMECLICKER 3.59";      //标题名字
+const string version = "3.60";          //版本号
+string title = "GAMECLICKER 3.60";      //标题名字
 constexpr int ConfigVersion = 5;        //配置文件版本号
 constexpr int AgreementVersion = 8;     //协议文件版本号
 bool IsNeedReshowAgreement = false;     //是否需要显示更新的协议，根据配置文件里面的版本号对比

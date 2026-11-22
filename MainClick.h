@@ -717,7 +717,10 @@ DWORD WINAPI RClickRun(LPVOID lpParam)
 					}
 					else
 					{
-						SetKeyUp(Click::Right, config.SimulateClickMode);
+						// 过滤单点/启动延迟/点击时长等条件未满足时，绝不能放开玩家按住的键：
+						// 玩家按住右键使用物品时，前 FILTER_SC_SLEEP(130ms) 会被反复 SetKeyUp，
+						// 游戏里的使用动作被打断，表现为"先点几下才正常使用"。
+						// 这里只更新连点状态，真实按键状态交给外层"恢复鼠标原始状态"处理。
 						IsClickering.right = false;
 					}
 				}
@@ -971,7 +974,7 @@ DWORD WINAPI LClickRun(LPVOID lpParam)
 					}
 					else
 					{
-						SetKeyUp(Click::Left, config.SimulateClickMode);
+						// 同右键：条件未满足时不要放开玩家按住的键，否则破坏方块会被反复打断
 						IsClickering.left = false;
 					}
 				}
